@@ -1,0 +1,1160 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Filter, ArrowUpDown, LayoutGrid, List, Calendar, Star, LogOut, Menu, Check, Trash2, Send, X, Edit3, FolderPlus, Loader, Search, Settings, Keyboard, GripVertical, Move } from 'lucide-react';
+
+const colors = {
+  bg: '#000000',
+  surface: '#0a0a0a',
+  border: '#1a1a1a',
+  primary: '#d1b18f',
+  textPrimary: '#ffffff',
+  textMuted: '#888888',
+  success: '#4CAF50',
+};
+
+const useTypewriter = (text, speed = 40, startDelay = 0, enabled = true) => {
+  const [displayed, setDisplayed] = useState(enabled ? '' : text);
+  const [done, setDone] = useState(!enabled);
+  
+  useEffect(() => {
+    if (!enabled) { setDisplayed(text); setDone(true); return; }
+    setDisplayed(''); setDone(false);
+    const timeout = setTimeout(() => {
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < text.length) { setDisplayed(text.slice(0, i + 1)); i++; }
+        else { setDone(true); clearInterval(interval); }
+      }, speed);
+      return () => clearInterval(interval);
+    }, startDelay);
+    return () => clearTimeout(timeout);
+  }, [text, speed, startDelay, enabled]);
+  
+  return { displayed, done };
+};
+
+const storage = {
+  async get(key) { try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; } },
+  async set(key, value) { try { await window.storage.set(key, JSON.stringify(value)); return true; } catch { return false; } }
+};
+
+const LoadingBars = () => (
+  <div style={{ display: 'flex', gap: 2, alignItems: 'end', height: 14 }}>
+    {[0, 1, 2, 3, 4].map(i => (
+      <div key={i} style={{ width: 2, background: colors.textPrimary, borderRadius: 1, animation: `loadBar 0.8s ease-in-out ${i * 0.1}s infinite` }} />
+    ))}
+    <style>{`@keyframes loadBar { 0%, 100% { height: 4px; opacity: 0.3; } 50% { height: 14px; opacity: 1; } }`}</style>
+  </div>
+);
+
+const ContextMenu = ({ items, onClose, position }) => {
+  const menuRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState({ opacity: 0 });
+  
+  useEffect(() => {
+    if (position && menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      let top = position.top;
+      let left = position.left;
+      if (top + rect.height > window.innerHeight - 20) top = window.innerHeight - rect.height - 20;
+      if (left + rect.width > window.innerWidth - 20) left = window.innerWidth - rect.width - 20;
+      setMenuStyle({ top, left, opacity: 1 });
+    }
+  }, [position]);
+  
+  return (
+    <div ref={menuRef} style={{ position: 'fixed', background: colors.surface, border: `1px solid ${colors.border}`, padding: 4, minWidth: 180, zIndex: 99999, ...menuStyle }}>
+      {items.map((item, i) => item.divider ? (
+        <div key={i} style={{ height: 1, background: colors.border, margin: '4px 0' }} />
+      ) : (
+        <button key={i} onClick={() => { item.action(); onClose(); }} style={{
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+          background: 'transparent', border: 'none', color: item.danger ? '#ff6b6b' : colors.textMuted,
+          fontSize: 12, fontFamily: "'Manrope', sans-serif", cursor: 'pointer', textAlign: 'left',
+        }} onMouseOver={e => e.currentTarget.style.background = colors.bg} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+          {item.icon && <item.icon size={12} />}{item.label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const TagPill = ({ tag, small, selected, onClick }) => (
+  <span onClick={onClick} style={{
+    display: 'inline-flex', alignItems: 'center', gap: 4, padding: small ? '2px 6px' : '3px 8px',
+    border: `1px solid ${selected ? colors.primary : colors.border}`,
+    color: selected ? colors.primary : colors.textMuted,
+    fontSize: small ? 10 : 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5,
+    cursor: onClick ? 'pointer' : 'default',
+  }}>{tag}</span>
+);
+
+const ChatResponseBox = ({ response, onOptionSelect }) => {
+  const message = useTypewriter(response.message || '', 25);
+  const note = useTypewriter(response.note || '', 20, message.done ? 100 : 99999);
+  
+  return (
+    <div style={{ marginBottom: 8, padding: '12px 18px', background: `${colors.surface}ee`, backdropFilter: 'blur(20px)', border: `1px solid ${colors.border}` }}>
+      <p style={{ color: colors.textPrimary, fontSize: 13, fontFamily: "'Manrope', sans-serif", margin: 0, lineHeight: 1.6, fontWeight: 500 }}>
+        {message.displayed}{!message.done && <span style={{ color: colors.primary }}>_</span>}
+      </p>
+      {response.note && message.done && (
+        <div style={{ marginTop: 8, padding: '8px 12px', background: colors.bg, border: `1px solid ${colors.border}`, display: 'inline-block' }}>
+          <span style={{ color: colors.textMuted, fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>
+            {note.displayed}{!note.done && <span style={{ color: colors.primary }}>_</span>}
+          </span>
+        </div>
+      )}
+      {response.location && note.done && (
+        <p style={{ color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif", margin: '8px 0 0 0' }}>â†’ {response.location}</p>
+      )}
+      {response.options?.length > 0 && note.done && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          {response.options.map((opt, i) => (
+            <button key={i} onClick={() => onOptionSelect(opt)} style={{
+              padding: '6px 12px', background: 'transparent', border: `1px solid ${colors.border}`,
+              color: colors.textPrimary, fontSize: 12, fontFamily: "'Manrope', sans-serif", cursor: 'pointer',
+            }}>{opt.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const NoteCardAnimated = ({ note, onToggle, onEdit, onDelete, isNew }) => {
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(note.content);
+  const typewriter = useTypewriter(note.content, 20, 0, isNew);
+  
+  return (
+    <div style={{ padding: '16px 0', borderBottom: `1px solid ${colors.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <button onClick={() => onToggle(note.id)} style={{
+          width: 16, height: 16, border: `1px solid ${note.completed ? colors.textMuted : colors.border}`,
+          background: note.completed ? colors.textMuted : 'transparent', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 3,
+        }}>{note.completed && <Check size={10} color={colors.bg} strokeWidth={3} />}</button>
+        
+        <div style={{ flex: 1 }}>
+          {editing ? (
+            <input value={content} onChange={e => setContent(e.target.value)}
+              onBlur={() => { onEdit(note.id, content); setEditing(false); }}
+              onKeyDown={e => e.key === 'Enter' && (onEdit(note.id, content), setEditing(false))}
+              autoFocus style={{ width: '100%', background: 'transparent', border: 'none', color: colors.textPrimary, fontSize: 14, fontFamily: "'Manrope', sans-serif", outline: 'none' }} />
+          ) : (
+            <p onClick={() => setEditing(true)} style={{
+              color: note.completed ? colors.textMuted : colors.textPrimary, fontSize: 14, fontFamily: "'Manrope', sans-serif",
+              textDecoration: note.completed ? 'line-through' : 'none', cursor: 'text', margin: 0, lineHeight: 1.5,
+            }}>{isNew ? typewriter.displayed : note.content}{isNew && !typewriter.done && <span style={{ color: colors.primary }}>_</span>}</p>
+          )}
+          {(note.tags?.length > 0 || note.date) && (!isNew || typewriter.done) && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              {note.tags?.map(tag => <TagPill key={tag} tag={tag} small />)}
+              {note.date && <span style={{ color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif" }}>{note.date}</span>}
+            </div>
+          )}
+        </div>
+        
+        <button onClick={() => onDelete(note.id)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4, opacity: 0.3 }}
+          onMouseOver={e => e.currentTarget.style.opacity = 1} onMouseOut={e => e.currentTarget.style.opacity = 0.3}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const CalendarView = ({ notes, currentMonth, onMonthChange, onNoteClick, onNoteMove }) => {
+  const [dragging, setDragging] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthStr = monthNames[currentMonth.getMonth()].slice(0, 3);
+  
+  const getNotesForDay = (day) => notes.filter(n => {
+    if (!n.date) return false;
+    const lower = n.date.toLowerCase().trim();
+    const storedDayMatch = lower.match(/(\d{1,2})/);
+    if (!storedDayMatch) return false;
+    return lower.includes(monthStr.toLowerCase()) && parseInt(storedDayMatch[1]) === day;
+  });
+  
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+        <button onClick={() => onMonthChange(-1)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 18 }}>â†</button>
+        <span style={{ color: colors.textPrimary, fontSize: 16, fontWeight: 600, fontFamily: "'Manrope', sans-serif" }}>{monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}</span>
+        <button onClick={() => onMonthChange(1)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 18 }}>â†’</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: colors.border }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} style={{ background: colors.surface, padding: 8, color: colors.textMuted, fontSize: 10, fontWeight: 600, textAlign: 'center' }}>{d}</div>
+        ))}
+        {Array(firstDay).fill(null).map((_, i) => <div key={`e-${i}`} style={{ background: colors.bg, padding: 8 }} />)}
+        {days.map(day => {
+          const dayNotes = getNotesForDay(day);
+          return (
+            <div key={day} style={{ background: dragOver === day ? colors.surface : colors.bg, padding: 8, minHeight: 80 }}
+              onDragOver={e => { e.preventDefault(); setDragOver(day); }}
+              onDrop={e => { e.preventDefault(); if (dragging) onNoteMove(dragging.id, `${monthStr} ${day}`); setDragging(null); setDragOver(null); }}>
+              <span style={{ color: colors.textMuted, fontSize: 11 }}>{day}</span>
+              {dayNotes.slice(0, 2).map(n => (
+                <div key={n.id} draggable onDragStart={() => setDragging(n)} onDragEnd={() => { setDragging(null); setDragOver(null); }}
+                  onClick={() => onNoteClick(n)} style={{
+                    marginTop: 4, padding: '4px 6px', background: colors.surface, fontSize: 10, cursor: 'grab',
+                    color: n.completed ? colors.textMuted : colors.textPrimary, fontFamily: "'Manrope', sans-serif",
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderLeft: `2px solid ${colors.primary}`,
+                  }}>{n.content}</div>
+              ))}
+              {dayNotes.length > 2 && <span style={{ fontSize: 9, color: colors.textMuted }}>+{dayNotes.length - 2}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// BoxesView with context-aware configs and SEPARATE drag systems for boxes vs notes
+const BoxesView = ({ notes, sections, groupBy, onNoteMove, onNoteToggle, onNoteDelete, contextId, boxConfigs, onSaveBoxConfigs }) => {
+  const [draggingNote, setDraggingNote] = useState(null);
+  const [dragOverBox, setDragOverBox] = useState(null);
+  const [draggingBoxId, setDraggingBoxId] = useState(null);
+  const [dropPosition, setDropPosition] = useState(null);
+  const [boxOrder, setBoxOrder] = useState([]);
+  const [moveNoteModal, setMoveNoteModal] = useState(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const boxRefs = useRef({});
+  
+  // Detect touch device on mount
+  useEffect(() => {
+    const checkTouch = () => {
+      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+      setIsTouchDevice(hasTouch && isCoarsePointer);
+    };
+    checkTouch();
+  }, []);
+  
+  // Generate default box IDs based on sections or groupBy
+  const generateDefaultBoxIds = () => {
+    if (sections) {
+      return sections.map(s => s.id);
+    } else {
+      const keys = new Set();
+      notes.forEach(n => {
+        const key = groupBy === 'status' ? (n.completed ? 'Completed' : 'Active') : (n.tags?.[0] || 'Untagged');
+        keys.add(key);
+      });
+      if (groupBy === 'status') { keys.add('Active'); keys.add('Completed'); }
+      return Array.from(keys);
+    }
+  };
+  
+  // Initialize box order from saved config or defaults when context changes
+  useEffect(() => {
+    const savedOrder = boxConfigs?.[contextId]?.order;
+    const defaultOrder = generateDefaultBoxIds();
+    
+    if (savedOrder && savedOrder.length > 0) {
+      const newBoxes = defaultOrder.filter(id => !savedOrder.includes(id));
+      const validSaved = savedOrder.filter(id => defaultOrder.includes(id));
+      setBoxOrder([...validSaved, ...newBoxes]);
+    } else {
+      setBoxOrder(defaultOrder);
+    }
+  }, [contextId, sections?.length, groupBy]);
+  
+  const saveBoxOrder = (newOrder) => {
+    setBoxOrder(newOrder);
+    if (onSaveBoxConfigs) onSaveBoxConfigs(contextId, { order: newOrder });
+  };
+  
+  const getBoxNotes = (boxId) => {
+    if (sections) return notes.filter(n => n.sectionId === boxId);
+    return notes.filter(n => {
+      const key = groupBy === 'status' ? (n.completed ? 'Completed' : 'Active') : (n.tags?.[0] || 'Untagged');
+      return key === boxId;
+    });
+  };
+  
+  const getBoxName = (boxId) => {
+    if (sections) { const section = sections.find(s => s.id === boxId); return section?.name || boxId; }
+    return boxId;
+  };
+  
+  // BOX DRAG HANDLERS (for reordering boxes via header only)
+  const handleBoxDragStart = (e, boxId) => {
+    e.dataTransfer.setData('text/plain', `box:${boxId}`);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => setDraggingBoxId(boxId), 0);
+  };
+  
+  const handleBoxDragOver = (e, targetBoxId) => {
+    if (!draggingBoxId || draggingBoxId === targetBoxId) return;
+    e.preventDefault();
+    const rect = boxRefs.current[targetBoxId]?.getBoundingClientRect();
+    if (!rect) return;
+    const midpoint = rect.left + rect.width / 2;
+    setDropPosition({ boxId: targetBoxId, position: e.clientX < midpoint ? 'before' : 'after' });
+  };
+  
+  const handleBoxDrop = (e) => {
+    e.preventDefault();
+    if (!draggingBoxId || !dropPosition) { setDraggingBoxId(null); setDropPosition(null); return; }
+    const newOrder = [...boxOrder];
+    const dragIndex = newOrder.indexOf(draggingBoxId);
+    let targetIndex = newOrder.indexOf(dropPosition.boxId);
+    if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) { setDraggingBoxId(null); setDropPosition(null); return; }
+    newOrder.splice(dragIndex, 1);
+    targetIndex = newOrder.indexOf(dropPosition.boxId);
+    if (dropPosition.position === 'after') targetIndex++;
+    newOrder.splice(targetIndex, 0, draggingBoxId);
+    saveBoxOrder(newOrder);
+    setDraggingBoxId(null); setDropPosition(null);
+  };
+  
+  // NOTE DRAG HANDLERS (for moving notes between boxes)
+  const handleNoteDragStart = (e, note) => {
+    e.stopPropagation();
+    e.dataTransfer.setData('text/plain', `note:${note.id}`);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => setDraggingNote(note), 0);
+  };
+  
+  const handleNoteContainerDragOver = (e, boxId) => {
+    const data = e.dataTransfer.types.includes('text/plain');
+    if (!data) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggingNote) setDragOverBox(boxId);
+  };
+  
+  const handleNoteContainerDrop = (e, targetBoxId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggingNote || !sections) { setDraggingNote(null); setDragOverBox(null); return; }
+    if (draggingNote.sectionId !== targetBoxId) {
+      onNoteMove(draggingNote.id, targetBoxId);
+    }
+    setDraggingNote(null); setDragOverBox(null);
+  };
+  
+  // Render the 6-dot drag handle
+  const NoteDragHandle = ({ note }) => (
+    <div 
+      draggable 
+      onDragStart={(e) => handleNoteDragStart(e, note)} 
+      onDragEnd={() => { setDraggingNote(null); setDragOverBox(null); }}
+      style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '4px 4px', 
+        gridTemplateRows: '4px 4px 4px', 
+        gap: 2, 
+        cursor: 'grab', 
+        padding: 4, 
+        marginTop: 0,
+        opacity: 0.4,
+        transition: 'opacity 0.15s ease'
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} 
+      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.4'}
+      title="Drag to move to another section"
+    >
+      {[0,1,2,3,4,5].map(i => (
+        <div key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: colors.textMuted }} />
+      ))}
+    </div>
+  );
+  
+  return (
+    <div>
+      <div 
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}
+        onDragOver={(e) => { if (draggingBoxId) { e.preventDefault(); } }}
+        onDrop={(e) => { if (draggingBoxId) handleBoxDrop(e); }}
+      >
+        {boxOrder.map((boxId) => {
+          const boxNotes = getBoxNotes(boxId);
+          const boxName = getBoxName(boxId);
+          const isBoxDropTarget = dropPosition?.boxId === boxId;
+          const isNoteDropTarget = dragOverBox === boxId && draggingNote;
+          
+          return (
+            <div 
+              key={boxId} 
+              ref={el => boxRefs.current[boxId] = el}
+              onDragOver={(e) => { 
+                if (draggingBoxId) handleBoxDragOver(e, boxId); 
+                if (draggingNote) handleNoteContainerDragOver(e, boxId); 
+              }}
+              onDragLeave={(e) => {
+                if (draggingNote && !e.currentTarget.contains(e.relatedTarget)) {
+                  setDragOverBox(null);
+                }
+              }}
+              onDrop={(e) => { 
+                if (draggingNote) handleNoteContainerDrop(e, boxId); 
+              }}
+              style={{ 
+                background: isNoteDropTarget ? colors.surface : colors.bg, 
+                border: `1px solid ${isNoteDropTarget ? colors.primary : colors.border}`, 
+                opacity: draggingBoxId === boxId ? 0.5 : 1, 
+                transition: 'all 0.15s ease',
+                boxShadow: isBoxDropTarget ? `${dropPosition.position === 'before' ? '-4px' : '4px'} 0 0 ${colors.primary}` : 'none'
+              }}
+            >
+              
+              {/* Box Header - ONLY this is draggable for box reordering */}
+              <div 
+                draggable={!isTouchDevice} 
+                onDragStart={(e) => handleBoxDragStart(e, boxId)} 
+                onDragEnd={() => { setDraggingBoxId(null); setDropPosition(null); }}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 8, 
+                  padding: '12px 16px', 
+                  borderBottom: `1px solid ${colors.border}`, 
+                  cursor: isTouchDevice ? 'default' : 'grab', 
+                  background: colors.surface 
+                }}
+              >
+                {!isTouchDevice && <GripVertical size={14} color={colors.textMuted} style={{ opacity: 0.5, flexShrink: 0 }} />}
+                <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, margin: 0, flex: 1 }}>{boxName.toUpperCase()}</p>
+                <span style={{ color: colors.textMuted, fontSize: 10 }}>{boxNotes.length}</span>
+              </div>
+              
+              {/* Box Content - Notes list */}
+              <div style={{ padding: '8px 16px 16px', minHeight: 60 }}>
+                {boxNotes.length === 0 ? (
+                  <p style={{ color: colors.textMuted, fontSize: 12, opacity: 0.5, margin: '8px 0' }}>
+                    {isNoteDropTarget ? 'Drop here' : 'No notes'}
+                  </p>
+                ) : boxNotes.map(note => (
+                  <div 
+                    key={note.id} 
+                    style={{ 
+                      padding: '10px 0', 
+                      borderBottom: `1px solid ${colors.border}`, 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      gap: 8, 
+                      opacity: draggingNote?.id === note.id ? 0.5 : 1, 
+                      transition: 'opacity 0.15s ease' 
+                    }}
+                  >
+                    
+                    {/* Note drag handle (desktop) or move button (mobile) - only when sections exist */}
+                    {sections && (isTouchDevice ? (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setMoveNoteModal({ note, fromBoxId: boxId }); }}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          width: 24, 
+                          height: 24, 
+                          background: 'transparent', 
+                          border: `1px solid ${colors.border}`, 
+                          color: colors.textMuted, 
+                          cursor: 'pointer', 
+                          flexShrink: 0 
+                        }} 
+                        title="Move to another section"
+                      >
+                        <Move size={12} />
+                      </button>
+                    ) : (
+                      <NoteDragHandle note={note} />
+                    ))}
+                    
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onNoteToggle(note.id); }}
+                      style={{ 
+                        width: 16, 
+                        height: 16, 
+                        border: `1px solid ${note.completed ? colors.textMuted : colors.border}`, 
+                        background: note.completed ? colors.textMuted : 'transparent', 
+                        cursor: 'pointer', 
+                        flexShrink: 0, 
+                        marginTop: 2, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center' 
+                      }}
+                    >
+                      {note.completed && <Check size={10} color={colors.bg} strokeWidth={3} />}
+                    </button>
+                    
+                    <div style={{ flex: 1 }}>
+                      <p style={{ 
+                        color: note.completed ? colors.textMuted : colors.textPrimary, 
+                        fontSize: 13, 
+                        fontFamily: "'Manrope', sans-serif", 
+                        margin: 0, 
+                        textDecoration: note.completed ? 'line-through' : 'none' 
+                      }}>
+                        {note.content}
+                      </p>
+                      {note.tags?.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                          {note.tags.map(tag => (
+                            <span key={tag} style={{ fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', padding: '2px 4px', border: `1px solid ${colors.border}` }}>{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                      {note.date && <span style={{ color: colors.textMuted, fontSize: 10, display: 'block', marginTop: 4 }}>{note.date}</span>}
+                    </div>
+                    
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onNoteDelete(note.id); }}
+                      style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4, opacity: 0.3 }}
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'} 
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.3'}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Drag indicators */}
+      {draggingBoxId && (
+        <div style={{ 
+          position: 'fixed', 
+          bottom: 100, 
+          left: '50%', 
+          transform: 'translateX(-50%)', 
+          background: colors.surface, 
+          border: `1px solid ${dropPosition ? colors.primary : colors.border}`, 
+          padding: '10px 20px', 
+          fontSize: 12, 
+          color: dropPosition ? colors.textPrimary : colors.textMuted, 
+          zIndex: 1000, 
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)' 
+        }}>
+          <span style={{ color: colors.primary, marginRight: 8 }}>⇄</span>
+          {dropPosition ? 'Release to drop' : 'Drag to reorder boxes'}
+        </div>
+      )}
+      {draggingNote && (
+        <div style={{ 
+          position: 'fixed', 
+          bottom: 100, 
+          left: '50%', 
+          transform: 'translateX(-50%)', 
+          background: colors.surface, 
+          border: `1px solid ${dragOverBox ? colors.primary : colors.border}`, 
+          padding: '10px 20px', 
+          fontSize: 12, 
+          color: dragOverBox ? colors.textPrimary : colors.textMuted, 
+          zIndex: 1000, 
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)' 
+        }}>
+          <span style={{ color: colors.primary, marginRight: 8 }}>↗</span>
+          {dragOverBox ? 'Release to move note' : 'Drag to another section'}
+        </div>
+      )}
+      
+      {/* Move Note Modal for mobile */}
+      {moveNoteModal && sections && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            background: 'rgba(0,0,0,0.8)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            zIndex: 9999, 
+            padding: 20 
+          }} 
+          onClick={() => setMoveNoteModal(null)}
+        >
+          <div 
+            style={{ 
+              background: colors.surface, 
+              border: `1px solid ${colors.border}`, 
+              width: '100%', 
+              maxWidth: 320, 
+              maxHeight: '80vh', 
+              overflow: 'auto' 
+            }} 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: 16, borderBottom: `1px solid ${colors.border}` }}>
+              <p style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 600, margin: 0 }}>Move Note</p>
+              <p style={{ color: colors.textMuted, fontSize: 12, margin: '8px 0 0 0', lineHeight: 1.4 }}>
+                {moveNoteModal.note.content.length > 50 ? moveNoteModal.note.content.slice(0, 50) + '...' : moveNoteModal.note.content}
+              </p>
+            </div>
+            <div style={{ padding: 8 }}>
+              <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1, padding: '8px 8px 4px', margin: 0 }}>SELECT SECTION</p>
+              {sections.map(section => {
+                const isCurrentSection = moveNoteModal.note.sectionId === section.id;
+                return (
+                  <button 
+                    key={section.id} 
+                    onClick={() => { 
+                      if (!isCurrentSection) onNoteMove(moveNoteModal.note.id, section.id); 
+                      setMoveNoteModal(null); 
+                    }} 
+                    disabled={isCurrentSection}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      width: '100%', 
+                      padding: '12px 16px', 
+                      background: isCurrentSection ? colors.bg : 'transparent', 
+                      border: 'none', 
+                      color: isCurrentSection ? colors.textMuted : colors.textPrimary, 
+                      fontSize: 13, 
+                      fontFamily: "'Manrope', sans-serif", 
+                      cursor: isCurrentSection ? 'default' : 'pointer', 
+                      textAlign: 'left', 
+                      opacity: isCurrentSection ? 0.5 : 1 
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>{section.name}</span>
+                    {isCurrentSection && <span style={{ fontSize: 10, color: colors.textMuted }}>CURRENT</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ padding: 12, borderTop: `1px solid ${colors.border}` }}>
+              <button 
+                onClick={() => setMoveNoteModal(null)} 
+                style={{ 
+                  width: '100%', 
+                  padding: '10px 16px', 
+                  background: 'transparent', 
+                  border: `1px solid ${colors.border}`, 
+                  color: colors.textMuted, 
+                  fontSize: 12, 
+                  cursor: 'pointer' 
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const fallbackParse = (input) => {
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  let extractedDate = null, cleanInput = input;
+  
+  const patterns = [
+    /\b(?:on|by|for|due)?\s*(\d{1,2})\/(\d{1,2})\b/i,
+    /\b(?:on|by|for|due)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?\b/i,
+    /\b(?:on|by|for|due)?\s*(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = input.match(pattern);
+    if (match) {
+      if (pattern === patterns[0]) {
+        const monthIdx = parseInt(match[1]) - 1;
+        if (monthIdx >= 0 && monthIdx < 12) extractedDate = `${months[monthIdx].charAt(0).toUpperCase() + months[monthIdx].slice(1)} ${parseInt(match[2])}`;
+      } else if (pattern === patterns[1]) {
+        extractedDate = `${match[1].charAt(0).toUpperCase() + match[1].slice(1, 3)} ${parseInt(match[2])}`;
+      } else {
+        extractedDate = `${match[2].charAt(0).toUpperCase() + match[2].slice(1, 3)} ${parseInt(match[1])}`;
+      }
+      cleanInput = input.replace(match[0], '').trim();
+      break;
+    }
+  }
+  
+  const autoTags = [];
+  const lower = input.toLowerCase();
+  if (lower.includes('campaign') || lower.includes('marketing')) autoTags.push('marketing');
+  if (lower.includes('bug') || lower.includes('fix')) autoTags.push('bug');
+  if (lower.includes('website')) autoTags.push('website');
+  
+  const responses = ["Logged.", "Noted.", "On the board.", "Tracked.", "Roger.", "Confirmed.", "Filed."];
+  const msg = extractedDate ? `Scheduled: ${extractedDate}.` : responses[Math.floor(Math.random() * responses.length)];
+  
+  return {
+    parsed: { page: null, section: null, content: cleanInput || input.trim(), date: extractedDate, tags: autoTags.slice(0, 3), action: 'add', newPage: false, newSection: false },
+    response: { message: msg, note: cleanInput || input.trim(), needsInput: false, options: [] }
+  };
+};
+
+const callAgent = async (input, context) => {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514", max_tokens: 1000,
+        system: `You are SCRATCHPAD's agent. Parse notes, respond tactically (70% Jocko, 30% defense contractor).
+CONTEXT: Pages: ${context.pages.map(p => p.name).join(', ')}. Sections: ${context.pages.map(p => `${p.name}: [${p.sections?.map(s => s.name).join(', ')}]`).join('; ')}. Tags: ${context.tags.join(', ')}. Current: ${context.currentPage}/${context.currentSection}.
+Respond ONLY JSON: {"parsed":{"page":null,"section":null,"content":"...","date":"Mon D or null","tags":[],"action":"add","newPage":false,"newSection":false},"response":{"message":"...","note":"...","needsInput":false,"options":[]}}`,
+        messages: [{ role: "user", content: input }]
+      })
+    });
+    const data = await response.json();
+    return JSON.parse((data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim());
+  } catch { return fallbackParse(input); }
+};
+
+const SignedOutScreen = ({ onSignIn }) => {
+  const title = useTypewriter('SCRATCHPAD', 60);
+  const subtitle = useTypewriter('Your ideas, organized.', 30, 700);
+  const [showContent, setShowContent] = useState(false);
+  useEffect(() => { if (subtitle.done) setTimeout(() => setShowContent(true), 150); }, [subtitle.done]);
+  
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: colors.bg, fontFamily: "'Inter', sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" />
+      <div style={{ width: 64, background: colors.surface, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 0 80px 0' }}>
+        <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: colors.textPrimary, fontSize: 32, fontWeight: 600, letterSpacing: -1, margin: '0 auto' }}>SCRATCHPAD</span>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 80px' }}>
+        <h1 style={{ color: colors.textPrimary, fontSize: 56, fontWeight: 600, letterSpacing: -2, marginBottom: 16 }}>{title.displayed}{!title.done && <span style={{ color: colors.primary }}>_</span>}</h1>
+        <p style={{ color: colors.textPrimary, fontSize: 15, fontWeight: 500, fontFamily: "'Manrope', sans-serif", marginBottom: 8, minHeight: 24 }}>{subtitle.displayed}{title.done && !subtitle.done && <span style={{ color: colors.primary }}>_</span>}</p>
+        <div style={{ opacity: showContent ? 1 : 0, transform: showContent ? 'translateY(0)' : 'translateY(8px)', transition: 'all 0.3s ease', marginTop: 32 }}>
+          <p style={{ color: colors.textPrimary, fontSize: 13, fontFamily: "'Manrope', sans-serif", lineHeight: 1.6, marginBottom: 40, opacity: 0.7, maxWidth: 360 }}>Natural language note-taking with automatic organization and tagging. Built for operators.</p>
+          <button onClick={onSignIn} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textPrimary, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MainApp = ({ onSignOut }) => {
+  const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pages, setPages] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [currentPage, setCurrentPage] = useState(null);
+  const [currentSection, setCurrentSection] = useState(null);
+  const [viewingPageLevel, setViewingPageLevel] = useState(false);
+  const [expandedPages, setExpandedPages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [viewMode, setViewMode] = useState('list');
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [filterIncomplete, setFilterIncomplete] = useState(false);
+  const [filterTag, setFilterTag] = useState([]);
+  const [sortBy, setSortBy] = useState('created');
+  const [createPrompt, setCreatePrompt] = useState(null);
+  const [pendingNote, setPendingNote] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [groupBy] = useState('status');
+  const [processing, setProcessing] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [newTagName, setNewTagName] = useState('');
+  const [addingTag, setAddingTag] = useState(false);
+  const [tagManageMode, setTagManageMode] = useState(null);
+  const [selectedTagsForManage, setSelectedTagsForManage] = useState([]);
+  const [mergeTargetName, setMergeTargetName] = useState('');
+  const [newNoteId, setNewNoteId] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [chatResponse, setChatResponse] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [boxConfigs, setBoxConfigs] = useState({});
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const [sp, st, sn, sbc] = await Promise.all([storage.get('scratchpad-pages'), storage.get('scratchpad-tags'), storage.get('scratchpad-notes'), storage.get('scratchpad-box-configs')]);
+      const defaultPages = [{ id: '1', name: 'OPS', starred: true, sections: [{ id: '1a', name: 'Website' }, { id: '1b', name: 'App' }, { id: '1c', name: 'Marketing' }] }, { id: '2', name: 'Personal', starred: false, sections: [{ id: '2a', name: 'Ideas' }] }];
+      const defaultTags = ['marketing', 'website', 'bug', 'urgent'];
+      setPages(sp || defaultPages); setTags(st || defaultTags); setNotes(sn || []); setBoxConfigs(sbc || {});
+      setExpandedPages((sp || defaultPages).map(p => p.id));
+      setCurrentPage((sp || defaultPages)[0]?.id);
+      setCurrentSection((sp || defaultPages)[0]?.sections[0]?.id);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  useEffect(() => { if (!loading) { storage.set('scratchpad-pages', pages); storage.set('scratchpad-tags', tags); storage.set('scratchpad-notes', notes); storage.set('scratchpad-box-configs', boxConfigs); } }, [pages, tags, notes, boxConfigs, loading]);
+
+  // Context ID for box configs - unique per page or section view
+  const getBoxContextId = () => viewingPageLevel ? `page-${currentPage}` : `section-${currentSection}`;
+  
+  const handleSaveBoxConfigs = (contextId, config) => {
+    setBoxConfigs(prev => ({ ...prev, [contextId]: { ...prev[contextId], ...config } }));
+  };
+
+  const allSections = pages.flatMap(p => p.sections.map(s => ({ ...s, pageId: p.id, pageName: p.name })));
+  const currentPageData = pages.find(p => p.id === currentPage);
+  const currentSectionData = currentPageData?.sections.find(s => s.id === currentSection);
+  
+  const filteredNotes = (viewingPageLevel ? notes.filter(n => currentPageData?.sections.some(s => s.id === n.sectionId)) : notes.filter(n => n.sectionId === currentSection))
+    .filter(n => !filterIncomplete || !n.completed)
+    .filter(n => filterTag.length === 0 || filterTag.some(t => n.tags?.includes(t)))
+    .sort((a, b) => sortBy === 'created' ? b.createdAt - a.createdAt : a.content.localeCompare(b.content));
+
+  const searchResults = searchQuery.trim() ? notes.filter(n => n.content.toLowerCase().includes(searchQuery.toLowerCase()) || n.tags?.some(t => t.includes(searchQuery.toLowerCase()))).slice(0, 10) : [];
+
+  const openContextMenu = (id, e) => { e.stopPropagation(); setContextMenuPosition({ top: e.currentTarget.getBoundingClientRect().bottom + 4, left: e.currentTarget.getBoundingClientRect().left }); setContextMenu(id); };
+
+  const handleDeleteTags = () => {
+    if (selectedTagsForManage.length === 0) return;
+    setNotes(notes.map(n => ({ ...n, tags: n.tags?.filter(t => !selectedTagsForManage.includes(t)) || [] })));
+    setTags(tags.filter(t => !selectedTagsForManage.includes(t)));
+    setFilterTag(filterTag.filter(t => !selectedTagsForManage.includes(t)));
+    setSelectedTagsForManage([]); setTagManageMode(null);
+  };
+
+  const handleMergeTags = () => {
+    if (selectedTagsForManage.length < 2) return;
+    const targetName = mergeTargetName.trim().toLowerCase() || selectedTagsForManage[0];
+    setNotes(notes.map(n => ({ ...n, tags: n.tags?.map(t => selectedTagsForManage.includes(t) ? targetName : t).filter((t, i, a) => a.indexOf(t) === i) || [] })));
+    setTags([...tags.filter(t => !selectedTagsForManage.includes(t)), targetName].filter((t, i, a) => a.indexOf(t) === i));
+    setSelectedTagsForManage([]); setMergeTargetName(''); setTagManageMode(null);
+  };
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      const isTyping = document.activeElement?.tagName === 'INPUT';
+      const mod = e.metaKey || e.ctrlKey;
+      
+      if (mod && e.key === 'k') { e.preventDefault(); setSearchOpen(true); }
+      else if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); setShowShortcuts(false); }
+      else if (e.key === '/' && !isTyping && !searchOpen) { e.preventDefault(); inputRef.current?.focus(); }
+      else if (e.key === '?' && !isTyping) { e.preventDefault(); setShowShortcuts(s => !s); }
+      else if (e.key === 'p' && !isTyping && !searchOpen) { 
+        e.preventDefault(); 
+        const name = prompt('New page name:'); 
+        if (name) { 
+          const np = { id: Date.now().toString(), name, starred: false, sections: [] }; 
+          setPages(pg => [...pg, np]); 
+          setExpandedPages(ep => [...ep, np.id]);
+          setCurrentPage(np.id);
+          setViewingPageLevel(true);
+        }
+      }
+      else if (e.key === 's' && !isTyping && !searchOpen) { 
+        e.preventDefault(); 
+        if (currentPage) {
+          const name = prompt('New section name:'); 
+          if (name) { 
+            const ns = { id: Date.now().toString(), name }; 
+            setPages(pg => pg.map(p => p.id === currentPage ? { ...p, sections: [...p.sections, ns] } : p));
+            setCurrentSection(ns.id);
+            setViewingPageLevel(false);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [searchOpen, currentPage]);
+
+  const handleSubmit = async () => {
+    if (!inputValue.trim() || processing) return;
+    setProcessing(true);
+    const result = await callAgent(inputValue, { pages, sections: allSections, tags, currentPage: currentPageData?.name || '', currentSection: currentSectionData?.name || '' });
+    const parsed = result.parsed;
+    if (parsed.newPage && parsed.page) { setPendingNote({ parsed, response: result.response }); setCreatePrompt({ type: 'page', name: parsed.page }); setProcessing(false); return; }
+    if (parsed.newSection && parsed.section) { setPendingNote({ parsed, response: result.response }); setCreatePrompt({ type: 'section', name: parsed.section }); setProcessing(false); return; }
+    addNote(parsed, result.response);
+    setProcessing(false);
+  };
+
+  const addNote = (parsed, response) => {
+    let targetSection = currentSection;
+    if (parsed.section) { const match = allSections.find(s => s.name.toLowerCase() === parsed.section.toLowerCase()); if (match) targetSection = match.id; }
+    const newTags = parsed.tags?.filter(t => !tags.includes(t)) || [];
+    if (newTags.length) setTags([...tags, ...newTags]);
+    const sectionData = allSections.find(s => s.id === targetSection);
+    setChatResponse({ message: response?.message || 'Logged.', note: response?.note || parsed.content, location: sectionData ? `${sectionData.pageName}/${sectionData.name}` : null, options: response?.options });
+    setTimeout(() => setChatResponse(null), 5000);
+    const noteId = Date.now().toString();
+    setNewNoteId(noteId); setTimeout(() => setNewNoteId(null), 3000);
+    setNotes([...notes, { id: noteId, sectionId: targetSection, content: parsed.content, tags: parsed.tags || [], completed: false, date: parsed.date, createdAt: Date.now(), createdBy: 'Jackson' }]);
+    setInputValue('');
+  };
+
+  const handleCreateConfirm = () => {
+    if (createPrompt.type === 'page') {
+      const newPage = { id: Date.now().toString(), name: pendingNote.parsed.page, starred: false, sections: [] };
+      if (pendingNote.parsed.section) { newPage.sections.push({ id: `${newPage.id}-s1`, name: pendingNote.parsed.section }); }
+      setPages([...pages, newPage]); setExpandedPages([...expandedPages, newPage.id]); setCurrentPage(newPage.id);
+      if (newPage.sections[0]) { setCurrentSection(newPage.sections[0].id); setViewingPageLevel(false); addNote({ ...pendingNote.parsed, newPage: false, newSection: false }, pendingNote.response); }
+    } else {
+      const newSection = { id: Date.now().toString(), name: pendingNote.parsed.section };
+      setPages(pages.map(p => p.id === currentPage ? { ...p, sections: [...p.sections, newSection] } : p));
+      setCurrentSection(newSection.id); setViewingPageLevel(false);
+      addNote({ ...pendingNote.parsed, newSection: false }, pendingNote.response);
+    }
+    setCreatePrompt(null); setPendingNote(null);
+  };
+
+  const title = useTypewriter(viewingPageLevel ? currentPageData?.name?.toUpperCase() : currentSectionData?.name?.toUpperCase() || '', 40);
+  const [contentVisible, setContentVisible] = useState(false);
+  useEffect(() => { setContentVisible(false); setTimeout(() => setContentVisible(true), 300); }, [currentSection, viewingPageLevel]);
+
+  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: colors.bg }}><LoadingBars /></div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: colors.bg, fontFamily: "'Inter', sans-serif" }} onClick={() => { setContextMenu(null); setShowHeaderMenu(false); }}>
+      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" />
+      
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Sidebar */}
+        <div style={{ width: sidebarOpen ? 240 : 56, background: `${colors.surface}ee`, backdropFilter: 'blur(20px)', borderRight: `1px solid ${colors.border}`, transition: 'width 0.2s', display: 'flex', flexDirection: 'column' }}>
+          {!sidebarOpen ? (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '12px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginBottom: 8 }}>
+                <button onClick={() => setSidebarOpen(true)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 8 }}><Menu size={16} /></button>
+              </div>
+              <button onClick={e => openContextMenu('collapsed-plus', e)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 8, margin: '0 auto' }}><Plus size={16} /></button>
+              <button onClick={() => setShowShortcuts(true)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 8, margin: '4px auto 0' }}><Keyboard size={16} /></button>
+              <div style={{ flex: 1 }} />
+              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', color: colors.textPrimary, fontSize: 20, fontWeight: 600, letterSpacing: -0.5, margin: '0 auto 16px' }}>SCRATCHPAD</span>
+              <div onClick={e => openContextMenu('collapsed-user', e)} style={{ margin: '0 auto', cursor: 'pointer' }}>
+                <div style={{ width: 28, height: 28, background: colors.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.bg, fontWeight: 600, fontSize: 12 }}>J</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4 }}><Menu size={16} /></button>
+                <button onClick={() => setShowShortcuts(true)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4 }}><Keyboard size={16} /></button>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '20px 16px' }}>
+                <div style={{ marginBottom: 32 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, margin: 0 }}>PAGES</p>
+                    <button onClick={() => { const name = prompt('New page name:'); if (name) { const np = { id: Date.now().toString(), name, starred: false, sections: [] }; setPages([...pages, np]); setExpandedPages([...expandedPages, np.id]); }}} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 2 }}><Plus size={12} /></button>
+                  </div>
+                  {pages.map(page => (
+                    <div key={page.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 0', color: colors.textPrimary, fontSize: 13, fontWeight: 500 }}>
+                        <span onClick={() => setExpandedPages(expandedPages.includes(page.id) ? expandedPages.filter(id => id !== page.id) : [...expandedPages, page.id])} style={{ cursor: 'pointer' }}>
+                          {expandedPages.includes(page.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        </span>
+                        {editingItem === page.id ? (
+                          <input autoFocus value={page.name} onChange={e => setPages(pages.map(p => p.id === page.id ? { ...p, name: e.target.value } : p))} onBlur={() => setEditingItem(null)} onKeyDown={e => e.key === 'Enter' && setEditingItem(null)} style={{ marginLeft: 8, flex: 1, background: 'transparent', border: 'none', color: colors.textPrimary, fontSize: 13, outline: 'none' }} />
+                        ) : (
+                          <span style={{ marginLeft: 8, flex: 1, cursor: 'pointer' }} onClick={() => { setCurrentPage(page.id); setViewingPageLevel(true); }}>{page.name}</span>
+                        )}
+                        {page.starred && <Star size={10} fill={colors.primary} color={colors.primary} style={{ marginRight: 4 }} />}
+                        <button onClick={e => openContextMenu(`page-${page.id}`, e)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 2, opacity: 0.5 }}><MoreHorizontal size={12} /></button>
+                      </div>
+                      {expandedPages.includes(page.id) && page.sections.map(section => (
+                        <div key={section.id} onClick={() => { setCurrentPage(page.id); setCurrentSection(section.id); setViewingPageLevel(false); }} style={{ display: 'flex', alignItems: 'center', padding: '8px 0 8px 20px', cursor: 'pointer', color: currentSection === section.id ? colors.textPrimary : colors.textMuted, fontSize: 13, borderLeft: currentSection === section.id ? `1px solid ${colors.textPrimary}` : '1px solid transparent' }}>
+                          {editingItem === section.id ? (
+                            <input autoFocus value={section.name} onClick={e => e.stopPropagation()} onChange={e => setPages(pages.map(p => p.id === page.id ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, name: e.target.value } : s) } : p))} onBlur={() => setEditingItem(null)} onKeyDown={e => e.key === 'Enter' && setEditingItem(null)} style={{ flex: 1, background: 'transparent', border: 'none', color: colors.textPrimary, fontSize: 13, outline: 'none' }} />
+                          ) : <span style={{ flex: 1 }}>{section.name}</span>}
+                          <button onClick={e => { e.stopPropagation(); openContextMenu(`section-${section.id}`, e); }} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 2, opacity: 0.3 }}><MoreHorizontal size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Tags */}
+                <div style={{ marginBottom: 32 }}>
+                  <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, marginBottom: 12 }}>TAGS</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {tags.map(tag => <TagPill key={tag} tag={tag} selected={tagManageMode ? selectedTagsForManage.includes(tag) : filterTag.includes(tag)} onClick={() => tagManageMode ? setSelectedTagsForManage(selectedTagsForManage.includes(tag) ? selectedTagsForManage.filter(t => t !== tag) : [...selectedTagsForManage, tag]) : setFilterTag(filterTag.includes(tag) ? filterTag.filter(t => t !== tag) : [...filterTag, tag])} />)}
+                    {addingTag ? <input autoFocus value={newTagName} onChange={e => setNewTagName(e.target.value)} onBlur={() => { if (newTagName.trim()) setTags([...tags, newTagName.trim().toLowerCase()]); setNewTagName(''); setAddingTag(false); }} onKeyDown={e => { if (e.key === 'Enter') { if (newTagName.trim()) setTags([...tags, newTagName.trim().toLowerCase()]); setNewTagName(''); setAddingTag(false); }}} style={{ padding: '3px 8px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textPrimary, fontSize: 11, width: 60, outline: 'none' }} /> : !tagManageMode && <button onClick={() => setAddingTag(true)} style={{ padding: '3px 8px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 11, cursor: 'pointer' }}><Plus size={10} /></button>}
+                  </div>
+                  {!tagManageMode ? (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button onClick={() => setTagManageMode('merge')} style={{ background: 'transparent', border: 'none', color: colors.textMuted, fontSize: 11, cursor: 'pointer', padding: 0 }}>Merge</button>
+                      <button onClick={() => setTagManageMode('delete')} style={{ background: 'transparent', border: 'none', color: colors.textMuted, fontSize: 11, cursor: 'pointer', padding: 0 }}>Delete</button>
+                      {filterTag.length > 0 && <button onClick={() => setFilterTag([])} style={{ background: 'transparent', border: 'none', color: colors.primary, fontSize: 11, cursor: 'pointer', padding: 0, marginLeft: 'auto' }}>Clear</button>}
+                    </div>
+                  ) : tagManageMode === 'delete' ? (
+                    <div style={{ marginTop: 10 }}>
+                      <p style={{ color: colors.textMuted, fontSize: 11, marginBottom: 8 }}>Select tags to delete:</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={handleDeleteTags} disabled={!selectedTagsForManage.length} style={{ padding: '4px 10px', background: selectedTagsForManage.length ? '#ff4444' : 'transparent', border: `1px solid ${selectedTagsForManage.length ? '#ff4444' : colors.border}`, color: selectedTagsForManage.length ? '#fff' : colors.textMuted, fontSize: 11, cursor: selectedTagsForManage.length ? 'pointer' : 'not-allowed' }}>Delete ({selectedTagsForManage.length})</button>
+                        <button onClick={() => { setTagManageMode(null); setSelectedTagsForManage([]); }} style={{ padding: '4px 10px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 10 }}>
+                      <p style={{ color: colors.textMuted, fontSize: 11, marginBottom: 8 }}>Select tags to merge (2+):</p>
+                      {selectedTagsForManage.length >= 2 && <input value={mergeTargetName} onChange={e => setMergeTargetName(e.target.value)} placeholder={`New name (default: ${selectedTagsForManage[0]})`} style={{ width: '100%', padding: '6px 8px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textPrimary, fontSize: 11, marginBottom: 8, outline: 'none' }} />}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={handleMergeTags} disabled={selectedTagsForManage.length < 2} style={{ padding: '4px 10px', background: selectedTagsForManage.length >= 2 ? colors.primary : 'transparent', border: `1px solid ${selectedTagsForManage.length >= 2 ? colors.primary : colors.border}`, color: selectedTagsForManage.length >= 2 ? colors.bg : colors.textMuted, fontSize: 11, cursor: selectedTagsForManage.length >= 2 ? 'pointer' : 'not-allowed' }}>Merge ({selectedTagsForManage.length})</button>
+                        <button onClick={() => { setTagManageMode(null); setSelectedTagsForManage([]); setMergeTargetName(''); }} style={{ padding: '4px 10px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Recent */}
+                <div style={{ marginBottom: 32 }}>
+                  <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, marginBottom: 12 }}>RECENT</p>
+                  {[...notes].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4).map(note => (
+                    <p key={note.id} onClick={() => { const s = allSections.find(x => x.id === note.sectionId); if (s) { setCurrentPage(s.pageId); setCurrentSection(s.id); setViewingPageLevel(false); }}} style={{ color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif", margin: '6px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>{note.content}</p>
+                  ))}
+                </div>
+                
+                {/* Starred */}
+                <div>
+                  <p style={{ color: colors.textMuted, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, marginBottom: 12 }}>STARRED</p>
+                  {pages.filter(p => p.starred).map(p => (
+                    <p key={p.id} onClick={() => { setCurrentPage(p.id); setViewingPageLevel(true); }} style={{ color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif", margin: '6px 0', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><Star size={10} fill={colors.primary} color={colors.primary} />{p.name}</p>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Sidebar footer */}
+              <div style={{ borderTop: `1px solid ${colors.border}`, padding: 16 }}>
+                <p style={{ color: colors.textPrimary, fontSize: 24, fontWeight: 600, letterSpacing: -1, marginBottom: 16 }}>SCRATCHPAD</p>
+                <div onClick={e => openContextMenu('user-menu', e)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <div style={{ width: 28, height: 28, background: colors.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.bg, fontWeight: 600, fontSize: 12 }}>J</div>
+                  <span style={{ color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif", flex: 1 }}>Jackson</span>
+                  <ChevronDown size={12} color={colors.textMuted} />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Main */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Toolbar */}
+          <div style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16 }}>
+            <button onClick={() => setSearchOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 12, cursor: 'pointer' }}><Search size={12} /><span>Search</span><span style={{ opacity: 0.5, fontSize: 10 }}>âŒ˜K</span></button>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setFilterIncomplete(!filterIncomplete)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'transparent', border: `1px solid ${filterIncomplete ? colors.textMuted : colors.border}`, color: filterIncomplete ? colors.textPrimary : colors.textMuted, fontSize: 12, cursor: 'pointer', fontWeight: 500 }}><Filter size={12} />{filterIncomplete ? 'INCOMPLETE' : 'FILTER'}</button>
+            <button onClick={e => openContextMenu('sort', e)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 12, cursor: 'pointer', fontWeight: 500 }}><ArrowUpDown size={12} />SORT</button>
+            <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
+              {[{ m: 'list', I: List }, { m: 'boxes', I: LayoutGrid }, { m: 'calendar', I: Calendar }].map(({ m, I }) => (
+                <button key={m} onClick={() => setViewMode(m)} style={{ padding: '6px 10px', background: viewMode === m ? colors.textPrimary : 'transparent', border: 'none', color: viewMode === m ? colors.bg : colors.textMuted, cursor: 'pointer' }}><I size={12} /></button>
+              ))}
+            </div>
+          </div>
+
+          {/* Header */}
+          <div style={{ padding: '32px 40px 16px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span onClick={() => setViewingPageLevel(true)} style={{ color: viewingPageLevel ? colors.textPrimary : colors.textMuted, fontSize: viewingPageLevel ? 24 : 11, fontWeight: viewingPageLevel ? 600 : 500, letterSpacing: viewingPageLevel ? -1 : 1, cursor: 'pointer' }}>{currentPageData?.name?.toUpperCase()}</span>
+              {!viewingPageLevel && <><span style={{ color: colors.textMuted }}>/</span><h1 style={{ color: colors.textPrimary, fontSize: 24, fontWeight: 600, letterSpacing: -1, margin: 0 }}>{title.displayed}{!title.done && <span style={{ color: colors.primary }}>_</span>}</h1></>}
+              <ChevronDown size={14} color={colors.textMuted} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setShowHeaderMenu(!showHeaderMenu); }} />
+            </div>
+            {showHeaderMenu && <ContextMenu position={{ top: 100, left: 40 }} onClose={() => setShowHeaderMenu(false)} items={[{ label: 'Rename', icon: Edit3, action: () => setEditingItem(viewingPageLevel ? currentPage : currentSection) }, { label: currentPageData?.starred ? 'Unstar page' : 'Star page', icon: Star, action: () => setPages(pages.map(p => p.id === currentPage ? { ...p, starred: !p.starred } : p)) }]} />}
+          </div>
+
+          {/* Content */}
+          <div style={{ flex: 1, overflow: 'auto', padding: '0 40px 140px', opacity: contentVisible ? 1 : 0, transition: 'opacity 0.25s' }}>
+            {viewMode === 'list' && (viewingPageLevel ? currentPageData?.sections.map(section => {
+              const sn = filteredNotes.filter(n => n.sectionId === section.id);
+              if (!sn.length) return null;
+              return (<div key={section.id} style={{ marginBottom: 32 }}><p onClick={() => { setCurrentSection(section.id); setViewingPageLevel(false); }} style={{ color: colors.textMuted, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, marginBottom: 12, cursor: 'pointer' }}>{section.name.toUpperCase()}</p>{sn.map(note => <NoteCardAnimated key={note.id} note={note} isNew={note.id === newNoteId} onToggle={id => setNotes(notes.map(n => n.id === id ? { ...n, completed: !n.completed } : n))} onEdit={(id, c) => setNotes(notes.map(n => n.id === id ? { ...n, content: c } : n))} onDelete={id => setNotes(notes.filter(n => n.id !== id))} />)}</div>);
+            }) : filteredNotes.length ? filteredNotes.map(note => <NoteCardAnimated key={note.id} note={note} isNew={note.id === newNoteId} onToggle={id => setNotes(notes.map(n => n.id === id ? { ...n, completed: !n.completed } : n))} onEdit={(id, c) => setNotes(notes.map(n => n.id === id ? { ...n, content: c } : n))} onDelete={id => setNotes(notes.filter(n => n.id !== id))} />) : <p style={{ color: colors.textMuted, fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>No notes yet.</p>)}
+            {viewMode === 'calendar' && <CalendarView notes={viewingPageLevel ? notes.filter(n => currentPageData?.sections.some(s => s.id === n.sectionId)) : notes.filter(n => n.sectionId === currentSection)} currentMonth={currentMonth} onMonthChange={d => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + d, 1))} onNoteClick={n => { const s = allSections.find(x => x.id === n.sectionId); if (s) { setCurrentPage(s.pageId); setCurrentSection(s.id); setViewMode('list'); setViewingPageLevel(false); }}} onNoteMove={(id, date) => setNotes(notes.map(n => n.id === id ? { ...n, date } : n))} />}
+            {viewMode === 'boxes' && <BoxesView notes={filteredNotes} sections={viewingPageLevel ? currentPageData?.sections : null} groupBy={groupBy} onNoteMove={viewingPageLevel ? (id, sid) => setNotes(notes.map(n => n.id === id ? { ...n, sectionId: sid } : n)) : null} onNoteToggle={id => setNotes(notes.map(n => n.id === id ? { ...n, completed: !n.completed } : n))} onNoteDelete={id => setNotes(notes.filter(n => n.id !== id))} contextId={getBoxContextId()} boxConfigs={boxConfigs} onSaveBoxConfigs={handleSaveBoxConfigs} />}
+          </div>
+        </div>
+      </div>
+
+      {/* Floating input */}
+      <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 'min(560px, calc(100% - 48px))', zIndex: 1000 }}>
+        {chatResponse && <ChatResponseBox response={chatResponse} onOptionSelect={() => setChatResponse(null)} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: `${colors.surface}ee`, backdropFilter: 'blur(20px)', border: `1px solid ${colors.border}` }}>
+          <input ref={inputRef} value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="Type a note... (press / to focus)" style={{ flex: 1, background: 'transparent', border: 'none', color: colors.textPrimary, fontSize: 14, fontFamily: "'Manrope', sans-serif", outline: 'none' }} />
+          <button onClick={handleSubmit} disabled={processing} style={{ background: 'transparent', border: `1px solid ${colors.border}`, padding: 8, cursor: 'pointer', opacity: processing ? 0.5 : 1 }}>{processing ? <LoadingBars /> : <Send size={14} color={colors.textPrimary} />}</button>
+        </div>
+      </div>
+
+      {/* Search modal */}
+      {searchOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 120, zIndex: 99999 }} onClick={() => { setSearchOpen(false); setSearchQuery(''); }}>
+          <div style={{ width: 'min(500px, 90%)', background: colors.surface, border: `1px solid ${colors.border}` }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, gap: 12 }}>
+              <Search size={16} color={colors.textMuted} />
+              <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search notes..." style={{ flex: 1, background: 'transparent', border: 'none', color: colors.textPrimary, fontSize: 14, fontFamily: "'Manrope', sans-serif", outline: 'none' }} />
+              <span style={{ color: colors.textMuted, fontSize: 11, padding: '2px 6px', border: `1px solid ${colors.border}` }}>ESC</span>
+            </div>
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              {searchQuery.trim() && !searchResults.length && <p style={{ color: colors.textMuted, fontSize: 13, padding: 16 }}>No results.</p>}
+              {searchResults.map(note => {
+                const s = allSections.find(x => x.id === note.sectionId);
+                return (
+                  <div key={note.id} onClick={() => { if (s) { setCurrentPage(s.pageId); setCurrentSection(s.id); setViewingPageLevel(false); } setSearchOpen(false); setSearchQuery(''); }} style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, cursor: 'pointer' }}>
+                    <p style={{ color: colors.textPrimary, fontSize: 13, fontFamily: "'Manrope', sans-serif", margin: 0 }}>{note.content}</p>
+                    <p style={{ color: colors.textMuted, fontSize: 11, margin: '4px 0 0 0' }}>{s ? `${s.pageName} / ${s.name}` : ''} {note.date && `â€¢ ${note.date}`}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create prompt */}
+      {createPrompt && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+          <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, padding: 24, maxWidth: 400, width: '90%' }}>
+            <p style={{ color: colors.textPrimary, fontSize: 14, fontFamily: "'Manrope', sans-serif", marginBottom: 16 }}>Create new {createPrompt.type}: <strong style={{ color: colors.primary }}>{createPrompt.name}</strong>?</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleCreateConfirm} style={{ flex: 1, padding: '10px 16px', background: colors.textPrimary, border: 'none', color: colors.bg, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Yes, create</button>
+              <button onClick={() => { setCreatePrompt(null); setPendingNote(null); }} style={{ flex: 1, padding: '10px 16px', background: 'transparent', border: `1px solid ${colors.border}`, color: colors.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shortcuts modal */}
+      {showShortcuts && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }} onClick={() => setShowShortcuts(false)}>
+          <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, padding: 24, maxWidth: 400, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ color: colors.textPrimary, fontSize: 16, fontWeight: 600, margin: 0 }}>Keyboard Shortcuts</p>
+              <button onClick={() => setShowShortcuts(false)} style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer' }}><X size={16} /></button>
+            </div>
+            {[
+              { keys: '/', desc: 'Focus input' },
+              { keys: 'âŒ˜ K', desc: 'Search' },
+              { keys: 'P', desc: 'New page' },
+              { keys: 'S', desc: 'New section' },
+              { keys: '?', desc: 'Show shortcuts' },
+              { keys: 'Esc', desc: 'Close modal / blur' },
+            ].map(({ keys, desc }) => (
+              <div key={keys} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${colors.border}` }}>
+                <span style={{ color: colors.textMuted, fontSize: 13, fontFamily: "'Manrope', sans-serif" }}>{desc}</span>
+                <span style={{ color: colors.textPrimary, fontSize: 12, fontFamily: 'monospace', background: colors.bg, padding: '4px 8px', border: `1px solid ${colors.border}` }}>{keys}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Context menus */}
+      {contextMenu === 'sort' && <ContextMenu position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'Date created', action: () => setSortBy('created') }, { label: 'Alphabetical', action: () => setSortBy('alpha') }]} />}
+      {contextMenu === 'user-menu' && <ContextMenu position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'Settings', icon: Settings, action: () => {} }, { label: 'Sign out', icon: LogOut, action: onSignOut }]} />}
+      {contextMenu === 'collapsed-user' && <ContextMenu position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'Settings', icon: Settings, action: () => {} }, { label: 'Sign out', icon: LogOut, action: onSignOut }]} />}
+      {contextMenu === 'collapsed-plus' && <ContextMenu position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'New page', icon: FolderPlus, action: () => { const name = prompt('New page name:'); if (name) { const np = { id: Date.now().toString(), name, starred: false, sections: [] }; setPages([...pages, np]); setExpandedPages([...expandedPages, np.id]); setCurrentPage(np.id); setViewingPageLevel(true); }}}, { label: `New section in ${currentPageData?.name || 'page'}`, icon: Plus, action: () => { const name = prompt('Section name:'); if (name && currentPage) { const ns = { id: Date.now().toString(), name }; setPages(pages.map(p => p.id === currentPage ? { ...p, sections: [...p.sections, ns] } : p)); setCurrentSection(ns.id); setViewingPageLevel(false); }}}]} />}
+      {pages.map(page => contextMenu === `page-${page.id}` && <ContextMenu key={page.id} position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'Rename', icon: Edit3, action: () => setEditingItem(page.id) }, { label: page.starred ? 'Unstar' : 'Star', icon: Star, action: () => setPages(pages.map(p => p.id === page.id ? { ...p, starred: !p.starred } : p)) }, { label: 'Add section', icon: FolderPlus, action: () => { const name = prompt('Section name:'); if (name) setPages(pages.map(p => p.id === page.id ? { ...p, sections: [...p.sections, { id: Date.now().toString(), name }] } : p)); }}, { divider: true }, { label: 'Delete page', icon: Trash2, danger: true, action: () => { if (confirm(`Delete "${page.name}"?`)) { const sids = page.sections.map(s => s.id); setNotes(notes.filter(n => !sids.includes(n.sectionId))); setPages(pages.filter(p => p.id !== page.id)); if (currentPage === page.id && pages.length > 1) { const rem = pages.filter(p => p.id !== page.id); setCurrentPage(rem[0].id); setViewingPageLevel(true); }}}}]} />)}
+      {pages.flatMap(page => page.sections.map(section => contextMenu === `section-${section.id}` && <ContextMenu key={section.id} position={contextMenuPosition} onClose={() => setContextMenu(null)} items={[{ label: 'Rename', icon: Edit3, action: () => setEditingItem(section.id) }, { label: 'Duplicate', icon: Plus, action: () => { const ns = { id: Date.now().toString(), name: `${section.name} (copy)` }; const sn = notes.filter(n => n.sectionId === section.id).map(n => ({ ...n, id: `${Date.now()}-${Math.random()}`, sectionId: ns.id, createdAt: Date.now() })); setPages(pages.map(p => p.id === page.id ? { ...p, sections: [...p.sections, ns] } : p)); setNotes([...notes, ...sn]); }}, { divider: true }, { label: 'Delete section', icon: Trash2, danger: true, action: () => { const nc = notes.filter(n => n.sectionId === section.id).length; if (confirm(`Delete "${section.name}"${nc ? ` and ${nc} note(s)` : ''}?`)) { setNotes(notes.filter(n => n.sectionId !== section.id)); setPages(pages.map(p => p.id === page.id ? { ...p, sections: p.sections.filter(s => s.id !== section.id) } : p)); if (currentSection === section.id) setViewingPageLevel(true); }}}]} />))}
+    </div>
+  );
+};
+
+export default function Scratchpad() {
+  const [signedIn, setSignedIn] = useState(false);
+  return signedIn ? <MainApp onSignOut={() => setSignedIn(false)} /> : <SignedOutScreen onSignIn={() => setSignedIn(true)} />;
+}
