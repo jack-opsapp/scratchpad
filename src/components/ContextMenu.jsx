@@ -45,7 +45,7 @@ export function ContextMenu({ items, onClose, position }) {
         ...menuStyle,
       }}
     >
-      {items.map((item, i) =>
+      {items.filter(item => item.visible !== false).map((item, i) =>
         item.divider ? (
           <div
             key={i}

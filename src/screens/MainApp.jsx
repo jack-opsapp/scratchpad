@@ -20,12 +20,23 @@ import {
   Search,
   Settings,
   Keyboard,
+  Share2,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
+import usePlanState from '../hooks/usePlanState.js';
+import useChatState from '../hooks/useChatState.js';
 import { dataStore } from '../lib/storage.js';
 import { callAgent } from '../lib/agent.js';
+import { executeGroup, summarizeResults } from '../lib/planExecutor.js';
+import { executeViewChanges } from '../lib/viewController.js';
+import { executeBulkOperation } from '../lib/bulkOperations.js';
 import { colors } from '../styles/theme.js';
+import {
+  getPageRole,
+  getPageCollaborators,
+  leaveSharedPage,
+} from '../lib/permissions.js';
 
 import {
   LoadingBars,
@@ -35,43 +46,72 @@ import {
   ChatResponseBox,
   CalendarView,
   BoxesView,
+  PlanModeInterface,
+  ChatPanel,
 } from '../components/index.js';
+import ShareModal from '../components/ShareModal.jsx';
+import CollaboratorBadge from '../components/CollaboratorBadge.jsx';
 
-// Default data
-const DEFAULT_PAGES = [
-  {
-    id: '1',
-    name: 'OPS',
-    starred: true,
-    sections: [
-      { id: '1a', name: 'Website' },
-      { id: '1b', name: 'App' },
-      { id: '1c', name: 'Marketing' },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Personal',
-    starred: false,
-    sections: [{ id: '2a', name: 'Ideas' }],
-  },
-];
+/**
+ * Generate a UUID v4
+ * @returns {string} UUID string
+ */
+function generateId() {
+  return crypto.randomUUID();
+}
 
-const DEFAULT_TAGS = ['marketing', 'website', 'bug', 'urgent'];
+/**
+ * Get user display name from user object
+ * @param {object} user - Supabase user object
+ * @returns {string} Display name or email prefix
+ */
+function getUserDisplayName(user) {
+  if (!user) return 'User';
+  // Try to get name from user metadata (Google OAuth provides this)
+  if (user.user_metadata?.full_name) return user.user_metadata.full_name;
+  if (user.user_metadata?.name) return user.user_metadata.name;
+  // Fall back to email prefix
+  if (user.email) return user.email.split('@')[0];
+  return 'User';
+}
+
+/**
+ * Get user initials for avatar
+ * @param {object} user - Supabase user object
+ * @returns {string} Initials (1-2 characters)
+ */
+function getUserInitials(user) {
+  if (!user) return '?';
+  const name = getUserDisplayName(user);
+  const parts = name.split(' ');
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 1).toUpperCase();
+}
 
 /**
  * Main application screen
  *
  * @param {object} props
+ * @param {object} props.user - Authenticated user object from Supabase
  * @param {function} props.onSignOut - Sign out handler
  */
-export function MainApp({ onSignOut }) {
+export function MainApp({ user, onSignOut }) {
   // Data state
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState([]);
+  const [ownedPages, setOwnedPages] = useState([]);
+  const [sharedPages, setSharedPages] = useState([]);
   const [tags, setTags] = useState([]);
   const [notes, setNotes] = useState([]);
   const [boxConfigs, setBoxConfigs] = useState({});
+
+  // Collaboration state
+  const [pageRoles, setPageRoles] = useState({});
+  const [collabCounts, setCollabCounts] = useState({});
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareModalPageId, setShareModalPageId] = useState(null);
 
   // Navigation state
   const [currentPage, setCurrentPage] = useState(null);
@@ -116,19 +156,63 @@ export function MainApp({ onSignOut }) {
   const [chatResponse, setChatResponse] = useState(null);
   const [contentVisible, setContentVisible] = useState(false);
 
+  // Plan mode state
+  const planState = usePlanState();
+  const [currentConfirmation, setCurrentConfirmation] = useState(null);
+  const [revisionInput, setRevisionInput] = useState('');
+  const [showRevisionInput, setShowRevisionInput] = useState(false);
+
+  // Chat state
+  const chatState = useChatState();
+  const [awaitingResponse, setAwaitingResponse] = useState(null);
+  const chatPanelRef = useRef(null);
+
   // Load data on mount
   useEffect(() => {
     const load = async () => {
-      const data = await dataStore.loadAll();
-      const loadedPages = data.pages || DEFAULT_PAGES;
+      // Load owned and shared pages separately
+      const [owned, shared, notesData, boxConfigsData] = await Promise.all([
+        dataStore.getOwnedPages(),
+        dataStore.getSharedPages(),
+        dataStore.getNotes(),
+        dataStore.getBoxConfigs(),
+      ]);
 
-      setPages(loadedPages);
-      setTags(data.tags || DEFAULT_TAGS);
-      setNotes(data.notes || []);
-      setBoxConfigs(data.boxConfigs || {});
-      setExpandedPages(loadedPages.map(p => p.id));
-      setCurrentPage(loadedPages[0]?.id);
-      setCurrentSection(loadedPages[0]?.sections[0]?.id);
+      const allPages = [...owned, ...shared];
+
+      setOwnedPages(owned || []);
+      setSharedPages(shared || []);
+      setPages(allPages);
+      setTags([]); // Tags derived from notes
+      setNotes(notesData || []);
+      setBoxConfigs(boxConfigsData || {});
+
+      // Set roles
+      const roles = {};
+      owned.forEach(p => { roles[p.id] = 'owner'; });
+      shared.forEach(p => { roles[p.id] = p.myRole || 'team'; });
+      setPageRoles(roles);
+
+      // Load collaborator counts
+      const counts = {};
+      for (const page of allPages) {
+        try {
+          const collabs = await getPageCollaborators(page.id);
+          counts[page.id] = collabs.length - 1; // Exclude self
+        } catch (e) {
+          counts[page.id] = 0;
+        }
+      }
+      setCollabCounts(counts);
+
+      setExpandedPages(allPages.map(p => p.id));
+      if (owned.length > 0) {
+        setCurrentPage(owned[0].id);
+        setCurrentSection(owned[0].sections?.[0]?.id || null);
+      } else if (shared.length > 0) {
+        setCurrentPage(shared[0].id);
+        setCurrentSection(shared[0].sections?.[0]?.id || null);
+      }
       setLoading(false);
     };
     load();
@@ -171,7 +255,7 @@ export function MainApp({ onSignOut }) {
         const name = prompt('New page name:');
         if (name) {
           const np = {
-            id: Date.now().toString(),
+            id: generateId(),
             name,
             starred: false,
             sections: [],
@@ -186,7 +270,7 @@ export function MainApp({ onSignOut }) {
         if (currentPage) {
           const name = prompt('New section name:');
           if (name) {
-            const ns = { id: Date.now().toString(), name };
+            const ns = { id: generateId(), name };
             setPages(pg =>
               pg.map(p =>
                 p.id === currentPage
@@ -206,13 +290,16 @@ export function MainApp({ onSignOut }) {
   }, [searchOpen, currentPage]);
 
   // Computed values
-  const allSections = pages.flatMap(p =>
+  const allPages = [...ownedPages, ...sharedPages];
+  const allSections = allPages.flatMap(p =>
     p.sections.map(s => ({ ...s, pageId: p.id, pageName: p.name }))
   );
-  const currentPageData = pages.find(p => p.id === currentPage);
+  const currentPageData = allPages.find(p => p.id === currentPage);
   const currentSectionData = currentPageData?.sections.find(
     s => s.id === currentSection
   );
+  const myRole = pageRoles[currentPage] || 'owner';
+  const canManageCurrentPage = ['owner', 'team-admin'].includes(myRole);
 
   const filteredNotes = (
     viewingPageLevel
@@ -301,37 +388,100 @@ export function MainApp({ onSignOut }) {
     setTagManageMode(null);
   };
 
-  // Note submission
+  // Note submission with plan mode support
   const handleSubmit = async () => {
     if (!inputValue.trim() || processing) return;
     setProcessing(true);
 
-    const result = await callAgent(inputValue, {
-      pages,
-      sections: allSections,
-      tags,
-      currentPage: currentPageData?.name || '',
-      currentSection: currentSectionData?.name || '',
-    });
+    try {
+      // Call agent with current plan state
+      const result = await callAgent(
+        inputValue,
+        {
+          pages,
+          sections: allSections,
+          tags,
+          currentPage: currentPageData?.name || '',
+          currentSection: currentSectionData?.name || '',
+        },
+        planState.isInPlanMode ? {
+          mode: planState.mode,
+          plan: planState.plan,
+          currentGroupIndex: planState.currentGroupIndex,
+          context: planState.context
+        } : null
+      );
 
-    const parsed = result.parsed;
+      // Handle different response types
+      switch (result.type) {
+        case 'plan_proposal':
+          // Start plan mode
+          planState.startPlan(result.plan);
+          setChatResponse({
+            message: result.message,
+            note: `Plan has ${result.plan.totalGroups} groups with ${result.plan.totalActions} total actions.`
+          });
+          // Move to first group and set confirmation
+          planState.nextGroup();
+          if (result.plan.groups[0]) {
+            setCurrentConfirmation({
+              type: 'group_confirmation',
+              group: result.plan.groups[0],
+              message: result.plan.groups[0].description,
+              progress: `1/${result.plan.totalGroups}`
+            });
+          }
+          break;
 
-    if (parsed.newPage && parsed.page) {
-      setPendingNote({ parsed, response: result.response });
-      setCreatePrompt({ type: 'page', name: parsed.page });
+        case 'group_confirmation':
+          setCurrentConfirmation(result);
+          break;
+
+        case 'skip_group':
+          planState.skipGroup();
+          if (planState.isPlanComplete()) {
+            planState.completePlan();
+            setChatResponse({ message: 'Plan complete!', note: 'Skipped remaining groups.' });
+            setCurrentConfirmation(null);
+          }
+          break;
+
+        case 'cancel_plan':
+          planState.cancelPlan();
+          setChatResponse({ message: result.message, note: result.partialState || 'Plan cancelled.' });
+          setCurrentConfirmation(null);
+          break;
+
+        case 'single_action':
+        default:
+          // Normal single-step execution (existing behavior)
+          const parsed = result.parsed;
+
+          if (parsed?.newPage && parsed?.page) {
+            setPendingNote({ parsed, response: result.response });
+            setCreatePrompt({ type: 'page', name: parsed.page });
+            break;
+          }
+
+          if (parsed?.newSection && parsed?.section) {
+            setPendingNote({ parsed, response: result.response });
+            setCreatePrompt({ type: 'section', name: parsed.section });
+            break;
+          }
+
+          if (parsed) {
+            addNote(parsed, result.response);
+          }
+          break;
+      }
+
+    } catch (error) {
+      console.error('Agent error:', error);
+      setChatResponse({ message: 'Error processing command.', note: error.message });
+    } finally {
       setProcessing(false);
-      return;
+      setInputValue('');
     }
-
-    if (parsed.newSection && parsed.section) {
-      setPendingNote({ parsed, response: result.response });
-      setCreatePrompt({ type: 'section', name: parsed.section });
-      setProcessing(false);
-      return;
-    }
-
-    addNote(parsed, result.response);
-    setProcessing(false);
   };
 
   const addNote = (parsed, response) => {
@@ -358,7 +508,7 @@ export function MainApp({ onSignOut }) {
     });
     setTimeout(() => setChatResponse(null), 5000);
 
-    const noteId = Date.now().toString();
+    const noteId = generateId();
     setNewNoteId(noteId);
     setTimeout(() => setNewNoteId(null), 3000);
 
@@ -381,7 +531,7 @@ export function MainApp({ onSignOut }) {
   const handleCreateConfirm = () => {
     if (createPrompt.type === 'page') {
       const newPage = {
-        id: Date.now().toString(),
+        id: generateId(),
         name: pendingNote.parsed.page,
         starred: false,
         sections: [],
@@ -405,7 +555,7 @@ export function MainApp({ onSignOut }) {
       }
     } else {
       const newSection = {
-        id: Date.now().toString(),
+        id: generateId(),
         name: pendingNote.parsed.section,
       };
       setPages(
@@ -424,6 +574,414 @@ export function MainApp({ onSignOut }) {
     }
     setCreatePrompt(null);
     setPendingNote(null);
+  };
+
+  // Plan mode action handlers
+  const handlePlanYes = async () => {
+    if (!currentConfirmation || !currentConfirmation.group) return;
+
+    setProcessing(true);
+
+    try {
+      // Execute current group
+      const { results, updatedContext } = await executeGroup(
+        currentConfirmation.group.actions,
+        planState.context,
+        pages,
+        setPages,
+        setNotes
+      );
+
+      // Record results
+      const summary = summarizeResults(results);
+      planState.recordResults({ results, summary }, updatedContext);
+
+      // Show execution result
+      setChatResponse({
+        message: `${summary.succeeded} succeeded${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
+        note: currentConfirmation.group.description
+      });
+
+      // Check if plan is done
+      if (planState.isPlanComplete()) {
+        planState.completePlan();
+        setCurrentConfirmation(null);
+
+        // Show final summary
+        setChatResponse({
+          message: 'Plan complete!',
+          note: `Created ${updatedContext.createdPages.length} pages, ${updatedContext.createdSections.length} sections, ${updatedContext.createdNotes.length} notes.`
+        });
+      } else {
+        // Move to next group
+        planState.nextGroup();
+
+        // Set next group confirmation
+        const nextIndex = planState.currentGroupIndex + 1;
+        const nextGroup = planState.plan.groups[nextIndex];
+        if (nextGroup) {
+          setCurrentConfirmation({
+            type: 'group_confirmation',
+            group: nextGroup,
+            message: nextGroup.description,
+            progress: `${nextIndex + 1}/${planState.plan.totalGroups}`
+          });
+        }
+      }
+
+    } catch (error) {
+      console.error('Execution error:', error);
+      setChatResponse({ message: 'Error executing group.', note: error.message });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handlePlanRevise = () => {
+    setShowRevisionInput(true);
+  };
+
+  const handleRevisionSubmit = async () => {
+    if (!revisionInput.trim()) return;
+
+    setProcessing(true);
+
+    try {
+      const revised = await callAgent(`revise ${revisionInput}`, {
+        pages,
+        sections: allSections,
+        tags,
+        currentPage: currentPageData?.name,
+        currentSection: currentSectionData?.name
+      }, {
+        mode: planState.PLAN_STATES.CONFIRMING,
+        plan: planState.plan,
+        currentGroupIndex: planState.currentGroupIndex,
+        context: planState.context
+      });
+
+      if (revised.group) {
+        setCurrentConfirmation(revised);
+      }
+      setRevisionInput('');
+      setShowRevisionInput(false);
+
+    } catch (error) {
+      console.error('Revision error:', error);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handlePlanSkip = () => {
+    planState.skipGroup();
+
+    if (planState.isPlanComplete()) {
+      planState.completePlan();
+      setCurrentConfirmation(null);
+      setChatResponse({ message: 'Plan complete (with skips).', note: '' });
+    } else {
+      // Move to next group
+      const nextIndex = planState.currentGroupIndex + 1;
+      const nextGroup = planState.plan.groups[nextIndex];
+      if (nextGroup) {
+        setCurrentConfirmation({
+          type: 'group_confirmation',
+          group: nextGroup,
+          message: nextGroup.description,
+          progress: `${nextIndex + 1}/${planState.plan.totalGroups}`
+        });
+      }
+    }
+  };
+
+  const handlePlanCancel = () => {
+    const completed = planState.currentGroupIndex;
+    const total = planState.plan?.totalGroups || 0;
+    planState.cancelPlan();
+    setCurrentConfirmation(null);
+    setChatResponse({
+      message: 'Plan cancelled.',
+      note: completed > 0 ? `Completed ${completed} of ${total} groups.` : ''
+    });
+  };
+
+  // Chat message handler
+  const handleChatMessage = async (message) => {
+    chatState.setProcessing(true);
+    chatState.addUserMessage(message);
+
+    try {
+      // Build context for agent
+      const context = {
+        pages: allPages,
+        allSections,
+        tags,
+        currentPage: currentPageData?.name || '',
+        currentSection: currentSectionData?.name || '',
+        currentFilters: {
+          tags: filterTag,
+          incomplete: filterIncomplete
+        },
+        viewMode,
+        recentHistory: chatState.getRecentContext(5)
+      };
+
+      // Call agent
+      const result = await callAgent(
+        message,
+        context,
+        planState.isInPlanMode ? {
+          mode: planState.mode,
+          plan: planState.plan,
+          currentGroupIndex: planState.currentGroupIndex,
+          context: planState.context
+        } : null
+      );
+
+      // Handle response based on type
+      switch (result.type) {
+        case 'text_response':
+          chatState.addAgentMessage(result.message, 'text_response', { data: result.data });
+          break;
+
+        case 'view_change':
+          // Execute view changes
+          if (result.actions) {
+            executeViewChanges(
+              result.actions,
+              { allPages, currentPage, currentSection },
+              {
+                setCurrentPage,
+                setCurrentSection,
+                setViewingPageLevel,
+                setFilterTag,
+                setFilterIncomplete,
+                setViewMode,
+                setSortBy,
+                setExpandedPages
+              }
+            );
+          }
+          chatState.addAgentMessage(result.message, 'view_change', { actions: result.actions });
+          break;
+
+        case 'clarification':
+          chatState.addAgentMessage(result.message, 'clarification', {
+            options: result.options,
+            context: result.context
+          });
+          setAwaitingResponse({ type: 'clarification', data: result });
+          break;
+
+        case 'bulk_confirmation':
+          chatState.addAgentMessage(result.message, 'bulk_confirmation', {
+            operation: result.operation,
+            affectedCount: result.affectedCount,
+            preview: result.preview
+          });
+          setAwaitingResponse({ type: 'bulk_confirmation', data: result });
+          break;
+
+        case 'plan_proposal':
+          planState.startPlan(result.plan);
+          chatState.addAgentMessage(result.message, 'plan_proposal', { plan: result.plan });
+          chatPanelRef.current?.openPlanUI(); // Show plan UI
+          planState.nextGroup();
+          if (result.plan.groups[0]) {
+            chatState.addAgentMessage(
+              `Step 1/${result.plan.totalGroups}: ${result.plan.groups[0].description}?`,
+              'group_confirmation',
+              { group: result.plan.groups[0] }
+            );
+            setAwaitingResponse({ type: 'group_confirmation', data: { group: result.plan.groups[0] } });
+          }
+          break;
+
+        case 'group_confirmation':
+          chatState.addAgentMessage(result.message, 'group_confirmation', { group: result.group });
+          setAwaitingResponse({ type: 'group_confirmation', data: result });
+          break;
+
+        case 'skip_group':
+          planState.skipGroup();
+          chatState.addAgentMessage(result.message, 'text_response');
+          if (planState.isPlanComplete()) {
+            planState.completePlan();
+            chatPanelRef.current?.closePlanUI(true); // Close with success animation
+            chatState.addAgentMessage('Plan complete (with skips).', 'text_response');
+          }
+          break;
+
+        case 'cancel_plan':
+          planState.cancelPlan();
+          chatPanelRef.current?.closePlanUI(false); // Close without success animation
+          chatState.addAgentMessage(result.message, 'text_response');
+          setAwaitingResponse(null);
+          break;
+
+        case 'single_action':
+        default:
+          // Normal single-step execution
+          const parsed = result.parsed;
+          if (parsed?.newPage && parsed?.page) {
+            setPendingNote({ parsed, response: result.response });
+            setCreatePrompt({ type: 'page', name: parsed.page });
+            chatState.addAgentMessage(`Create new page "${parsed.page}"?`, 'text_response');
+          } else if (parsed?.newSection && parsed?.section) {
+            setPendingNote({ parsed, response: result.response });
+            setCreatePrompt({ type: 'section', name: parsed.section });
+            chatState.addAgentMessage(`Create new section "${parsed.section}"?`, 'text_response');
+          } else if (parsed) {
+            addNote(parsed, result.response);
+            chatState.addAgentMessage(result.response?.message || 'Logged.', 'text_response');
+          }
+          break;
+      }
+
+      chatState.checkCompact();
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      chatState.addAgentMessage('Sorry, I encountered an error processing that command.', 'error');
+    } finally {
+      chatState.setProcessing(false);
+    }
+  };
+
+  // Handle user response for confirmations/clarifications
+  const handleUserResponse = async (response, messageIndex) => {
+    if (!awaitingResponse) return;
+
+    chatState.markMessageResponded(messageIndex);
+    chatState.addUserMessage(response);
+
+    const { type, data } = awaitingResponse;
+
+    if (type === 'clarification') {
+      handleChatMessage(response);
+    }
+    else if (type === 'bulk_confirmation') {
+      if (response.toLowerCase() === 'yes') {
+        chatState.setProcessing(true);
+        try {
+          const { operation } = data;
+          const results = executeBulkOperation(
+            operation.type,
+            notes,
+            operation.target,
+            setNotes,
+            user?.id
+          );
+          chatState.addAgentMessage(
+            `Done! ${results.succeeded} notes updated.`,
+            'execution_result',
+            { stats: results }
+          );
+        } catch (error) {
+          chatState.addAgentMessage('Error: ' + error.message, 'error');
+        } finally {
+          chatState.setProcessing(false);
+        }
+      } else {
+        chatState.addAgentMessage('Operation cancelled.', 'text_response');
+      }
+    }
+    else if (type === 'group_confirmation') {
+      if (response.toLowerCase() === 'yes') {
+        chatState.setProcessing(true);
+        try {
+          const { results, updatedContext } = await executeGroup(
+            data.group.actions,
+            planState.context,
+            allPages,
+            setPages,
+            setNotes
+          );
+
+          const summary = summarizeResults(results);
+          planState.recordResults({ results, summary }, updatedContext);
+
+          chatState.addAgentMessage(
+            `${summary.succeeded} succeeded${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
+            'execution_result',
+            { stats: summary }
+          );
+
+          // Calculate next index BEFORE calling nextGroup (state updates are async)
+          const nextIndex = planState.currentGroupIndex + 1;
+          const isComplete = nextIndex >= planState.plan.groups.length;
+
+          if (isComplete) {
+            planState.completePlan();
+            chatPanelRef.current?.closePlanUI(true); // Close with success animation
+            chatState.addAgentMessage(
+              `Plan complete! Created ${updatedContext.createdPages.length} pages, ${updatedContext.createdSections.length} sections, ${updatedContext.createdNotes.length} notes.`,
+              'text_response'
+            );
+            setAwaitingResponse(null);
+          } else {
+            planState.nextGroup();
+            const nextGroup = planState.plan.groups[nextIndex];
+            if (nextGroup) {
+              chatState.addAgentMessage(
+                `Step ${nextIndex + 1}/${planState.plan.totalGroups}: ${nextGroup.description}?`,
+                'group_confirmation',
+                { group: nextGroup }
+              );
+              setAwaitingResponse({ type: 'group_confirmation', data: { group: nextGroup } });
+            }
+          }
+        } catch (error) {
+          chatState.addAgentMessage('Error: ' + error.message, 'error');
+        } finally {
+          chatState.setProcessing(false);
+        }
+      }
+      else if (response.toLowerCase().startsWith('revise')) {
+        handleChatMessage(response);
+      }
+      else if (response.toLowerCase() === 'skip') {
+        // Calculate next index BEFORE calling skipGroup (state updates are async)
+        const nextIndex = planState.currentGroupIndex + 1;
+        const isComplete = nextIndex >= planState.plan.groups.length;
+
+        planState.skipGroup();
+        chatState.addAgentMessage('Skipped. Moving to next group.', 'text_response');
+
+        if (isComplete) {
+          planState.completePlan();
+          chatPanelRef.current?.closePlanUI(true); // Close with success animation
+          chatState.addAgentMessage('Plan complete (with skips).', 'text_response');
+          setAwaitingResponse(null);
+        } else {
+          const nextGroup = planState.plan.groups[nextIndex];
+          if (nextGroup) {
+            chatState.addAgentMessage(
+              `Step ${nextIndex + 1}/${planState.plan.totalGroups}: ${nextGroup.description}?`,
+              'group_confirmation',
+              { group: nextGroup }
+            );
+            setAwaitingResponse({ type: 'group_confirmation', data: { group: nextGroup } });
+          }
+        }
+      }
+      else if (response.toLowerCase() === 'cancel') {
+        const completed = planState.currentGroupIndex;
+        planState.cancelPlan();
+        chatPanelRef.current?.closePlanUI(false); // Close without success animation
+        chatState.addAgentMessage(
+          `Plan cancelled. Completed ${completed} of ${planState.plan?.totalGroups || 0} groups.`,
+          'text_response'
+        );
+        setAwaitingResponse(null);
+      }
+      // Don't clear awaitingResponse here for group_confirmation 'yes' - it's set to next group above
+    }
+    else {
+      // Only clear for non-group_confirmation types
+      setAwaitingResponse(null);
+    }
   };
 
   // Header title animation
@@ -566,7 +1124,7 @@ export function MainApp({ onSignOut }) {
                     fontSize: 12,
                   }}
                 >
-                  J
+                  {getUserInitials(user)}
                 </div>
               </div>
             </div>
@@ -611,7 +1169,7 @@ export function MainApp({ onSignOut }) {
               <div
                 style={{ flex: 1, overflow: 'auto', padding: '20px 16px' }}
               >
-                {/* Pages section */}
+                {/* MY PAGES section */}
                 <div style={{ marginBottom: 32 }}>
                   <div
                     style={{
@@ -630,20 +1188,22 @@ export function MainApp({ onSignOut }) {
                         margin: 0,
                       }}
                     >
-                      PAGES
+                      MY PAGES
                     </p>
                     <button
                       onClick={() => {
                         const name = prompt('New page name:');
                         if (name) {
                           const np = {
-                            id: Date.now().toString(),
+                            id: generateId(),
                             name,
                             starred: false,
                             sections: [],
                           };
                           setPages([...pages, np]);
+                          setOwnedPages([...ownedPages, np]);
                           setExpandedPages([...expandedPages, np.id]);
+                          setPageRoles({ ...pageRoles, [np.id]: 'owner' });
                         }
                       }}
                       style={{
@@ -658,7 +1218,7 @@ export function MainApp({ onSignOut }) {
                     </button>
                   </div>
 
-                  {pages.map(page => (
+                  {ownedPages.map(page => (
                     <div key={page.id}>
                       <div
                         style={{
@@ -732,6 +1292,7 @@ export function MainApp({ onSignOut }) {
                             style={{ marginRight: 4 }}
                           />
                         )}
+                        <CollaboratorBadge count={collabCounts[page.id]} type="owned" />
                         <button
                           onClick={e => openContextMenu(`page-${page.id}`, e)}
                           style={{
@@ -830,6 +1391,131 @@ export function MainApp({ onSignOut }) {
                     </div>
                   ))}
                 </div>
+
+                {/* SHARED WITH ME section */}
+                {sharedPages.length > 0 && (
+                  <div style={{ marginBottom: 32 }}>
+                    <p
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: 1.5,
+                        marginBottom: 12,
+                      }}
+                    >
+                      SHARED WITH ME
+                    </p>
+
+                    {sharedPages.map(page => (
+                      <div key={page.id}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '8px 0',
+                            color: colors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: 500,
+                          }}
+                        >
+                          <span
+                            onClick={() =>
+                              setExpandedPages(
+                                expandedPages.includes(page.id)
+                                  ? expandedPages.filter(id => id !== page.id)
+                                  : [...expandedPages, page.id]
+                              )
+                            }
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {expandedPages.includes(page.id) ? (
+                              <ChevronDown size={12} />
+                            ) : (
+                              <ChevronRight size={12} />
+                            )}
+                          </span>
+                          <span
+                            style={{ marginLeft: 8, flex: 1, cursor: 'pointer' }}
+                            onClick={() => {
+                              setCurrentPage(page.id);
+                              setViewingPageLevel(true);
+                            }}
+                          >
+                            {page.name}
+                          </span>
+                          {page.starred && (
+                            <Star
+                              size={10}
+                              fill={colors.primary}
+                              color={colors.primary}
+                              style={{ marginRight: 4 }}
+                            />
+                          )}
+                          <CollaboratorBadge count={collabCounts[page.id]} type="shared" />
+                          <button
+                            onClick={e => openContextMenu(`page-${page.id}`, e)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: colors.textMuted,
+                              cursor: 'pointer',
+                              padding: 2,
+                              opacity: 0.5,
+                            }}
+                          >
+                            <MoreHorizontal size={12} />
+                          </button>
+                        </div>
+
+                        {expandedPages.includes(page.id) &&
+                          page.sections.map(section => (
+                            <div
+                              key={section.id}
+                              onClick={() => {
+                                setCurrentPage(page.id);
+                                setCurrentSection(section.id);
+                                setViewingPageLevel(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '8px 0 8px 20px',
+                                cursor: 'pointer',
+                                color:
+                                  currentSection === section.id
+                                    ? colors.textPrimary
+                                    : colors.textMuted,
+                                fontSize: 13,
+                                borderLeft:
+                                  currentSection === section.id
+                                    ? `1px solid ${colors.textPrimary}`
+                                    : '1px solid transparent',
+                              }}
+                            >
+                              <span style={{ flex: 1 }}>{section.name}</span>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  openContextMenu(`section-${section.id}`, e);
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: colors.textMuted,
+                                  cursor: 'pointer',
+                                  padding: 2,
+                                  opacity: 0.3,
+                                }}
+                              >
+                                <MoreHorizontal size={12} />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Tags section */}
                 <div style={{ marginBottom: 32 }}>
@@ -1216,7 +1902,7 @@ export function MainApp({ onSignOut }) {
                       fontSize: 12,
                     }}
                   >
-                    J
+                    {getUserInitials(user)}
                   </div>
                   <span
                     style={{
@@ -1226,7 +1912,7 @@ export function MainApp({ onSignOut }) {
                       flex: 1,
                     }}
                   >
-                    Jackson
+                    {getUserDisplayName(user)}
                   </span>
                   <ChevronDown size={12} color={colors.textMuted} />
                 </div>
@@ -1388,6 +2074,16 @@ export function MainApp({ onSignOut }) {
                       setEditingItem(
                         viewingPageLevel ? currentPage : currentSection
                       ),
+                    visible: myRole === 'owner' || (!viewingPageLevel && ['owner', 'team-admin', 'team'].includes(myRole)),
+                  },
+                  {
+                    label: 'Share page',
+                    icon: Share2,
+                    action: () => {
+                      setShareModalPageId(currentPage);
+                      setShowShareModal(true);
+                    },
+                    visible: canManageCurrentPage,
                   },
                   {
                     label: currentPageData?.starred
@@ -1403,7 +2099,7 @@ export function MainApp({ onSignOut }) {
                         )
                       ),
                   },
-                ]}
+                ].filter(item => item.visible !== false)}
               />
             )}
           </div>
@@ -1443,62 +2139,94 @@ export function MainApp({ onSignOut }) {
                         >
                           {section.name.toUpperCase()}
                         </p>
-                        {sn.map(note => (
-                          <NoteCard
-                            key={note.id}
-                            note={note}
-                            isNew={note.id === newNoteId}
-                            onToggle={id =>
-                              setNotes(
-                                notes.map(n =>
-                                  n.id === id
-                                    ? { ...n, completed: !n.completed }
-                                    : n
+                        {sn.map(note => {
+                          const isOwnNote = note.created_by_user_id === user.id;
+                          const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                          const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                          const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
+
+                          return (
+                            <NoteCard
+                              key={note.id}
+                              note={note}
+                              isNew={note.id === newNoteId}
+                              currentUserId={user.id}
+                              canEdit={canEditNote}
+                              canDelete={canDeleteNote}
+                              canToggle={canToggleNote}
+                              onToggle={id =>
+                                setNotes(
+                                  notes.map(n =>
+                                    n.id === id
+                                      ? {
+                                          ...n,
+                                          completed: !n.completed,
+                                          completed_by_user_id: !n.completed ? user.id : null,
+                                          completed_at: !n.completed ? new Date().toISOString() : null,
+                                        }
+                                      : n
+                                  )
                                 )
-                              )
-                            }
-                            onEdit={(id, c) =>
-                              setNotes(
-                                notes.map(n =>
-                                  n.id === id ? { ...n, content: c } : n
+                              }
+                              onEdit={(id, c) =>
+                                setNotes(
+                                  notes.map(n =>
+                                    n.id === id ? { ...n, content: c } : n
+                                  )
                                 )
-                              )
-                            }
-                            onDelete={id =>
-                              setNotes(notes.filter(n => n.id !== id))
-                            }
-                          />
-                        ))}
+                              }
+                              onDelete={id =>
+                                setNotes(notes.filter(n => n.id !== id))
+                              }
+                            />
+                          );
+                        })}
                       </div>
                     );
                   })
                 : filteredNotes.length ? (
-                    filteredNotes.map(note => (
-                      <NoteCard
-                        key={note.id}
-                        note={note}
-                        isNew={note.id === newNoteId}
-                        onToggle={id =>
-                          setNotes(
-                            notes.map(n =>
-                              n.id === id
-                                ? { ...n, completed: !n.completed }
-                                : n
+                    filteredNotes.map(note => {
+                      const isOwnNote = note.created_by_user_id === user.id;
+                      const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                      const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                      const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
+
+                      return (
+                        <NoteCard
+                          key={note.id}
+                          note={note}
+                          isNew={note.id === newNoteId}
+                          currentUserId={user.id}
+                          canEdit={canEditNote}
+                          canDelete={canDeleteNote}
+                          canToggle={canToggleNote}
+                          onToggle={id =>
+                            setNotes(
+                              notes.map(n =>
+                                n.id === id
+                                  ? {
+                                      ...n,
+                                      completed: !n.completed,
+                                      completed_by_user_id: !n.completed ? user.id : null,
+                                      completed_at: !n.completed ? new Date().toISOString() : null,
+                                    }
+                                  : n
+                              )
                             )
-                          )
-                        }
-                        onEdit={(id, c) =>
-                          setNotes(
-                            notes.map(n =>
-                              n.id === id ? { ...n, content: c } : n
+                          }
+                          onEdit={(id, c) =>
+                            setNotes(
+                              notes.map(n =>
+                                n.id === id ? { ...n, content: c } : n
+                              )
                             )
-                          )
-                        }
-                        onDelete={id =>
-                          setNotes(notes.filter(n => n.id !== id))
-                        }
-                      />
-                    ))
+                          }
+                          onDelete={id =>
+                            setNotes(notes.filter(n => n.id !== id))
+                          }
+                        />
+                      );
+                    })
                   ) : (
                     <p
                       style={{
@@ -1577,69 +2305,18 @@ export function MainApp({ onSignOut }) {
         </div>
       </div>
 
-      {/* Floating input */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 'min(560px, calc(100% - 48px))',
-          zIndex: 1000,
-        }}
-      >
-        {chatResponse && (
-          <ChatResponseBox
-            response={chatResponse}
-            onOptionSelect={() => setChatResponse(null)}
-          />
-        )}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '14px 18px',
-            background: `${colors.surface}ee`,
-            backdropFilter: 'blur(20px)',
-            border: `1px solid ${colors.border}`,
-          }}
-        >
-          <input
-            ref={inputRef}
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            placeholder="Type a note... (press / to focus)"
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              color: colors.textPrimary,
-              fontSize: 14,
-              fontFamily: "'Manrope', sans-serif",
-              outline: 'none',
-            }}
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={processing}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${colors.border}`,
-              padding: 8,
-              cursor: 'pointer',
-              opacity: processing ? 0.5 : 1,
-            }}
-          >
-            {processing ? (
-              <LoadingBars />
-            ) : (
-              <Send size={14} color={colors.textPrimary} />
-            )}
-          </button>
-        </div>
-      </div>
+      {/* Chat Panel - replaces floating input */}
+      {['owner', 'team-admin', 'team'].includes(myRole) && (
+        <ChatPanel
+          ref={chatPanelRef}
+          messages={chatState.messages}
+          onSendMessage={handleChatMessage}
+          processing={chatState.processing}
+          onUserResponse={handleUserResponse}
+          planState={planState}
+          sidebarWidth={sidebarOpen ? 240 : 0}
+        />
+      )}
 
       {/* Search modal */}
       {searchOpen && (
@@ -1985,7 +2662,7 @@ export function MainApp({ onSignOut }) {
                 const name = prompt('New page name:');
                 if (name) {
                   const np = {
-                    id: Date.now().toString(),
+                    id: generateId(),
                     name,
                     starred: false,
                     sections: [],
@@ -2003,7 +2680,7 @@ export function MainApp({ onSignOut }) {
               action: () => {
                 const name = prompt('Section name:');
                 if (name && currentPage) {
-                  const ns = { id: Date.now().toString(), name };
+                  const ns = { id: generateId(), name };
                   setPages(
                     pages.map(p =>
                       p.id === currentPage
@@ -2020,7 +2697,7 @@ export function MainApp({ onSignOut }) {
         />
       )}
 
-      {pages.map(
+      {allPages.map(
         page =>
           contextMenu === `page-${page.id}` && (
             <ContextMenu
@@ -2032,6 +2709,16 @@ export function MainApp({ onSignOut }) {
                   label: 'Rename',
                   icon: Edit3,
                   action: () => setEditingItem(page.id),
+                  visible: pageRoles[page.id] === 'owner',
+                },
+                {
+                  label: 'Share',
+                  icon: Share2,
+                  action: () => {
+                    setShareModalPageId(page.id);
+                    setShowShareModal(true);
+                  },
+                  visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
                 },
                 {
                   label: page.starred ? 'Unstar' : 'Star',
@@ -2056,15 +2743,31 @@ export function MainApp({ onSignOut }) {
                                 ...p,
                                 sections: [
                                   ...p.sections,
-                                  { id: Date.now().toString(), name },
+                                  { id: generateId(), name },
                                 ],
                               }
                             : p
                         )
                       );
                   },
+                  visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
                 },
                 { divider: true },
+                {
+                  label: 'Leave page',
+                  icon: LogOut,
+                  action: async () => {
+                    if (confirm('Leave this page? You will lose access.')) {
+                      try {
+                        await leaveSharedPage(page.id, user.id);
+                        window.location.reload();
+                      } catch (e) {
+                        alert(e.message);
+                      }
+                    }
+                  },
+                  visible: pageRoles[page.id] !== 'owner',
+                },
                 {
                   label: 'Delete page',
                   icon: Trash2,
@@ -2074,20 +2777,22 @@ export function MainApp({ onSignOut }) {
                       const sids = page.sections.map(s => s.id);
                       setNotes(notes.filter(n => !sids.includes(n.sectionId)));
                       setPages(pages.filter(p => p.id !== page.id));
-                      if (currentPage === page.id && pages.length > 1) {
-                        const rem = pages.filter(p => p.id !== page.id);
+                      setOwnedPages(ownedPages.filter(p => p.id !== page.id));
+                      if (currentPage === page.id && allPages.length > 1) {
+                        const rem = allPages.filter(p => p.id !== page.id);
                         setCurrentPage(rem[0].id);
                         setViewingPageLevel(true);
                       }
                     }
                   },
+                  visible: pageRoles[page.id] === 'owner',
                 },
-              ]}
+              ].filter(item => item.visible !== false)}
             />
           )
       )}
 
-      {pages.flatMap(page =>
+      {allPages.flatMap(page =>
         page.sections.map(
           section =>
             contextMenu === `section-${section.id}` && (
@@ -2100,13 +2805,14 @@ export function MainApp({ onSignOut }) {
                     label: 'Rename',
                     icon: Edit3,
                     action: () => setEditingItem(section.id),
+                    visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
                   },
                   {
                     label: 'Duplicate',
                     icon: Plus,
                     action: () => {
                       const ns = {
-                        id: Date.now().toString(),
+                        id: generateId(),
                         name: `${section.name} (copy)`,
                       };
                       const sn = notes
@@ -2126,6 +2832,7 @@ export function MainApp({ onSignOut }) {
                       );
                       setNotes([...notes, ...sn]);
                     },
+                    visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
                   },
                   { divider: true },
                   {
@@ -2160,12 +2867,29 @@ export function MainApp({ onSignOut }) {
                           setViewingPageLevel(true);
                       }
                     },
+                    visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
                   },
-                ]}
+                ].filter(item => item.visible !== false)}
               />
             )
         )
       )}
+
+      {/* Share Modal */}
+      {showShareModal && shareModalPageId && (
+        <ShareModal
+          pageId={shareModalPageId}
+          pageName={allPages.find(p => p.id === shareModalPageId)?.name || ''}
+          currentUserId={user.id}
+          myRole={pageRoles[shareModalPageId] || 'owner'}
+          onClose={() => {
+            setShowShareModal(false);
+            setShareModalPageId(null);
+          }}
+        />
+      )}
+
+      {/* Plan Mode is now integrated into ChatPanel */}
     </div>
   );
 }
