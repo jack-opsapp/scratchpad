@@ -1,31 +1,44 @@
 /**
- * AI Agent for natural language note parsing with plan mode support
+ * AI Agent Client - Calls the /api/agent endpoint
  *
- * Calls the secure /api/parse serverless function which handles
- * OpenAI API calls with the key kept server-side.
+ * The agent uses OpenAI function calling to:
+ * 1. Query data on-demand (pages, sections, notes)
+ * 2. Execute operations (create, update, delete, bulk)
+ * 3. Navigate the user to views
+ * 4. Ask for clarification when needed
  */
-
-import { fallbackParse } from './parser.js';
 
 /**
- * Call the AI agent to parse input
- * @param {string} input - User input text
- * @param {object} context - Current app context
- * @param {object} context.pages - Array of pages with sections
- * @param {object} context.tags - Array of existing tags
- * @param {string} context.currentPage - Current page name
- * @param {string} context.currentSection - Current section name
- * @param {object} planState - Current plan state (if in plan mode)
- * @returns {Promise<object>} Parsed result with response
+ * Call the AI agent
+ * @param {string} message - User message
+ * @param {string} userId - User ID for data access
+ * @param {Array} conversationHistory - Recent messages for context
+ * @param {string} confirmed - If this is a confirmation response, the confirmed value
+ * @param {object} context - Current UI context (page, section)
+ * @returns {Promise<object>} Agent response
  */
-export async function callAgent(input, context, planState = null) {
+export async function callAgent(message, userId, conversationHistory = [], confirmed = null, context = null) {
   try {
-    const response = await fetch('/api/parse', {
+    const body = {
+      message,
+      userId,
+      conversationHistory: conversationHistory.slice(-10) // Last 10 messages
+    };
+
+    if (confirmed) {
+      body.confirmed = confirmed;
+    }
+
+    if (context) {
+      body.context = context;
+    }
+
+    const response = await fetch('/api/agent', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ input, context, planState }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -34,11 +47,16 @@ export async function callAgent(input, context, planState = null) {
     }
 
     const data = await response.json();
-    return data;
+    return { ...data, _source: 'api' };
 
   } catch (error) {
-    console.error('Agent call failed, using fallback:', error);
-    return fallbackParse(input);
+    console.error('Agent call failed:', error);
+    return {
+      type: 'error',
+      message: 'Sorry, I encountered an error. Please try again.',
+      _source: 'error',
+      _error: error.message
+    };
   }
 }
 

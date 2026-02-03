@@ -21,10 +21,75 @@ import {
   Settings,
   Keyboard,
   Share2,
+  AlignJustify,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import usePlanState from '../hooks/usePlanState.js';
+import { useMediaQuery, useOnlineStatus } from '../hooks/useMediaQuery.js';
+import { syncOfflineQueue, getPendingSyncCount, offlineParser, queueChatMessage } from '../lib/offlineHandler.js';
+
+// Typewriter text component for animated items
+function TypewriterText({ text, animate, onComplete, style }) {
+  const { displayed, done } = useTypewriter(text, 30, 0, animate);
+
+  useEffect(() => {
+    if (done && animate && onComplete) {
+      onComplete();
+    }
+  }, [done, animate, onComplete]);
+
+  return (
+    <span style={style}>
+      {animate ? displayed : text}
+      {animate && !done && <span style={{ opacity: 0.5 }}>|</span>}
+    </span>
+  );
+}
+
+// API Error Badge component - shows when fallback parser is used
+function ApiErrorBadge({ error, onDismiss }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!error) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 52, // Just below the header
+        right: 12,
+        zIndex: 999,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <div
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
+        onClick={onDismiss}
+        style={{
+          padding: '6px 12px',
+          borderRadius: 20,
+          border: '1px solid #8B0000',
+          background: 'rgba(139, 0, 0, 0.15)',
+          color: '#CD5C5C',
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          maxWidth: expanded ? 400 : 100,
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {expanded ? `API FAILURE: ${error.message}` : 'API FAILURE'}
+      </div>
+    </div>
+  );
+}
+
 import useChatState from '../hooks/useChatState.js';
 import { dataStore } from '../lib/storage.js';
 import { callAgent } from '../lib/agent.js';
@@ -51,6 +116,9 @@ import {
 } from '../components/index.js';
 import ShareModal from '../components/ShareModal.jsx';
 import CollaboratorBadge from '../components/CollaboratorBadge.jsx';
+import MobileSidebar from '../components/MobileSidebar.jsx';
+import MobileHeader from '../components/MobileHeader.jsx';
+import MobileNoteCard from '../components/MobileNoteCard.jsx';
 
 /**
  * Generate a UUID v4
@@ -98,6 +166,12 @@ function getUserInitials(user) {
  * @param {function} props.onSignOut - Sign out handler
  */
 export function MainApp({ user, onSignOut }) {
+  // Mobile/responsive state
+  const { isMobile, isTablet, isDesktop } = useMediaQuery();
+  const isOnline = useOnlineStatus();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+
   // Data state
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState([]);
@@ -106,6 +180,12 @@ export function MainApp({ user, onSignOut }) {
   const [tags, setTags] = useState([]);
   const [notes, setNotes] = useState([]);
   const [boxConfigs, setBoxConfigs] = useState({});
+
+  // Animation state - track newly created items for typewriter effect
+  const [animatingItems, setAnimatingItems] = useState(new Set());
+
+  // API error state - track when fallback parser is used
+  const [apiError, setApiError] = useState(null); // { message: string, timestamp: number }
 
   // Collaboration state
   const [pageRoles, setPageRoles] = useState({});
@@ -119,15 +199,20 @@ export function MainApp({ user, onSignOut }) {
   const [viewingPageLevel, setViewingPageLevel] = useState(false);
   const [expandedPages, setExpandedPages] = useState([]);
 
+  // Agent custom view state
+  // { title: string, viewType: 'list'|'boxes'|'calendar', filter: object, groupBy?: string }
+  const [agentView, setAgentView] = useState(null);
+
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState('list');
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterTag, setFilterTag] = useState([]);
-  const [sortBy, setSortBy] = useState('created');
+  const [sortBy, setSortBy] = useState('status'); // Default: incomplete first
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [groupBy] = useState('status');
+  const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
 
   // Input state
   const [inputValue, setInputValue] = useState('');
@@ -225,6 +310,25 @@ export function MainApp({ user, onSignOut }) {
     }
   }, [pages, tags, notes, boxConfigs, loading]);
 
+  // Sync offline queue when back online
+  useEffect(() => {
+    if (isOnline && pendingSyncCount > 0) {
+      syncOfflineQueue().then(result => {
+        if (result.success) {
+          setPendingSyncCount(0);
+        }
+      });
+    }
+  }, [isOnline, pendingSyncCount]);
+
+  // Update pending sync count periodically
+  useEffect(() => {
+    const updateCount = () => setPendingSyncCount(getPendingSyncCount());
+    updateCount();
+    const interval = setInterval(updateCount, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Content visibility animation
   useEffect(() => {
     setContentVisible(false);
@@ -312,11 +416,152 @@ export function MainApp({ user, onSignOut }) {
     .filter(
       n => filterTag.length === 0 || filterTag.some(t => n.tags?.includes(t))
     )
-    .sort((a, b) =>
-      sortBy === 'created'
-        ? b.createdAt - a.createdAt
-        : a.content.localeCompare(b.content)
-    );
+    .sort((a, b) => {
+      if (sortBy === 'status') {
+        // Incomplete first, then by created date
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      }
+      if (sortBy === 'created') {
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      }
+      return (a.content || '').localeCompare(b.content || '');
+    });
+
+  // Agent-filtered notes for custom views
+  const agentFilteredNotes = agentView ? notes.filter(note => {
+    const filter = agentView.filter || {};
+
+    // Tag filter from agent view - match any of the specified tags
+    if (filter.tags?.length) {
+      const hasMatchingTag = filter.tags.some(t =>
+        note.tags?.some(nt => nt.toLowerCase().includes(t.toLowerCase()))
+      );
+      if (!hasMatchingTag && !filter.search) return false;
+      if (hasMatchingTag) return true;
+    }
+
+    // Search filter - match content
+    if (filter.search) {
+      const searchLower = filter.search.toLowerCase();
+      if (!note.content?.toLowerCase().includes(searchLower) &&
+          !note.tags?.some(t => t.toLowerCase().includes(searchLower))) {
+        return false;
+      }
+    }
+
+    // Page filter
+    if (filter.page_name) {
+      const page = allPages.find(p =>
+        p.name.toLowerCase() === filter.page_name.toLowerCase()
+      );
+      if (!page || !page.sections?.some(s => s.id === note.sectionId)) {
+        return false;
+      }
+    }
+
+    // Section filter
+    if (filter.section_name) {
+      const section = allSections.find(s =>
+        s.name.toLowerCase() === filter.section_name.toLowerCase()
+      );
+      if (!section || note.sectionId !== section.id) {
+        return false;
+      }
+    }
+
+    // Completed filter from agent view
+    if (filter.completed !== undefined) {
+      if (note.completed !== filter.completed) return false;
+    }
+
+    // Has no tags filter
+    if (filter.has_no_tags) {
+      if (note.tags?.length > 0) return false;
+    }
+
+    // If no agent filters, include all notes
+    if (!filter.tags?.length && !filter.search && !filter.page_name &&
+        !filter.section_name && filter.completed === undefined && !filter.has_no_tags) {
+      return true;
+    }
+
+    return true;
+  })
+    // Apply UI filters (incomplete toggle, tag pills)
+    .filter(n => !filterIncomplete || !n.completed)
+    .filter(n => filterTag.length === 0 || filterTag.some(t => n.tags?.includes(t)))
+    // Apply sort
+    .sort((a, b) => {
+      if (sortBy === 'status') {
+        // Incomplete first, then by created date
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        return new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0);
+      }
+      if (sortBy === 'created') {
+        return new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0);
+      }
+      return (a.content || '').localeCompare(b.content || '');
+    }) : [];
+
+  // Group notes for agent boxes view
+  const groupAgentNotes = (notesToGroup, groupByField) => {
+    if (!groupByField) return { 'All Notes': notesToGroup };
+
+    const groups = {};
+    notesToGroup.forEach(note => {
+      let key;
+      switch (groupByField) {
+        case 'section': {
+          const section = allSections.find(s => s.id === note.sectionId);
+          key = section?.name || 'Unknown Section';
+          break;
+        }
+        case 'page': {
+          const section = allSections.find(s => s.id === note.sectionId);
+          key = section?.pageName || 'Unknown Page';
+          break;
+        }
+        case 'tag': {
+          // Put note in each tag group it belongs to
+          if (note.tags?.length) {
+            note.tags.forEach(tag => {
+              if (!groups[tag]) groups[tag] = [];
+              groups[tag].push(note);
+            });
+            return; // Don't add to default group
+          }
+          key = 'Untagged';
+          break;
+        }
+        case 'month': {
+          const date = new Date(note.date || note.createdAt || note.created_at);
+          key = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          break;
+        }
+        case 'week': {
+          const date = new Date(note.date || note.createdAt || note.created_at);
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          key = `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+          break;
+        }
+        case 'day': {
+          const date = new Date(note.date || note.createdAt || note.created_at);
+          key = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+          break;
+        }
+        case 'completed':
+          key = note.completed ? 'Completed' : 'Incomplete';
+          break;
+        default:
+          key = 'All Notes';
+      }
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(note);
+    });
+    return groups;
+  };
 
   const searchResults = searchQuery.trim()
     ? notes
@@ -584,17 +829,26 @@ export function MainApp({ user, onSignOut }) {
 
     try {
       // Execute current group
+      // Use allPages for lookups, and update ownedPages for new items (since user owns them)
       const { results, updatedContext } = await executeGroup(
         currentConfirmation.group.actions,
         planState.context,
-        pages,
-        setPages,
+        allPages,
+        setOwnedPages,
         setNotes
       );
 
       // Record results
       const summary = summarizeResults(results);
       planState.recordResults({ results, summary }, updatedContext);
+
+      // Track newly created items for typewriter animation
+      const newAnimatingIds = new Set();
+      updatedContext.createdPages?.forEach(p => newAnimatingIds.add(p.id));
+      updatedContext.createdSections?.forEach(s => newAnimatingIds.add(s.id));
+      if (newAnimatingIds.size > 0) {
+        setAnimatingItems(prev => new Set([...prev, ...newAnimatingIds]));
+      }
 
       // Show execution result
       setChatResponse({
@@ -695,6 +949,19 @@ export function MainApp({ user, onSignOut }) {
     }
   };
 
+  const handleGoToGroup = (groupIndex) => {
+    planState.goToGroup(groupIndex);
+    const group = planState.plan.groups[groupIndex];
+    if (group) {
+      setCurrentConfirmation({
+        type: 'group_confirmation',
+        group: group,
+        message: group.description,
+        progress: `${groupIndex + 1}/${planState.plan.totalGroups}`
+      });
+    }
+  };
+
   const handlePlanCancel = () => {
     const completed = planState.currentGroupIndex;
     const total = planState.plan?.totalGroups || 0;
@@ -706,135 +973,184 @@ export function MainApp({ user, onSignOut }) {
     });
   };
 
-  // Chat message handler
-  const handleChatMessage = async (message) => {
+  // Build conversation history from chat messages
+  const getConversationHistory = () => {
+    return chatState.messages.slice(-10).map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    }));
+  };
+
+  // Execute frontend actions returned by agent
+  const executeFrontendActions = (actions) => {
+    if (!actions?.length) return;
+
+    for (const action of actions) {
+      switch (action.function) {
+        case 'navigate':
+          // Clear agent view when navigating to a page/section
+          setAgentView(null);
+          if (action.page_name) {
+            const page = allPages.find(p =>
+              p.name.toLowerCase() === action.page_name.toLowerCase()
+            );
+            if (page) {
+              setCurrentPage(page.id);
+              if (action.section_name) {
+                const section = page.sections?.find(s =>
+                  s.name.toLowerCase() === action.section_name.toLowerCase()
+                );
+                if (section) {
+                  setCurrentSection(section.id);
+                  setViewingPageLevel(false);
+                }
+              } else {
+                setViewingPageLevel(true);
+              }
+            }
+          }
+          break;
+
+        case 'apply_filter':
+          if (action.tags?.length) {
+            setFilterTag(action.tags[0]);
+          }
+          if (action.completed !== undefined) {
+            setFilterIncomplete(!action.completed);
+          }
+          if (action.search) {
+            // Could implement search filter
+          }
+          break;
+
+        case 'clear_filters':
+          setFilterTag(null);
+          setFilterIncomplete(false);
+          setAgentView(null);
+          break;
+
+        case 'create_custom_view':
+          // Create a custom agent view
+          setAgentView({
+            title: action.title || 'AGENT VIEW',
+            viewType: action.view_type || 'list',
+            filter: action.filter || {},
+            groupBy: action.group_by || null
+          });
+          // Clear regular navigation when showing agent view
+          setCurrentPage(null);
+          setCurrentSection(null);
+          setViewingPageLevel(false);
+          break;
+      }
+    }
+  };
+
+  // Refresh data from database after agent makes changes
+  const refreshData = async () => {
+    try {
+      const [owned, shared, notesData] = await Promise.all([
+        dataStore.getOwnedPages(),
+        dataStore.getSharedPages(),
+        dataStore.getNotes()
+      ]);
+
+      if (owned) setOwnedPages(owned);
+      if (shared) setSharedPages(shared);
+      if (notesData) setNotes(notesData);
+
+      // Also refresh tags
+      const allTags = [...new Set(
+        (notesData || []).flatMap(n => n.tags || []).filter(Boolean)
+      )];
+      setTags(allTags);
+    } catch (err) {
+      console.error('Failed to refresh data:', err);
+    }
+  };
+
+  // Chat message handler - new simplified architecture
+  const handleChatMessage = async (message, confirmedValue = null) => {
     chatState.setProcessing(true);
-    chatState.addUserMessage(message);
+    if (!confirmedValue) {
+      chatState.addUserMessage(message);
+    }
 
     try {
-      // Build context for agent
-      const context = {
-        pages: allPages,
-        allSections,
-        tags,
-        currentPage: currentPageData?.name || '',
-        currentSection: currentSectionData?.name || '',
-        currentFilters: {
-          tags: filterTag,
-          incomplete: filterIncomplete
-        },
-        viewMode,
-        recentHistory: chatState.getRecentContext(5)
-      };
-
-      // Call agent
+      // Call the new agent endpoint with current context
       const result = await callAgent(
         message,
-        context,
-        planState.isInPlanMode ? {
-          mode: planState.mode,
-          plan: planState.plan,
-          currentGroupIndex: planState.currentGroupIndex,
-          context: planState.context
-        } : null
+        user?.id,
+        getConversationHistory(),
+        confirmedValue,
+        {
+          currentPage: currentPageData?.name || null,
+          currentSection: currentSectionData?.name || null
+        }
       );
+
+      // Clear any previous API error on success
+      if (result._source === 'api') {
+        setApiError(null);
+      }
+
+      // Execute any frontend actions (navigate, filter, etc.)
+      if (result.actions?.length) {
+        executeFrontendActions(result.actions);
+      }
+
+      // Check if agent created a custom view - store it for clickable restoration
+      const createdView = result.actions?.find(a => a.function === 'create_custom_view');
+      const viewConfig = createdView ? {
+        title: createdView.title,
+        viewType: createdView.view_type || 'list',
+        filter: createdView.filter || {},
+        groupBy: createdView.group_by || null
+      } : null;
+
+      // Check if agent navigated - store for clickable link
+      const navigateAction = result.actions?.find(a => a.function === 'navigate');
+      const navConfig = navigateAction ? {
+        pageName: navigateAction.page_name,
+        sectionName: navigateAction.section_name
+      } : null;
 
       // Handle response based on type
       switch (result.type) {
-        case 'text_response':
-          chatState.addAgentMessage(result.message, 'text_response', { data: result.data });
-          break;
-
-        case 'view_change':
-          // Execute view changes
-          if (result.actions) {
-            executeViewChanges(
-              result.actions,
-              { allPages, currentPage, currentSection },
-              {
-                setCurrentPage,
-                setCurrentSection,
-                setViewingPageLevel,
-                setFilterTag,
-                setFilterIncomplete,
-                setViewMode,
-                setSortBy,
-                setExpandedPages
-              }
-            );
-          }
-          chatState.addAgentMessage(result.message, 'view_change', { actions: result.actions });
+        case 'response':
+          // Normal response - agent has completed the operation
+          chatState.addAgentMessage(result.message, 'text_response', {
+            viewConfig, // Store view config if one was created
+            navConfig   // Store navigation config if agent navigated
+          });
+          // Refresh data in case agent made changes
+          await refreshData();
           break;
 
         case 'clarification':
-          chatState.addAgentMessage(result.message, 'clarification', {
-            options: result.options,
-            context: result.context
+          // Agent needs more information
+          chatState.addAgentMessage(result.question, 'clarification', {
+            options: result.options
           });
           setAwaitingResponse({ type: 'clarification', data: result });
           break;
 
-        case 'bulk_confirmation':
+        case 'confirmation':
+          // Agent wants user to confirm before proceeding
           chatState.addAgentMessage(result.message, 'bulk_confirmation', {
-            operation: result.operation,
-            affectedCount: result.affectedCount,
-            preview: result.preview
+            confirmValue: result.confirmValue
           });
-          setAwaitingResponse({ type: 'bulk_confirmation', data: result });
+          setAwaitingResponse({ type: 'confirmation', data: result });
           break;
 
-        case 'plan_proposal':
-          planState.startPlan(result.plan);
-          chatState.addAgentMessage(result.message, 'plan_proposal', { plan: result.plan });
-          chatPanelRef.current?.openPlanUI(); // Show plan UI
-          planState.nextGroup();
-          if (result.plan.groups[0]) {
-            chatState.addAgentMessage(
-              `Step 1/${result.plan.totalGroups}: ${result.plan.groups[0].description}?`,
-              'group_confirmation',
-              { group: result.plan.groups[0] }
-            );
-            setAwaitingResponse({ type: 'group_confirmation', data: { group: result.plan.groups[0] } });
-          }
+        case 'error':
+          chatState.addAgentMessage(result.message, 'error');
           break;
 
-        case 'group_confirmation':
-          chatState.addAgentMessage(result.message, 'group_confirmation', { group: result.group });
-          setAwaitingResponse({ type: 'group_confirmation', data: result });
-          break;
-
-        case 'skip_group':
-          planState.skipGroup();
-          chatState.addAgentMessage(result.message, 'text_response');
-          if (planState.isPlanComplete()) {
-            planState.completePlan();
-            chatPanelRef.current?.closePlanUI(true); // Close with success animation
-            chatState.addAgentMessage('Plan complete (with skips).', 'text_response');
-          }
-          break;
-
-        case 'cancel_plan':
-          planState.cancelPlan();
-          chatPanelRef.current?.closePlanUI(false); // Close without success animation
-          chatState.addAgentMessage(result.message, 'text_response');
-          setAwaitingResponse(null);
-          break;
-
-        case 'single_action':
         default:
-          // Normal single-step execution
-          const parsed = result.parsed;
-          if (parsed?.newPage && parsed?.page) {
-            setPendingNote({ parsed, response: result.response });
-            setCreatePrompt({ type: 'page', name: parsed.page });
-            chatState.addAgentMessage(`Create new page "${parsed.page}"?`, 'text_response');
-          } else if (parsed?.newSection && parsed?.section) {
-            setPendingNote({ parsed, response: result.response });
-            setCreatePrompt({ type: 'section', name: parsed.section });
-            chatState.addAgentMessage(`Create new section "${parsed.section}"?`, 'text_response');
-          } else if (parsed) {
-            addNote(parsed, result.response);
-            chatState.addAgentMessage(result.response?.message || 'Logged.', 'text_response');
+          // Unknown type - just show the message
+          if (result.message) {
+            chatState.addAgentMessage(result.message, 'text_response');
           }
           break;
       }
@@ -843,7 +1159,7 @@ export function MainApp({ user, onSignOut }) {
 
     } catch (error) {
       console.error('Chat error:', error);
-      chatState.addAgentMessage('Sorry, I encountered an error processing that command.', 'error');
+      chatState.addAgentMessage('Sorry, I encountered an error. Please try again.', 'error');
     } finally {
       chatState.setProcessing(false);
     }
@@ -854,133 +1170,29 @@ export function MainApp({ user, onSignOut }) {
     if (!awaitingResponse) return;
 
     chatState.markMessageResponded(messageIndex);
-    chatState.addUserMessage(response);
 
     const { type, data } = awaitingResponse;
+    setAwaitingResponse(null);
 
     if (type === 'clarification') {
+      // For clarifications, send the response as a new message
+      chatState.addUserMessage(response);
       handleChatMessage(response);
     }
-    else if (type === 'bulk_confirmation') {
+    else if (type === 'confirmation') {
+      // For confirmations, send back to agent with the confirmed value
       if (response.toLowerCase() === 'yes') {
-        chatState.setProcessing(true);
-        try {
-          const { operation } = data;
-          const results = executeBulkOperation(
-            operation.type,
-            notes,
-            operation.target,
-            setNotes,
-            user?.id
-          );
-          chatState.addAgentMessage(
-            `Done! ${results.succeeded} notes updated.`,
-            'execution_result',
-            { stats: results }
-          );
-        } catch (error) {
-          chatState.addAgentMessage('Error: ' + error.message, 'error');
-        } finally {
-          chatState.setProcessing(false);
-        }
+        chatState.addUserMessage('Yes, proceed.');
+        handleChatMessage('proceed with the confirmed action', data.confirmValue);
       } else {
+        chatState.addUserMessage('No, cancel.');
         chatState.addAgentMessage('Operation cancelled.', 'text_response');
       }
     }
-    else if (type === 'group_confirmation') {
-      if (response.toLowerCase() === 'yes') {
-        chatState.setProcessing(true);
-        try {
-          const { results, updatedContext } = await executeGroup(
-            data.group.actions,
-            planState.context,
-            allPages,
-            setPages,
-            setNotes
-          );
-
-          const summary = summarizeResults(results);
-          planState.recordResults({ results, summary }, updatedContext);
-
-          chatState.addAgentMessage(
-            `${summary.succeeded} succeeded${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
-            'execution_result',
-            { stats: summary }
-          );
-
-          // Calculate next index BEFORE calling nextGroup (state updates are async)
-          const nextIndex = planState.currentGroupIndex + 1;
-          const isComplete = nextIndex >= planState.plan.groups.length;
-
-          if (isComplete) {
-            planState.completePlan();
-            chatPanelRef.current?.closePlanUI(true); // Close with success animation
-            chatState.addAgentMessage(
-              `Plan complete! Created ${updatedContext.createdPages.length} pages, ${updatedContext.createdSections.length} sections, ${updatedContext.createdNotes.length} notes.`,
-              'text_response'
-            );
-            setAwaitingResponse(null);
-          } else {
-            planState.nextGroup();
-            const nextGroup = planState.plan.groups[nextIndex];
-            if (nextGroup) {
-              chatState.addAgentMessage(
-                `Step ${nextIndex + 1}/${planState.plan.totalGroups}: ${nextGroup.description}?`,
-                'group_confirmation',
-                { group: nextGroup }
-              );
-              setAwaitingResponse({ type: 'group_confirmation', data: { group: nextGroup } });
-            }
-          }
-        } catch (error) {
-          chatState.addAgentMessage('Error: ' + error.message, 'error');
-        } finally {
-          chatState.setProcessing(false);
-        }
-      }
-      else if (response.toLowerCase().startsWith('revise')) {
-        handleChatMessage(response);
-      }
-      else if (response.toLowerCase() === 'skip') {
-        // Calculate next index BEFORE calling skipGroup (state updates are async)
-        const nextIndex = planState.currentGroupIndex + 1;
-        const isComplete = nextIndex >= planState.plan.groups.length;
-
-        planState.skipGroup();
-        chatState.addAgentMessage('Skipped. Moving to next group.', 'text_response');
-
-        if (isComplete) {
-          planState.completePlan();
-          chatPanelRef.current?.closePlanUI(true); // Close with success animation
-          chatState.addAgentMessage('Plan complete (with skips).', 'text_response');
-          setAwaitingResponse(null);
-        } else {
-          const nextGroup = planState.plan.groups[nextIndex];
-          if (nextGroup) {
-            chatState.addAgentMessage(
-              `Step ${nextIndex + 1}/${planState.plan.totalGroups}: ${nextGroup.description}?`,
-              'group_confirmation',
-              { group: nextGroup }
-            );
-            setAwaitingResponse({ type: 'group_confirmation', data: { group: nextGroup } });
-          }
-        }
-      }
-      else if (response.toLowerCase() === 'cancel') {
-        const completed = planState.currentGroupIndex;
-        planState.cancelPlan();
-        chatPanelRef.current?.closePlanUI(false); // Close without success animation
-        chatState.addAgentMessage(
-          `Plan cancelled. Completed ${completed} of ${planState.plan?.totalGroups || 0} groups.`,
-          'text_response'
-        );
-        setAwaitingResponse(null);
-      }
-      // Don't clear awaitingResponse here for group_confirmation 'yes' - it's set to next group above
-    }
     else {
-      // Only clear for non-group_confirmation types
-      setAwaitingResponse(null);
+      // Default: treat as a new message
+      chatState.addUserMessage(response);
+      handleChatMessage(response);
     }
   };
 
@@ -1023,19 +1235,72 @@ export function MainApp({ user, onSignOut }) {
         setShowHeaderMenu(false);
       }}
     >
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
-        <div
-          style={{
-            width: sidebarOpen ? 240 : 56,
-            background: `${colors.surface}ee`,
-            backdropFilter: 'blur(20px)',
-            borderRight: `1px solid ${colors.border}`,
-            transition: 'width 0.2s',
-            display: 'flex',
-            flexDirection: 'column',
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div style={{
+          background: '#ff9800',
+          color: '#000',
+          padding: '8px 16px',
+          fontSize: 12,
+          textAlign: 'center',
+          fontWeight: 600,
+          zIndex: 1000
+        }}>
+          You're offline - viewing cached data
+          {pendingSyncCount > 0 && ` • ${pendingSyncCount} pending`}
+        </div>
+      )}
+
+      {/* Mobile Header */}
+      {isMobile && (
+        <MobileHeader
+          currentPage={currentPageData?.name}
+          currentSection={currentSectionData?.name}
+          onMenuClick={() => setMobileSidebarOpen(true)}
+          onMoreClick={() => setShowHeaderMenu(true)}
+          agentViewTitle={agentView?.title}
+          onCloseAgentView={() => setAgentView(null)}
+        />
+      )}
+
+      {/* API Error Badge */}
+      <ApiErrorBadge error={apiError} onDismiss={() => setApiError(null)} />
+
+      {/* Mobile Sidebar Drawer */}
+      {isMobile && (
+        <MobileSidebar
+          isOpen={mobileSidebarOpen}
+          onClose={() => setMobileSidebarOpen(false)}
+          pages={ownedPages}
+          sharedPages={sharedPages}
+          currentPage={currentPage}
+          currentSection={currentSection}
+          user={user}
+          onNavigate={(pageId, sectionId, isPageLevel) => {
+            setCurrentPage(pageId);
+            if (sectionId) {
+              setCurrentSection(sectionId);
+            }
+            setViewingPageLevel(isPageLevel);
+            setMobileSidebarOpen(false);
           }}
-        >
+        />
+      )}
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Desktop Sidebar - hide on mobile */}
+        {!isMobile && (
+          <div
+            style={{
+              width: sidebarOpen ? 240 : 56,
+              background: `${colors.surface}ee`,
+              backdropFilter: 'blur(20px)',
+              borderRight: `1px solid ${colors.border}`,
+              transition: 'width 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
           {!sidebarOpen ? (
             // Collapsed sidebar
             <div
@@ -1279,9 +1544,18 @@ export function MainApp({ user, onSignOut }) {
                             onClick={() => {
                               setCurrentPage(page.id);
                               setViewingPageLevel(true);
+                              setAgentView(null);
                             }}
                           >
-                            {page.name}
+                            <TypewriterText
+                              text={page.name}
+                              animate={animatingItems.has(page.id)}
+                              onComplete={() => setAnimatingItems(prev => {
+                                const next = new Set(prev);
+                                next.delete(page.id);
+                                return next;
+                              })}
+                            />
                           </span>
                         )}
                         {page.starred && (
@@ -1316,6 +1590,7 @@ export function MainApp({ user, onSignOut }) {
                               setCurrentPage(page.id);
                               setCurrentSection(section.id);
                               setViewingPageLevel(false);
+                              setAgentView(null);
                             }}
                             style={{
                               display: 'flex',
@@ -1368,7 +1643,17 @@ export function MainApp({ user, onSignOut }) {
                                 }}
                               />
                             ) : (
-                              <span style={{ flex: 1 }}>{section.name}</span>
+                              <span style={{ flex: 1 }}>
+                                <TypewriterText
+                                  text={section.name}
+                                  animate={animatingItems.has(section.id)}
+                                  onComplete={() => setAnimatingItems(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(section.id);
+                                    return next;
+                                  })}
+                                />
+                              </span>
                             )}
                             <button
                               onClick={e => {
@@ -1440,6 +1725,7 @@ export function MainApp({ user, onSignOut }) {
                             onClick={() => {
                               setCurrentPage(page.id);
                               setViewingPageLevel(true);
+                              setAgentView(null);
                             }}
                           >
                             {page.name}
@@ -1919,7 +2205,8 @@ export function MainApp({ user, onSignOut }) {
               </div>
             </>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Main content */}
         <div
@@ -1930,7 +2217,8 @@ export function MainApp({ user, onSignOut }) {
             overflow: 'hidden',
           }}
         >
-          {/* Toolbar */}
+          {/* Toolbar - hide on mobile, MobileHeader handles navigation */}
+          {!isMobile && (
           <div
             style={{
               height: 48,
@@ -1995,46 +2283,75 @@ export function MainApp({ user, onSignOut }) {
               <ArrowUpDown size={12} />
               SORT
             </button>
+            <button
+              onClick={() => setCompactMode(!compactMode)}
+              title={compactMode ? 'Show details' : 'Hide details (for easy copy)'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                background: 'transparent',
+                border: `1px solid ${compactMode ? colors.textMuted : colors.border}`,
+                color: compactMode ? colors.textPrimary : colors.textMuted,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              <AlignJustify size={12} />
+              {compactMode ? 'COMPACT' : 'COMPACT'}
+            </button>
             <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
               {[
                 { m: 'list', I: List },
                 { m: 'boxes', I: LayoutGrid },
                 { m: 'calendar', I: Calendar },
-              ].map(({ m, I }) => (
-                <button
-                  key={m}
-                  onClick={() => setViewMode(m)}
-                  style={{
-                    padding: '6px 10px',
-                    background: viewMode === m ? colors.textPrimary : 'transparent',
-                    border: 'none',
-                    color: viewMode === m ? colors.bg : colors.textMuted,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <I size={12} />
-                </button>
-              ))}
+              ].map(({ m, I }) => {
+                const currentMode = agentView ? agentView.viewType : viewMode;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      if (agentView) {
+                        setAgentView({ ...agentView, viewType: m });
+                      } else {
+                        setViewMode(m);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      background: currentMode === m ? colors.textPrimary : 'transparent',
+                      border: 'none',
+                      color: currentMode === m ? colors.bg : colors.textMuted,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <I size={12} />
+                  </button>
+                );
+              })}
             </div>
           </div>
+          )}
 
-          {/* Header */}
+          {/* Header - hide on mobile since MobileHeader shows the title */}
+          {!isMobile && (
           <div style={{ padding: '32px 40px 16px' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span
-                onClick={() => setViewingPageLevel(true)}
-                style={{
-                  color: viewingPageLevel ? colors.textPrimary : colors.textMuted,
-                  fontSize: viewingPageLevel ? 24 : 11,
-                  fontWeight: viewingPageLevel ? 600 : 500,
-                  letterSpacing: viewingPageLevel ? -1 : 1,
-                  cursor: 'pointer',
-                }}
-              >
-                {currentPageData?.name?.toUpperCase()}
-              </span>
-              {!viewingPageLevel && (
-                <>
+            {agentView ? (
+              /* Agent View Header */
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: 1,
+                    }}
+                  >
+                    AGENT
+                  </span>
                   <span style={{ color: colors.textMuted }}>/</span>
                   <h1
                     style={{
@@ -2045,75 +2362,356 @@ export function MainApp({ user, onSignOut }) {
                       margin: 0,
                     }}
                   >
-                    {title.displayed}
-                    {!title.done && (
-                      <span style={{ color: colors.primary }}>_</span>
-                    )}
+                    {agentView.title}
                   </h1>
-                </>
-              )}
-              <ChevronDown
-                size={14}
-                color={colors.textMuted}
-                style={{ cursor: 'pointer' }}
-                onClick={e => {
-                  e.stopPropagation();
-                  setShowHeaderMenu(!showHeaderMenu);
-                }}
-              />
-            </div>
-            {showHeaderMenu && (
-              <ContextMenu
-                position={{ top: 100, left: 40 }}
-                onClose={() => setShowHeaderMenu(false)}
-                items={[
-                  {
-                    label: 'Rename',
-                    icon: Edit3,
-                    action: () =>
-                      setEditingItem(
-                        viewingPageLevel ? currentPage : currentSection
-                      ),
-                    visible: myRole === 'owner' || (!viewingPageLevel && ['owner', 'team-admin', 'team'].includes(myRole)),
-                  },
-                  {
-                    label: 'Share page',
-                    icon: Share2,
-                    action: () => {
-                      setShareModalPageId(currentPage);
-                      setShowShareModal(true);
-                    },
-                    visible: canManageCurrentPage,
-                  },
-                  {
-                    label: currentPageData?.starred
-                      ? 'Unstar page'
-                      : 'Star page',
-                    icon: Star,
-                    action: () =>
-                      setPages(
-                        pages.map(p =>
-                          p.id === currentPage
-                            ? { ...p, starred: !p.starred }
-                            : p
-                        )
-                      ),
-                  },
-                ].filter(item => item.visible !== false)}
-              />
+                  <button
+                    onClick={() => setAgentView(null)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 20,
+                      height: 20,
+                      background: 'transparent',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 4,
+                      color: colors.textMuted,
+                      cursor: 'pointer',
+                      marginLeft: 8,
+                    }}
+                    title="Close view"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <p style={{
+                  color: colors.textMuted,
+                  fontSize: 11,
+                  marginTop: 4,
+                  marginBottom: 0
+                }}>
+                  {agentFilteredNotes.length} notes
+                  {agentView.filter?.tags?.length > 0 && ` • Tags: ${agentView.filter.tags.join(', ')}`}
+                  {agentView.filter?.search && ` • Search: "${agentView.filter.search}"`}
+                  {agentView.filter?.page_name && ` • Page: ${agentView.filter.page_name}`}
+                  {agentView.groupBy && ` • Grouped by: ${agentView.groupBy}`}
+                </p>
+              </div>
+            ) : (
+              /* Normal Page/Section Header */
+              <>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    onClick={() => setViewingPageLevel(true)}
+                    style={{
+                      color: viewingPageLevel ? colors.textPrimary : colors.textMuted,
+                      fontSize: viewingPageLevel ? 24 : 11,
+                      fontWeight: viewingPageLevel ? 600 : 500,
+                      letterSpacing: viewingPageLevel ? -1 : 1,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {currentPageData?.name?.toUpperCase()}
+                  </span>
+                  {!viewingPageLevel && (
+                    <>
+                      <span style={{ color: colors.textMuted }}>/</span>
+                      <h1
+                        style={{
+                          color: colors.textPrimary,
+                          fontSize: 24,
+                          fontWeight: 600,
+                          letterSpacing: -1,
+                          margin: 0,
+                        }}
+                      >
+                        {title.displayed}
+                        {!title.done && (
+                          <span style={{ color: colors.primary }}>_</span>
+                        )}
+                      </h1>
+                    </>
+                  )}
+                  <ChevronDown
+                    size={14}
+                    color={colors.textMuted}
+                    style={{ cursor: 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setShowHeaderMenu(!showHeaderMenu);
+                    }}
+                  />
+                </div>
+                {showHeaderMenu && (
+                  <ContextMenu
+                    position={{ top: 100, left: 40 }}
+                    onClose={() => setShowHeaderMenu(false)}
+                    items={[
+                      {
+                        label: 'Rename',
+                        icon: Edit3,
+                        action: () =>
+                          setEditingItem(
+                            viewingPageLevel ? currentPage : currentSection
+                          ),
+                        visible: myRole === 'owner' || (!viewingPageLevel && ['owner', 'team-admin', 'team'].includes(myRole)),
+                      },
+                      {
+                        label: 'Share page',
+                        icon: Share2,
+                        action: () => {
+                          setShareModalPageId(currentPage);
+                          setShowShareModal(true);
+                        },
+                        visible: canManageCurrentPage,
+                      },
+                      {
+                        label: currentPageData?.starred
+                          ? 'Unstar page'
+                          : 'Star page',
+                        icon: Star,
+                        action: () =>
+                          setPages(
+                            pages.map(p =>
+                              p.id === currentPage
+                                ? { ...p, starred: !p.starred }
+                                : p
+                            )
+                          ),
+                      },
+                    ].filter(item => item.visible !== false)}
+                  />
+                )}
+              </>
             )}
           </div>
+          )}
+
+          {/* Mobile Header Menu - triggered by ellipsis in MobileHeader */}
+          {isMobile && showHeaderMenu && (
+            <ContextMenu
+              position={{ top: 64, right: 16 }}
+              onClose={() => setShowHeaderMenu(false)}
+              items={[
+                {
+                  label: 'Rename',
+                  icon: Edit3,
+                  action: () => {
+                    setEditingItem(viewingPageLevel ? currentPage : currentSection);
+                    setShowHeaderMenu(false);
+                  },
+                  visible: myRole === 'owner' || (!viewingPageLevel && ['owner', 'team-admin', 'team'].includes(myRole)),
+                },
+                {
+                  label: 'Share page',
+                  icon: Share2,
+                  action: () => {
+                    setShareModalPageId(currentPage);
+                    setShowShareModal(true);
+                    setShowHeaderMenu(false);
+                  },
+                  visible: canManageCurrentPage,
+                },
+                {
+                  label: currentPageData?.starred ? 'Unstar page' : 'Star page',
+                  icon: Star,
+                  action: () => {
+                    setPages(
+                      pages.map(p =>
+                        p.id === currentPage
+                          ? { ...p, starred: !p.starred }
+                          : p
+                      )
+                    );
+                    setShowHeaderMenu(false);
+                  },
+                },
+              ].filter(item => item.visible !== false)}
+            />
+          )}
 
           {/* Content area */}
           <div
             style={{
               flex: 1,
               overflow: 'auto',
-              padding: '0 40px 140px',
+              padding: isMobile ? '0 16px calc(180px + env(safe-area-inset-bottom))' : '0 40px 140px',
               opacity: contentVisible ? 1 : 0,
               transition: 'opacity 0.25s',
             }}
           >
+            {/* Agent View - when active, takes over the content area */}
+            {agentView ? (
+              <>
+                {/* Agent View: List Mode */}
+                {agentView.viewType === 'list' && (
+                  agentFilteredNotes.length ? (
+                    agentFilteredNotes.map(note => {
+                      const section = allSections.find(s => s.id === note.sectionId);
+                      return (
+                        <div key={note.id} style={{ marginBottom: 4 }}>
+                          {section && (
+                            <p
+                              onClick={() => {
+                                setCurrentPage(section.pageId);
+                                setCurrentSection(section.id);
+                                setAgentView(null);
+                                setViewingPageLevel(false);
+                              }}
+                              style={{
+                                color: colors.textMuted,
+                                fontSize: 9,
+                                fontWeight: 500,
+                                letterSpacing: 1,
+                                marginBottom: 4,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {section.pageName?.toUpperCase()} / {section.name?.toUpperCase()}
+                            </p>
+                          )}
+                          <NoteCard
+                            note={note}
+                            isNew={false}
+                            currentUserId={user.id}
+                            canEdit={true}
+                            canDelete={true}
+                            canToggle={true}
+                            compact={compactMode}
+                            onToggle={id =>
+                              setNotes(
+                                notes.map(n =>
+                                  n.id === id
+                                    ? {
+                                        ...n,
+                                        completed: !n.completed,
+                                        completed_by_user_id: !n.completed ? user.id : null,
+                                        completed_at: !n.completed ? new Date().toISOString() : null,
+                                      }
+                                    : n
+                                )
+                              )
+                            }
+                            onEdit={(id, c) =>
+                              setNotes(
+                                notes.map(n =>
+                                  n.id === id ? { ...n, content: c } : n
+                                )
+                              )
+                            }
+                            onDelete={id =>
+                              setNotes(notes.filter(n => n.id !== id))
+                            }
+                          />
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 13,
+                        fontFamily: "'Manrope', sans-serif",
+                      }}
+                    >
+                      No notes match this view.
+                    </p>
+                  )
+                )}
+
+                {/* Agent View: Boxes Mode */}
+                {agentView.viewType === 'boxes' && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                    {Object.entries(groupAgentNotes(agentFilteredNotes, agentView.groupBy)).map(([groupName, groupNotes]) => (
+                      <div
+                        key={groupName}
+                        style={{
+                          background: colors.surface,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: 16,
+                          minWidth: 280,
+                          maxWidth: 400,
+                          flex: '1 1 280px',
+                        }}
+                      >
+                        <p
+                          style={{
+                            color: colors.textPrimary,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            letterSpacing: 1,
+                            marginBottom: 12,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {groupName} ({groupNotes.length})
+                        </p>
+                        {groupNotes.map(note => (
+                          <div
+                            key={note.id}
+                            style={{
+                              padding: '8px 0',
+                              borderBottom: `1px solid ${colors.border}`,
+                            }}
+                          >
+                            <p
+                              style={{
+                                color: note.completed ? colors.textMuted : colors.textPrimary,
+                                fontSize: 13,
+                                textDecoration: note.completed ? 'line-through' : 'none',
+                                margin: 0,
+                              }}
+                            >
+                              {note.content}
+                            </p>
+                            {note.tags?.length > 0 && (
+                              <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                                {note.tags.map(tag => (
+                                  <TagPill key={tag} tag={tag} small />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Agent View: Calendar Mode */}
+                {agentView.viewType === 'calendar' && (
+                  <CalendarView
+                    notes={agentFilteredNotes}
+                    currentMonth={currentMonth}
+                    onMonthChange={d =>
+                      setCurrentMonth(
+                        new Date(
+                          currentMonth.getFullYear(),
+                          currentMonth.getMonth() + d,
+                          1
+                        )
+                      )
+                    }
+                    onNoteClick={n => {
+                      const s = allSections.find(x => x.id === n.sectionId);
+                      if (s) {
+                        setCurrentPage(s.pageId);
+                        setCurrentSection(s.id);
+                        setAgentView(null);
+                        setViewMode('list');
+                        setViewingPageLevel(false);
+                      }
+                    }}
+                    onNoteMove={(id, date) =>
+                      setNotes(notes.map(n => (n.id === id ? { ...n, date } : n)))
+                    }
+                  />
+                )}
+              </>
+            ) : (
+              /* Normal view when no agent view is active */
+              <>
             {viewMode === 'list' &&
               (viewingPageLevel
                 ? currentPageData?.sections.map(section => {
@@ -2154,6 +2752,7 @@ export function MainApp({ user, onSignOut }) {
                               canEdit={canEditNote}
                               canDelete={canDeleteNote}
                               canToggle={canToggleNote}
+                              compact={compactMode}
                               onToggle={id =>
                                 setNotes(
                                   notes.map(n =>
@@ -2200,6 +2799,7 @@ export function MainApp({ user, onSignOut }) {
                           canEdit={canEditNote}
                           canDelete={canDeleteNote}
                           canToggle={canToggleNote}
+                          compact={compactMode}
                           onToggle={id =>
                             setNotes(
                               notes.map(n =>
@@ -2301,6 +2901,8 @@ export function MainApp({ user, onSignOut }) {
                 onSaveBoxConfigs={handleSaveBoxConfigs}
               />
             )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -2313,8 +2915,30 @@ export function MainApp({ user, onSignOut }) {
           onSendMessage={handleChatMessage}
           processing={chatState.processing}
           onUserResponse={handleUserResponse}
+          onViewClick={(viewConfig) => setAgentView(viewConfig)}
+          onNavigate={(pageName, sectionName) => {
+            const page = allPages.find(p => p.name.toLowerCase() === pageName?.toLowerCase());
+            if (page) {
+              setCurrentPage(page.id);
+              setAgentView(null);
+              if (sectionName) {
+                const section = page.sections?.find(s => s.name.toLowerCase() === sectionName.toLowerCase());
+                if (section) {
+                  setCurrentSection(section.id);
+                  setViewingPageLevel(false);
+                } else {
+                  setViewingPageLevel(true);
+                }
+              } else {
+                setViewingPageLevel(true);
+              }
+            }
+          }}
           planState={planState}
-          sidebarWidth={sidebarOpen ? 240 : 0}
+          onGoToGroup={handleGoToGroup}
+          sidebarWidth={isMobile ? 0 : (sidebarOpen ? 240 : 0)}
+          isMobile={isMobile}
+          isOnline={isOnline}
         />
       )}
 
@@ -2622,6 +3246,7 @@ export function MainApp({ user, onSignOut }) {
           position={contextMenuPosition}
           onClose={() => setContextMenu(null)}
           items={[
+            { label: 'Incomplete first', action: () => setSortBy('status') },
             { label: 'Date created', action: () => setSortBy('created') },
             { label: 'Alphabetical', action: () => setSortBy('alpha') },
           ]}
