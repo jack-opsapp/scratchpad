@@ -17,10 +17,12 @@ import {
   FileText,
   FileJson,
   Table,
-  HardDrive
+  HardDrive,
+  Send,
+  RotateCcw
 } from 'lucide-react';
 import { useSettings, DEFAULT_SETTINGS } from '../hooks/useSettings.js';
-import { ACCENT_COLORS } from '../lib/themes.js';
+import { ACCENT_COLORS, calculateChatColor } from '../lib/themes.js';
 import {
   exportAsMarkdown,
   exportAsJSON,
@@ -355,115 +357,309 @@ function AppearanceTab({ settings, onChange }) {
       </SettingGroup>
 
       {/* Chat Panel Section */}
-      <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${colors.border}` }}>
-        <h4 style={{
-          color: colors.textPrimary,
-          fontSize: 14,
-          fontWeight: 600,
-          marginBottom: 20,
-          letterSpacing: 0.5,
-          fontFamily: "'Manrope', sans-serif"
+      <ChatPanelSettings settings={settings} onChange={onChange} />
+    </div>
+  );
+}
+
+// =============================================================================
+// Chat Panel Settings Component
+// =============================================================================
+
+function ChatPanelSettings({ settings, onChange }) {
+  // Get current accent color for preview
+  const accentColor = ACCENT_COLORS[settings.accentColor]?.primary || ACCENT_COLORS.beige.primary;
+
+  // Calculate preview colors
+  const agentTextColor = calculateChatColor(
+    settings.chatAgentTextMode || 'grayscale',
+    settings.chatAgentTextBrightness ?? 80,
+    accentColor,
+    settings.theme
+  );
+  const userTextColor = calculateChatColor(
+    settings.chatUserTextMode || 'grayscale',
+    settings.chatUserTextBrightness ?? 60,
+    accentColor,
+    settings.theme
+  );
+  const bgColor = calculateChatColor(
+    settings.chatBackgroundMode || 'grayscale',
+    settings.chatBackgroundBrightness ?? 8,
+    accentColor,
+    settings.theme
+  );
+
+  const chatFontSize = settings.chatFontSize === 'small' ? 12 : settings.chatFontSize === 'large' ? 15 : 13;
+
+  return (
+    <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${colors.border}` }}>
+      <h4 style={{
+        color: colors.textPrimary,
+        fontSize: 14,
+        fontWeight: 600,
+        marginBottom: 20,
+        letterSpacing: 0.5,
+        fontFamily: "'Manrope', sans-serif"
+      }}>
+        CHAT PANEL
+      </h4>
+
+      {/* Chat Font Size */}
+      <SettingGroup label="CHAT FONT SIZE" description="Adjust text size in chat messages">
+        <SegmentedControl
+          options={['small', 'medium', 'large']}
+          value={settings.chatFontSize}
+          onChange={(chatFontSize) => onChange({ chatFontSize })}
+          defaultValue="medium"
+        />
+      </SettingGroup>
+
+      {/* Agent Text Color */}
+      <SettingGroup label="AGENT TEXT">
+        <ColorModeControl
+          mode={settings.chatAgentTextMode || 'grayscale'}
+          brightness={settings.chatAgentTextBrightness ?? 80}
+          onModeChange={(mode) => onChange({ chatAgentTextMode: mode })}
+          onBrightnessChange={(brightness) => onChange({ chatAgentTextBrightness: brightness })}
+          onReset={() => onChange({ chatAgentTextMode: 'grayscale', chatAgentTextBrightness: 80 })}
+          accentColor={accentColor}
+          defaultMode="grayscale"
+          defaultBrightness={80}
+        />
+      </SettingGroup>
+
+      {/* User Text Color */}
+      <SettingGroup label="USER TEXT">
+        <ColorModeControl
+          mode={settings.chatUserTextMode || 'grayscale'}
+          brightness={settings.chatUserTextBrightness ?? 60}
+          onModeChange={(mode) => onChange({ chatUserTextMode: mode })}
+          onBrightnessChange={(brightness) => onChange({ chatUserTextBrightness: brightness })}
+          onReset={() => onChange({ chatUserTextMode: 'grayscale', chatUserTextBrightness: 60 })}
+          accentColor={accentColor}
+          defaultMode="grayscale"
+          defaultBrightness={60}
+        />
+      </SettingGroup>
+
+      {/* Background Color */}
+      <SettingGroup label="BACKGROUND">
+        <ColorModeControl
+          mode={settings.chatBackgroundMode || 'grayscale'}
+          brightness={settings.chatBackgroundBrightness ?? 8}
+          onModeChange={(mode) => onChange({ chatBackgroundMode: mode })}
+          onBrightnessChange={(brightness) => onChange({ chatBackgroundBrightness: brightness })}
+          onReset={() => onChange({ chatBackgroundMode: 'grayscale', chatBackgroundBrightness: 8 })}
+          accentColor={accentColor}
+          defaultMode="grayscale"
+          defaultBrightness={8}
+        />
+      </SettingGroup>
+
+      {/* Live Preview */}
+      <SettingGroup label="PREVIEW">
+        <div style={{
+          background: `rgba(${hexToRgb(bgColor)}, 0.45)`,
+          backdropFilter: 'blur(24px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+          border: `1px solid rgba(255,255,255,0.08)`,
+          borderRadius: 12,
+          overflow: 'hidden'
         }}>
-          CHAT PANEL
-        </h4>
+          {/* Messages area */}
+          <div style={{ padding: '12px 20px' }}>
+            {/* Agent message 1 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+              <span style={{ color: accentColor, fontSize: 11, flexShrink: 0 }}>←</span>
+              <p style={{
+                color: agentTextColor,
+                fontSize: chatFontSize,
+                margin: 0,
+                lineHeight: 1.4,
+                fontFamily: "'Manrope', sans-serif"
+              }}>
+                Found 3 notes tagged "marketing". Opening view.
+              </p>
+            </div>
 
-        {/* Chat Font Size */}
-        <SettingGroup label="CHAT FONT SIZE" description="Adjust text size in chat messages">
-          <SegmentedControl
-            options={['small', 'medium', 'large']}
-            value={settings.chatFontSize}
-            onChange={(chatFontSize) => onChange({ chatFontSize })}
-          />
-        </SettingGroup>
+            {/* User message 1 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+              <span style={{ color: userTextColor, fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
+              <p style={{
+                color: userTextColor,
+                fontSize: chatFontSize,
+                margin: 0,
+                lineHeight: 1.4,
+                fontFamily: "'Manrope', sans-serif"
+              }}>
+                create note: launch campaign tomorrow
+              </p>
+            </div>
 
-        {/* Chat Text Color */}
-        <SettingGroup label="CHAT TEXT COLOR">
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <SelectButton
-              selected={settings.chatTextColor === 'default'}
-              onClick={() => onChange({ chatTextColor: 'default' })}
-              small
-            >
-              Default
-            </SelectButton>
-            <input
-              type="color"
-              value={settings.chatTextColor === 'default' ? '#ffffff' : settings.chatTextColor}
-              onChange={(e) => onChange({ chatTextColor: e.target.value })}
-              style={{
-                width: 48,
-                height: 36,
-                border: `1px solid ${colors.border}`,
-                cursor: 'pointer',
-                background: 'transparent'
-              }}
-            />
-            {settings.chatTextColor !== 'default' && (
-              <span style={{ color: colors.textMuted, fontSize: 12, fontFamily: 'monospace' }}>
-                {settings.chatTextColor}
-              </span>
-            )}
+            {/* Agent message 2 - success */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+              <span style={{ color: '#4CAF50', fontSize: 11, flexShrink: 0 }}>✓</span>
+              <p style={{
+                color: agentTextColor,
+                fontSize: chatFontSize,
+                margin: 0,
+                lineHeight: 1.4,
+                fontFamily: "'Manrope', sans-serif"
+              }}>
+                Added to Marketing/Tasks.
+              </p>
+            </div>
+
+            {/* User message 2 */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ color: userTextColor, fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
+              <p style={{
+                color: userTextColor,
+                fontSize: chatFontSize,
+                margin: 0,
+                lineHeight: 1.4,
+                fontFamily: "'Manrope', sans-serif"
+              }}>
+                show me all urgent notes
+              </p>
+            </div>
           </div>
-        </SettingGroup>
 
-        {/* Chat Background Color */}
-        <SettingGroup label="CHAT BACKGROUND COLOR">
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <SelectButton
-              selected={settings.chatBackgroundColor === 'default'}
-              onClick={() => onChange({ chatBackgroundColor: 'default' })}
-              small
-            >
-              Default
-            </SelectButton>
-            <input
-              type="color"
-              value={settings.chatBackgroundColor === 'default' ? '#0a0a0a' : settings.chatBackgroundColor}
-              onChange={(e) => onChange({ chatBackgroundColor: e.target.value })}
-              style={{
-                width: 48,
-                height: 36,
-                border: `1px solid ${colors.border}`,
-                cursor: 'pointer',
-                background: 'transparent'
-              }}
-            />
-            {settings.chatBackgroundColor !== 'default' && (
-              <span style={{ color: colors.textMuted, fontSize: 12, fontFamily: 'monospace' }}>
-                {settings.chatBackgroundColor}
-              </span>
-            )}
-          </div>
-        </SettingGroup>
-
-        {/* Preview */}
-        <SettingGroup label="PREVIEW">
+          {/* Input area - matches actual chat panel */}
           <div style={{
-            padding: 16,
-            background: settings.chatBackgroundColor === 'default' ? colors.surface : settings.chatBackgroundColor,
-            border: `1px solid ${colors.border}`
+            padding: '12px 20px',
+            borderTop: `1px solid rgba(255,255,255,0.08)`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
           }}>
-            <p style={{
-              color: settings.chatTextColor === 'default' ? colors.textPrimary : settings.chatTextColor,
-              fontSize: settings.chatFontSize === 'small' ? 12 : settings.chatFontSize === 'large' ? 15 : 13,
-              margin: 0,
-              lineHeight: 1.6,
-              fontFamily: "'Manrope', sans-serif"
-            }}>
-              <strong>Agent:</strong> Created note in Marketing section
-            </p>
-            <p style={{
-              color: settings.chatTextColor === 'default' ? colors.textMuted : settings.chatTextColor,
-              fontSize: settings.chatFontSize === 'small' ? 12 : settings.chatFontSize === 'large' ? 15 : 13,
-              margin: '8px 0 0 0',
-              lineHeight: 1.6,
-              opacity: 0.8,
-              fontFamily: "'Manrope', sans-serif"
-            }}>
-              <strong>You:</strong> create note launch campaign tomorrow
-            </p>
+            <input
+              readOnly
+              placeholder="Type a command..."
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: userTextColor,
+                fontSize: chatFontSize,
+                fontFamily: "'Manrope', sans-serif",
+                outline: 'none',
+                opacity: 0.5
+              }}
+            />
+            <button
+              style={{
+                background: 'transparent',
+                border: `1px solid rgba(255,255,255,0.1)`,
+                padding: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'default',
+                opacity: 0.4
+              }}
+            >
+              <Send size={12} color={colors.textPrimary} />
+            </button>
           </div>
-        </SettingGroup>
+        </div>
+      </SettingGroup>
+    </div>
+  );
+}
+
+// Helper to convert hex to rgb values
+function hexToRgb(hex) {
+  hex = hex.replace(/^#/, '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
+// =============================================================================
+// Color Mode Control Component
+// =============================================================================
+
+function ColorModeControl({
+  mode,
+  brightness,
+  onModeChange,
+  onBrightnessChange,
+  onReset,
+  accentColor,
+  defaultMode = 'grayscale',
+  defaultBrightness = 50
+}) {
+  const previewColor = calculateChatColor(mode, brightness, accentColor, 'dark');
+  const isDefault = mode === defaultMode && brightness === defaultBrightness;
+
+  return (
+    <div>
+      {/* Mode selector */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        <SelectButton
+          selected={mode === 'grayscale'}
+          onClick={() => onModeChange('grayscale')}
+          small
+        >
+          Grayscale
+        </SelectButton>
+        <SelectButton
+          selected={mode === 'accent'}
+          onClick={() => onModeChange('accent')}
+          small
+        >
+          Accent Color
+        </SelectButton>
+        {/* Color preview swatch */}
+        <div style={{
+          width: 36,
+          height: 36,
+          background: previewColor,
+          border: `1px solid ${colors.border}`,
+          marginLeft: 'auto'
+        }} />
+        {/* Reset button */}
+        {!isDefault && onReset && (
+          <button
+            onClick={onReset}
+            title="Reset to default"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: colors.textMuted,
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.6
+            }}
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Brightness slider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ color: colors.textMuted, fontSize: 11, width: 60 }}>Brightness</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={brightness}
+          onChange={(e) => onBrightnessChange(parseInt(e.target.value))}
+          style={{
+            flex: 1,
+            accentColor: colors.textMuted,
+            cursor: 'pointer'
+          }}
+        />
+        <span style={{ color: colors.textMuted, fontSize: 11, width: 30, textAlign: 'right' }}>
+          {brightness}%
+        </span>
       </div>
     </div>
   );
@@ -478,7 +674,7 @@ function AIBehaviorTab({ settings, onChange }) {
     {
       id: 'tactical',
       label: 'Tactical',
-      description: 'Military-style brevity. Jocko Willink discipline. Default Scratchpad style.',
+      description: 'Military-style brevity. Jocko Willink discipline. Default Slate style.',
       example: '"✓ Added."'
     },
     {
@@ -1027,10 +1223,11 @@ function SelectButton({ children, selected, onClick, small }) {
       onClick={onClick}
       style={{
         padding: small ? '8px 14px' : '12px 20px',
-        background: selected ? colors.primary : 'transparent',
-        border: `1px solid ${selected ? colors.primary : colors.border}`,
-        color: selected ? colors.bg : colors.textPrimary,
+        background: 'transparent',
+        border: `1px solid ${selected ? colors.textPrimary : colors.border}`,
+        color: colors.textPrimary,
         fontSize: small ? 13 : 14,
+        fontWeight: selected ? 600 : 400,
         cursor: 'pointer',
         transition: 'all 0.2s'
       }}
@@ -1040,33 +1237,57 @@ function SelectButton({ children, selected, onClick, small }) {
   );
 }
 
-function SegmentedControl({ options, value, onChange }) {
+function SegmentedControl({ options, value, onChange, defaultValue }) {
   // Normalize options to objects
   const normalizedOptions = options.map(opt =>
     typeof opt === 'string' ? { value: opt, label: opt.charAt(0).toUpperCase() + opt.slice(1) } : opt
   );
 
+  const isDefault = defaultValue !== undefined && value === defaultValue;
+
   return (
-    <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
-      {normalizedOptions.map((opt, i) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
+        {normalizedOptions.map((opt, i) => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              background: 'transparent',
+              border: 'none',
+              borderRight: i < normalizedOptions.length - 1 ? `1px solid ${colors.border}` : 'none',
+              borderBottom: value === opt.value ? `2px solid ${colors.textPrimary}` : '2px solid transparent',
+              color: value === opt.value ? colors.textPrimary : colors.textMuted,
+              fontSize: 13,
+              fontWeight: value === opt.value ? 600 : 400,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {defaultValue !== undefined && !isDefault && (
         <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => onChange(defaultValue)}
+          title="Reset to default"
           style={{
-            flex: 1,
-            padding: '12px 20px',
-            background: value === opt.value ? colors.primary : 'transparent',
+            background: 'transparent',
             border: 'none',
-            borderRight: i < normalizedOptions.length - 1 ? `1px solid ${colors.border}` : 'none',
-            color: value === opt.value ? colors.bg : colors.textPrimary,
-            fontSize: 14,
+            color: colors.textMuted,
             cursor: 'pointer',
-            transition: 'all 0.2s'
+            padding: 4,
+            display: 'flex',
+            alignItems: 'center',
+            opacity: 0.6
           }}
         >
-          {opt.label}
+          <RotateCcw size={14} />
         </button>
-      ))}
+      )}
     </div>
   );
 }

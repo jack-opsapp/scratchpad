@@ -1,5 +1,5 @@
 /**
- * Server-side function implementations for Scratchpad Agent
+ * Server-side function implementations for Slate Agent
  * Each function queries or modifies Supabase
  */
 

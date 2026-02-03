@@ -10,7 +10,7 @@ import { colors } from '../styles/theme.js';
  * @param {string} props.error - Error message to display
  */
 export function SignedOutScreen({ onSignIn, error }) {
-  const title = useTypewriter('SCRATCHPAD', 60);
+  const title = useTypewriter('SLATE', 60);
   const subtitle = useTypewriter('Your ideas, organized.', 30, 700);
   const [showContent, setShowContent] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
@@ -65,7 +65,7 @@ export function SignedOutScreen({ onSignIn, error }) {
             margin: '0 auto',
           }}
         >
-          SCRATCHPAD
+          SLATE
         </span>
       </div>
 

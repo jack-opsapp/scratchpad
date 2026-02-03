@@ -94,7 +94,7 @@ export default function MobileHeader({
             </>
           ) : (
             <>
-              {currentPage || 'Scratchpad'}
+              {currentPage || 'Slate'}
               {currentSection && (
                 <span style={{ color: colors.textMuted, fontWeight: 400 }}>
                   {' / '}{currentSection}

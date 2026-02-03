@@ -1,5 +1,5 @@
 /**
- * Scratchpad AI Agent - Main Endpoint
+ * Slate AI Agent - Main Endpoint
  * Uses OpenAI Function Calling to handle user requests
  */
 
@@ -59,7 +59,7 @@ RESPONSE EXAMPLES:
 Provide full explanations. Guide users. Offer alternatives. Be thorough.`
 };
 
-const SYSTEM_PROMPT = `You are Scratchpad's agent. Direct. Efficient. No fluff.
+const SYSTEM_PROMPT = `You are Slate's agent. Direct. Efficient. No fluff.
 
 TONE:
 - Short sentences. No filler words.

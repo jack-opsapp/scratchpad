@@ -99,7 +99,7 @@ export async function exportAsMarkdown() {
   });
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(blob, 'scratchpad-export.zip');
+  downloadBlob(blob, 'slate-export.zip');
 
   return { success: true, fileCount: files.length };
 }
@@ -169,7 +169,7 @@ export async function exportAsJSON() {
   };
 
   const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-  downloadBlob(blob, 'scratchpad-export.json');
+  downloadBlob(blob, 'slate-export.json');
 
   return { success: true, stats: exportData.stats };
 }
@@ -223,7 +223,7 @@ export async function exportAsCSV() {
   }
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  downloadBlob(blob, 'scratchpad-notes.csv');
+  downloadBlob(blob, 'slate-notes.csv');
 
   return { success: true, noteCount: notes?.length || 0 };
 }
@@ -285,7 +285,7 @@ export async function backupWorkspace() {
 
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const dateStr = new Date().toISOString().split('T')[0];
-  downloadBlob(blob, `scratchpad-backup-${dateStr}.json`);
+  downloadBlob(blob, `slate-backup-${dateStr}.json`);
 
   return { success: true, metadata: backup.metadata };
 }

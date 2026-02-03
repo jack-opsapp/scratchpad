@@ -723,7 +723,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     minWidth: 140,
                     padding: '10px 12px',
                     background: isCurrent ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    border: `1px solid ${isCurrent ? colors.primary : isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : 'rgba(255,255,255,0.1)'}`,
+                    border: `1px solid ${isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.1)'}`,
                     borderRadius: 6,
                     opacity: isSkipped ? 0.5 : 1,
                     transition: 'all 0.2s ease',
@@ -852,9 +852,9 @@ const ChatPanel = forwardRef(function ChatPanel({
             <div key={i} style={{ marginBottom: 10 }}>
               {msg.role === 'user' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <span style={{ color: 'var(--chat-text-color, ' + colors.textMuted + ')', fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
+                  <span style={{ color: 'var(--chat-user-text-color, ' + colors.textMuted + ')', fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
                   <p style={{
-                    color: 'var(--chat-text-color, ' + colors.textPrimary + ')',
+                    color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
                     fontSize: 'var(--chat-font-message, 13px)',
                     margin: 0,
                     lineHeight: 1.4
@@ -867,18 +867,18 @@ const ChatPanel = forwardRef(function ChatPanel({
               {msg.role === 'agent' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <span style={{
-                    color: msg.type === 'execution_result' ? '#4CAF50' : colors.primary,
+                    color: msg.type === 'execution_result' ? '#4CAF50' : 'var(--color-primary, ' + colors.primary + ')',
                     fontSize: 11,
                     flexShrink: 0
                   }}>
                     {msg.type === 'execution_result' ? '✓' : '←'}
                   </span>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, color: 'var(--chat-agent-text-color, ' + colors.textSecondary + ')' }}>
                     <MarkdownText
                       content={msg.content}
                       baseColor={
                         msg.type === 'execution_result' ? '#4CAF50' :
-                        msg.type === 'error' ? '#ff6b6b' : colors.textSecondary
+                        msg.type === 'error' ? '#ff6b6b' : 'inherit'
                       }
                     />
                     {/* Clickable view button if message created a view */}
@@ -1171,7 +1171,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--chat-text-color, ' + colors.textPrimary + ')',
+                  color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
                   fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)', // 16px prevents iOS zoom on mobile
                   outline: 'none'
                 }}

@@ -23,8 +23,12 @@ export const DEFAULT_SETTINGS = {
 
   // Chat Appearance
   chatFontSize: 'medium',
-  chatTextColor: 'default',
-  chatBackgroundColor: 'default',
+  chatAgentTextMode: 'grayscale',
+  chatAgentTextBrightness: 80,
+  chatUserTextMode: 'grayscale',
+  chatUserTextBrightness: 60,
+  chatBackgroundMode: 'grayscale',
+  chatBackgroundBrightness: 8,
 
   // AI Behavior
   aiResponseStyle: 'tactical',
@@ -68,8 +72,12 @@ const SETTING_TO_COLUMN = {
   fontSize: 'font_size',
   viewDensity: 'view_density',
   chatFontSize: 'chat_font_size',
-  chatTextColor: 'chat_text_color',
-  chatBackgroundColor: 'chat_background_color',
+  chatAgentTextMode: 'chat_agent_text_mode',
+  chatAgentTextBrightness: 'chat_agent_text_brightness',
+  chatUserTextMode: 'chat_user_text_mode',
+  chatUserTextBrightness: 'chat_user_text_brightness',
+  chatBackgroundMode: 'chat_background_mode',
+  chatBackgroundBrightness: 'chat_background_brightness',
   aiResponseStyle: 'ai_response_style',
   autoTaggingSensitivity: 'auto_tagging_sensitivity',
   confirmationLevel: 'confirmation_level',

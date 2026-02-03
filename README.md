@@ -1,4 +1,4 @@
-# Scratchpad
+# Slate
 
 **Your ideas, organized.**
 
@@ -57,7 +57,7 @@ npm run preview
 2. Create OAuth 2.0 credentials
 3. Add authorized redirect URIs:
    - Local: `http://localhost:3000`
-   - Production: `https://scratchpad.opsapp.co`
+   - Production: `https://slate.opsapp.co`
 4. In Supabase: **Authentication → Providers → Google**
    - Enable Google provider
    - Add Client ID and Client Secret
@@ -73,7 +73,7 @@ npm run preview
    - `SENDGRID_API_KEY` (optional - for email invites)
 3. Deploy
 
-Production URL: `https://scratchpad.opsapp.co`
+Production URL: `https://slate.opsapp.co`
 
 ## Project Structure
 

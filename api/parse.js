@@ -364,7 +364,7 @@ ${ragContext}`;
     const currentGroup = planState.plan?.groups[planState.currentGroupIndex];
     const progress = `${planState.currentGroupIndex + 1}/${planState.plan?.totalGroups}`;
 
-    return `You are SCRATCHPAD's agent in PLAN MODE.
+    return `You are SLATE's agent in PLAN MODE.
 
 ${baseContext}
 
@@ -421,7 +421,7 @@ Respond ONLY with valid JSON.`;
   }
 
   // NORMAL MODE - Full agent capabilities
-  return `You are SCRATCHPAD's intelligent command center agent with full database access via RAG.
+  return `You are SLATE's intelligent command center agent with full database access via RAG.
 
 ${baseContext}
 

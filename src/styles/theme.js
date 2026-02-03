@@ -1,5 +1,5 @@
 /**
- * Scratchpad Design Tokens
+ * Slate Design Tokens
  *
  * These values are the source of truth for the application's visual design.
  * They mirror the Tailwind config and can be used in inline styles or JS.

@@ -5,10 +5,10 @@
  * Maintains the same public API as the previous window.storage implementation.
  *
  * Data mapping:
- * - scratchpad-pages → pages table (with nested sections)
- * - scratchpad-notes → notes table
- * - scratchpad-tags → derived from notes.tags (unique values)
- * - scratchpad-box-configs → box_configs table
+ * - slate-pages → pages table (with nested sections)
+ * - slate-notes → notes table
+ * - slate-tags → derived from notes.tags (unique values)
+ * - slate-box-configs → box_configs table
  */
 
 import { supabase } from '../config/supabase.js';
@@ -18,10 +18,10 @@ import { supabase } from '../config/supabase.js';
 // =============================================================================
 
 const STORAGE_KEYS = {
-  PAGES: 'scratchpad-pages',
-  TAGS: 'scratchpad-tags',
-  NOTES: 'scratchpad-notes',
-  BOX_CONFIGS: 'scratchpad-box-configs',
+  PAGES: 'slate-pages',
+  TAGS: 'slate-tags',
+  NOTES: 'slate-notes',
+  BOX_CONFIGS: 'slate-box-configs',
 };
 
 // =============================================================================

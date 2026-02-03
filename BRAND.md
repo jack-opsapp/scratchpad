@@ -1,4 +1,4 @@
-# SCRATCHPAD Brand Guidelines
+# SLATE Brand Guidelines
 
 ## Brand Identity
 

@@ -199,7 +199,7 @@ export default function ShareModal({
   };
 
   const copyPublicLink = () => {
-    const url = `https://scratchpad.opsapp.co/public/${publicLink.token}`;
+    const url = `https://slate.opsapp.co/public/${publicLink.token}`;
     navigator.clipboard.writeText(url);
     alert('Link copied!');
   };
@@ -636,7 +636,7 @@ export default function ShareModal({
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <input
                         readOnly
-                        value={`https://scratchpad.opsapp.co/public/${publicLink.token}`}
+                        value={`https://slate.opsapp.co/public/${publicLink.token}`}
                         style={{
                           flex: 1,
                           background: colors.bg,

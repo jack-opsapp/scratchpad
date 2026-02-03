@@ -34,14 +34,14 @@ export async function sendInviteEmail(
       </head>
       <body>
         <div class="container">
-          <h1>SCRATCHPAD</h1>
+          <h1>SLATE</h1>
           <p>Hi,</p>
-          <p><strong>${inviterName}</strong> has invited you to collaborate on <strong>${pageName}</strong> in Scratchpad.</p>
+          <p><strong>${inviterName}</strong> has invited you to collaborate on <strong>${pageName}</strong> in Slate.</p>
           <a href="${inviteLink}" class="button">Accept Invitation</a>
           <p>This invitation expires in 7 days.</p>
           <div class="footer">
             <p>If you didn't expect this invitation, you can safely ignore this email.</p>
-            <p>Powered by Scratchpad - https://scratchpad.opsapp.co</p>
+            <p>Powered by Slate - https://slate.opsapp.co</p>
           </div>
         </div>
       </body>

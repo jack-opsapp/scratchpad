@@ -194,7 +194,7 @@ export default function MobileSidebar({
             fontWeight: 600,
             letterSpacing: -0.5
           }}>
-            Scratchpad
+            Slate
           </span>
           <button
             onClick={onClose}

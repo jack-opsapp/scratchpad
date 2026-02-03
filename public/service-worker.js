@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scratchpad-v1';
+const CACHE_NAME = 'slate-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html'

@@ -2,7 +2,7 @@
  * Supabase Client Configuration
  *
  * Initializes the Supabase client with proper auth settings for the
- * Scratchpad application. Handles session persistence and auto-refresh.
+ * Slate application. Handles session persistence and auto-refresh.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -53,7 +53,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
 
     // Storage key for session data
-    storageKey: 'scratchpad-auth',
+    storageKey: 'slate-auth',
 
     // Use localStorage for session persistence
     storage: window.localStorage,

@@ -18,8 +18,12 @@ CREATE TABLE IF NOT EXISTS user_settings (
 
   -- Chat Appearance
   chat_font_size TEXT DEFAULT 'medium' CHECK (chat_font_size IN ('small', 'medium', 'large')),
-  chat_text_color TEXT DEFAULT 'default', -- 'default' or hex color
-  chat_background_color TEXT DEFAULT 'default', -- 'default' or hex color
+  chat_agent_text_mode TEXT DEFAULT 'grayscale' CHECK (chat_agent_text_mode IN ('accent', 'grayscale')),
+  chat_agent_text_brightness INTEGER DEFAULT 80 CHECK (chat_agent_text_brightness BETWEEN 0 AND 100),
+  chat_user_text_mode TEXT DEFAULT 'grayscale' CHECK (chat_user_text_mode IN ('accent', 'grayscale')),
+  chat_user_text_brightness INTEGER DEFAULT 60 CHECK (chat_user_text_brightness BETWEEN 0 AND 100),
+  chat_background_mode TEXT DEFAULT 'grayscale' CHECK (chat_background_mode IN ('accent', 'grayscale')),
+  chat_background_brightness INTEGER DEFAULT 8 CHECK (chat_background_brightness BETWEEN 0 AND 100)
 
   -- AI Behavior (using 1-3 scale: 1=light, 2=medium, 3=heavy)
   ai_response_style TEXT DEFAULT 'tactical' CHECK (ai_response_style IN ('tactical', 'balanced', 'conversational')),

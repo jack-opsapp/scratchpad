@@ -3,8 +3,8 @@
  * Handles operations when network unavailable and syncs when restored
  */
 
-const QUEUE_KEY = 'scratchpad-offline-queue';
-const CHAT_QUEUE_KEY = 'scratchpad-chat-queue';
+const QUEUE_KEY = 'slate-offline-queue';
+const CHAT_QUEUE_KEY = 'slate-chat-queue';
 
 /**
  * Queue an operation for sync when back online

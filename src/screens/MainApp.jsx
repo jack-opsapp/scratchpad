@@ -316,12 +316,7 @@ export function MainApp({ user, onSignOut }) {
       const theme = getTheme(settings.theme, settings.accentColor, settings.customAccentColor);
       applyTheme(theme);
       applyFontSize(settings.fontSize);
-      applyChatStyling(
-        settings.chatFontSize,
-        settings.chatTextColor,
-        settings.chatBackgroundColor,
-        theme
-      );
+      applyChatStyling(settings, theme, theme.primary);
     }
   }, [settings]);
 
@@ -866,11 +861,36 @@ export function MainApp({ user, onSignOut }) {
         setAnimatingItems(prev => new Set([...prev, ...allAnimatingIds]));
       }
 
-      // Show completion message
-      chatState.addAgentMessage(
-        `Plan complete! Created ${currentContext.createdPages?.length || 0} pages, ${currentContext.createdSections?.length || 0} sections, ${currentContext.createdNotes?.length || 0} notes.`,
-        'text_response'
-      );
+      // Trigger success animation and collapse
+      chatPanelRef.current?.closePlanUI(true);
+
+      // Build execution summary for agent
+      const counts = planState.getCounts();
+      const executionSummary = {
+        totalSteps: counts.total,
+        executedSteps: counts.approved,
+        skippedSteps: counts.skipped,
+        createdPages: currentContext.createdPages?.map(p => p.name) || [],
+        createdSections: currentContext.createdSections?.map(s => s.name) || [],
+        createdNotes: currentContext.createdNotes?.length || 0
+      };
+
+      // Ask agent to generate success message
+      try {
+        const result = await callAgent(
+          `Plan execution complete. Summarize: ${JSON.stringify(executionSummary)}`,
+          { pages, sections: allSections, tags },
+          null
+        );
+        chatState.addAgentMessage(result.message || 'Done.', 'execution_result');
+      } catch (e) {
+        chatState.addAgentMessage('Done.', 'execution_result');
+      }
+
+      // Reset plan state after animation completes
+      setTimeout(() => {
+        planState.resetToIdle();
+      }, 4000); // Allow time for animation
 
     } catch (error) {
       console.error('Execution error:', error);
@@ -1306,7 +1326,7 @@ export function MainApp({ user, onSignOut }) {
                   margin: '0 auto 16px',
                 }}
               >
-                SCRATCHPAD
+                SLATE
               </span>
               <div
                 onClick={e => openContextMenu('collapsed-user', e)}
@@ -2100,7 +2120,7 @@ export function MainApp({ user, onSignOut }) {
                     marginBottom: 16,
                   }}
                 >
-                  SCRATCHPAD
+                  SLATE
                 </p>
                 <div
                   onClick={e => openContextMenu('user-menu', e)}

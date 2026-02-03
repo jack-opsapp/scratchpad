@@ -1,6 +1,6 @@
 {
-  "name": "Scratchpad",
-  "short_name": "Scratchpad",
+  "name": "Slate",
+  "short_name": "Slate",
   "description": "AI-powered note-taking with voice input and semantic search",
   "start_url": "/",
   "display": "standalone",

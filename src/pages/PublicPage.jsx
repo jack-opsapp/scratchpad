@@ -356,8 +356,8 @@ export default function PublicPage() {
       >
         <p style={{ color: colors.textMuted, fontSize: 12, margin: 0 }}>
           Powered by{' '}
-          <strong style={{ color: colors.primary }}>SCRATCHPAD</strong> -
-          https://scratchpad.opsapp.co
+          <strong style={{ color: colors.primary }}>SLATE</strong> -
+          https://slate.opsapp.co
         </p>
       </div>
     </div>

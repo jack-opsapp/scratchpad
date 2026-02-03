@@ -1,5 +1,5 @@
 /**
- * OpenAI Function Definitions for Scratchpad Agent
+ * OpenAI Function Definitions for Slate Agent
  * These define the tools the agent can use
  */
 

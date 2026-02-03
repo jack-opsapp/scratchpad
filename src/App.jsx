@@ -64,10 +64,10 @@ function LoadingScreen() {
 }
 
 /**
- * Main Scratchpad app component
+ * Main Slate app component
  * Handles authentication state and screen routing
  */
-function Scratchpad() {
+function Slate() {
   const { user, loading, error, signInWithGoogle, signOut } = useAuth();
 
   // Show loading screen while checking auth
@@ -97,7 +97,7 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/public/:token" element={<PublicPage />} />
-        <Route path="/*" element={<Scratchpad />} />
+        <Route path="/*" element={<Slate />} />
       </Routes>
     </BrowserRouter>
   );
