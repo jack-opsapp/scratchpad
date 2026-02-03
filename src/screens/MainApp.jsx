@@ -27,7 +27,9 @@ import {
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import usePlanState from '../hooks/usePlanState.js';
 import { useMediaQuery, useOnlineStatus } from '../hooks/useMediaQuery.js';
+import { useSettings } from '../hooks/useSettings.js';
 import { syncOfflineQueue, getPendingSyncCount, offlineParser, queueChatMessage } from '../lib/offlineHandler.js';
+import { getTheme, applyTheme, applyFontSize, applyChatStyling } from '../lib/themes.js';
 
 // Typewriter text component for animated items
 function TypewriterText({ text, animate, onComplete, style }) {
@@ -115,6 +117,7 @@ import {
   ChatPanel,
 } from '../components/index.js';
 import ShareModal from '../components/ShareModal.jsx';
+import SettingsModal from '../components/SettingsModal.jsx';
 import CollaboratorBadge from '../components/CollaboratorBadge.jsx';
 import MobileSidebar from '../components/MobileSidebar.jsx';
 import MobileHeader from '../components/MobileHeader.jsx';
@@ -192,6 +195,10 @@ export function MainApp({ user, onSignOut }) {
   const [collabCounts, setCollabCounts] = useState({});
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareModalPageId, setShareModalPageId] = useState(null);
+
+  // Settings state
+  const { settings } = useSettings();
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Navigation state
   const [currentPage, setCurrentPage] = useState(null);
@@ -302,6 +309,21 @@ export function MainApp({ user, onSignOut }) {
     };
     load();
   }, []);
+
+  // Apply theme settings when they change
+  useEffect(() => {
+    if (settings) {
+      const theme = getTheme(settings.theme, settings.accentColor, settings.customAccentColor);
+      applyTheme(theme);
+      applyFontSize(settings.fontSize);
+      applyChatStyling(
+        settings.chatFontSize,
+        settings.chatTextColor,
+        settings.chatBackgroundColor,
+        theme
+      );
+    }
+  }, [settings]);
 
   // Save data on changes
   useEffect(() => {
@@ -1040,6 +1062,21 @@ export function MainApp({ user, onSignOut }) {
             plan: result.plan
           });
           // Plan panel will show on right side for review
+          break;
+
+        case 'step_revision':
+          // Agent revised a single step in the existing plan
+          if (planState.isInPlanMode && planState.plan) {
+            planState.updateGroup(result.stepIndex, result.revisedGroup);
+            // Reset the group status back to pending so user can re-approve
+            planState.resetGroup(result.stepIndex);
+            // Navigate to the revised step so user can review
+            planState.goToGroup(result.stepIndex);
+            chatState.addAgentMessage(result.message, 'text_response');
+          } else {
+            // No active plan - show error
+            chatState.addAgentMessage('No active plan to revise.', 'error');
+          }
           break;
 
         case 'error':
@@ -3159,7 +3196,7 @@ export function MainApp({ user, onSignOut }) {
           position={contextMenuPosition}
           onClose={() => setContextMenu(null)}
           items={[
-            { label: 'Settings', icon: Settings, action: () => {} },
+            { label: 'Settings', icon: Settings, action: () => { setContextMenu(null); setShowSettingsModal(true); } },
             { label: 'Sign out', icon: LogOut, action: onSignOut },
           ]}
         />
@@ -3170,7 +3207,7 @@ export function MainApp({ user, onSignOut }) {
           position={contextMenuPosition}
           onClose={() => setContextMenu(null)}
           items={[
-            { label: 'Settings', icon: Settings, action: () => {} },
+            { label: 'Settings', icon: Settings, action: () => { setContextMenu(null); setShowSettingsModal(true); } },
             { label: 'Sign out', icon: LogOut, action: onSignOut },
           ]}
         />
@@ -3412,6 +3449,16 @@ export function MainApp({ user, onSignOut }) {
             setShowShareModal(false);
             setShareModalPageId(null);
           }}
+        />
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          pages={allPages}
+          user={user}
         />
       )}
 

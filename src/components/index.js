@@ -21,3 +21,6 @@ export { default as PlanModeInterface } from './PlanModeInterface.jsx';
 
 // Chat Components
 export { default as ChatPanel } from './ChatPanel.jsx';
+
+// Settings Components
+export { default as SettingsModal } from './SettingsModal.jsx';

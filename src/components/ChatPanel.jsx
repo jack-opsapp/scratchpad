@@ -485,14 +485,17 @@ const ChatPanel = forwardRef(function ChatPanel({
       onUserResponse(`revise: ${reviseInput.trim()}`, pendingMessageIndex);
     }
 
+    // Reset revise mode and button selection
     setReviseMode(false);
     setReviseInput('');
+    setSelectedButtonIndex(0); // Reset to first button (Approve)
   };
 
   // Handle canceling revise mode
   const handleReviseCancel = () => {
     setReviseMode(false);
     setReviseInput('');
+    setSelectedButtonIndex(0); // Reset to first button
   };
 
   // Handle keydown in revise input
@@ -849,10 +852,10 @@ const ChatPanel = forwardRef(function ChatPanel({
             <div key={i} style={{ marginBottom: 10 }}>
               {msg.role === 'user' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <span style={{ color: colors.textMuted, fontSize: 11, flexShrink: 0 }}>→</span>
+                  <span style={{ color: 'var(--chat-text-color, ' + colors.textMuted + ')', fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
                   <p style={{
-                    color: colors.textPrimary,
-                    fontSize: 13,
+                    color: 'var(--chat-text-color, ' + colors.textPrimary + ')',
+                    fontSize: 'var(--chat-font-message, 13px)',
                     margin: 0,
                     lineHeight: 1.4
                   }}>
@@ -1168,8 +1171,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
-                  color: colors.textPrimary,
-                  fontSize: isMobile ? 16 : 13, // 16px prevents iOS zoom
+                  color: 'var(--chat-text-color, ' + colors.textPrimary + ')',
+                  fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)', // 16px prevents iOS zoom on mobile
                   outline: 'none'
                 }}
               />

@@ -5,10 +5,59 @@
 
 import { functionDefinitions } from './agentDefinitions.js';
 import { executeFunction } from './agentFunctions.js';
+import { createClient } from '@supabase/supabase-js';
 
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4o-2024-11-20';
 const MAX_ITERATIONS = 10;
+
+// Supabase client for fetching user settings
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// =============================================================================
+// Personality Prompts
+// =============================================================================
+
+const PERSONALITY_PROMPTS = {
+  tactical: `PERSONALITY: Tactical - Maximum efficiency.
+STYLE: Military brevity. 2-5 words when possible. No explanations.
+TONE: 70% Jocko Willink discipline, 30% defense contractor precision.
+
+RESPONSE EXAMPLES:
+- Note created: "✓ Added." or "✓ Logged."
+- Showing notes: "Showing 8 notes."
+- Bulk operation: "Mark 37 complete?"
+- Error: "Failed."
+- Navigation: "Now on Marketing."
+
+NO explanations. NO elaboration. NO pleasantries. Pure efficiency.`,
+
+  balanced: `PERSONALITY: Balanced - Professional with context.
+STYLE: Medium-length responses. Include key details (section, tags, dates).
+TONE: Efficient professional. 10-20 words typical.
+
+RESPONSE EXAMPLES:
+- Note created: "✓ Added to Marketing, tagged 'campaign', due Feb 1."
+- Showing notes: "Showing 8 website notes in List view."
+- Bulk operation: "Mark 37 website notes complete?"
+- Error: "Failed to create note - invalid section."
+- Navigation: "Now viewing Marketing/Tasks."
+
+Include essential context. Skip unnecessary explanation. Stay focused.`,
+
+  conversational: `PERSONALITY: Conversational - Comprehensive and helpful.
+STYLE: Full explanations with reasoning and context. 30-80 words typical.
+TONE: Helpful AI assistant. Guide users through everything.
+
+RESPONSE EXAMPLES:
+- Note created: "I've created a note in your Marketing section with the content you specified. I've automatically tagged it with 'campaign' and set the due date for February 1st based on your request. This note will now appear in your default List view, sorted by creation date."
+- Showing notes: "I'm now displaying 8 notes from the Website section. These are filtered by the 'website' tag and sorted by newest first."
+- Bulk operation: "You currently have 37 notes tagged with 'website'. Would you like me to mark all of them as complete? This will move them to your completed list."
+- Error: "I wasn't able to create the note because the section you specified doesn't exist. Would you like me to create the section first?"
+
+Provide full explanations. Guide users. Offer alternatives. Be thorough.`
+};
 
 const SYSTEM_PROMPT = `You are Scratchpad's agent. Direct. Efficient. No fluff.
 
@@ -113,6 +162,18 @@ OK to execute directly (no plan needed):
 WRONG: create_page("Test") then create_section("A") then create_section("B")
 RIGHT: propose_plan({ summary: "Create Test with A, B", groups: [...] })
 
+STEP REVISIONS (CRITICAL):
+When user requests to "revise step X" with feedback:
+- Use revise_plan_step() to update ONLY that specific step
+- DO NOT call propose_plan() again - that replaces the entire plan
+- The user's message will be like: "Revise step 2 "Add Sections": change section names to X and Y"
+- Extract the step number (0-indexed: step 1 = index 0, step 2 = index 1)
+- Apply the user's requested changes to that step only
+- Call revise_plan_step(step_index, revised_group, message)
+
+WRONG for revisions: propose_plan() with full new plan
+RIGHT for revisions: revise_plan_step(step_index: 1, revised_group: {...})
+
 Execute. Report. Done.`;
 
 export default async function handler(req, res) {
@@ -141,6 +202,29 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing message or userId' });
     }
 
+    // Fetch user's AI response style preference
+    let responseStyle = 'tactical'; // Default
+    if (supabaseUrl && supabaseServiceKey) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('ai_response_style')
+          .eq('user_id', userId)
+          .single();
+
+        if (settings?.ai_response_style) {
+          responseStyle = settings.ai_response_style;
+        }
+      } catch (e) {
+        console.log('Could not fetch user settings, using default style:', e.message);
+      }
+    }
+
+    // Build personality-aware system prompt
+    const personalityPrompt = PERSONALITY_PROMPTS[responseStyle] || PERSONALITY_PROMPTS.tactical;
+    const fullSystemPrompt = `${personalityPrompt}\n\n${SYSTEM_PROMPT}`;
+
     // Build context string for the agent
     let contextInfo = '';
     if (context?.currentPage || context?.currentSection) {
@@ -152,7 +236,7 @@ export default async function handler(req, res) {
 
     // Build messages array
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + contextInfo },
+      { role: 'system', content: fullSystemPrompt + contextInfo },
       ...conversationHistory.slice(-10), // Keep last 10 messages for context
       { role: 'user', content: message }
     ];
@@ -294,6 +378,29 @@ export default async function handler(req, res) {
               totalGroups: planGroups.length,
               totalActions: totalActions
             },
+            actions: frontendActions
+          };
+          break;
+        }
+
+        if (functionName === 'revise_plan_step') {
+          // Transform the revised group to frontend format
+          const revisedGroup = {
+            id: `group-${args.step_index}`,
+            title: args.revised_group.title,
+            description: args.revised_group.description,
+            actions: args.revised_group.operations.map((op, opIdx) => ({
+              id: `action-${args.step_index}-${opIdx}`,
+              type: op.type,
+              ...op.params
+            }))
+          };
+
+          finalResponse = {
+            type: 'step_revision',
+            stepIndex: args.step_index,
+            revisedGroup: revisedGroup,
+            message: args.message || `Step ${args.step_index + 1} revised.`,
             actions: frontendActions
           };
           break;

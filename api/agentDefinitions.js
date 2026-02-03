@@ -525,5 +525,49 @@ EXAMPLE:
         required: ['summary', 'groups']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'revise_plan_step',
+      description: `Revise a single step in an existing plan. Use this when the user requests changes to a specific step.
+DO NOT use propose_plan for revisions - use this instead to update just the step being revised.
+
+PARAM FORMATS (same as propose_plan):
+- create_page: { name: "Page Name" }
+- create_section: { name: "Section Name", pageName: "Page Name" }
+- create_note: { content: "Note text", sectionName: "Section", tags: ["tag1"] }`,
+      parameters: {
+        type: 'object',
+        properties: {
+          step_index: { type: 'number', description: 'The 0-based index of the step to revise' },
+          revised_group: {
+            type: 'object',
+            description: 'The revised group definition',
+            properties: {
+              title: { type: 'string', description: 'Short title for this group' },
+              description: { type: 'string', description: 'What this group will do' },
+              operations: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    type: {
+                      type: 'string',
+                      enum: ['create_page', 'create_section', 'create_note', 'delete_note', 'delete_section', 'delete_page', 'bulk_add_tag', 'bulk_remove_tag', 'bulk_move_to_section', 'bulk_mark_complete']
+                    },
+                    params: { type: 'object', description: 'Operation parameters' }
+                  },
+                  required: ['type', 'params']
+                }
+              }
+            },
+            required: ['title', 'description', 'operations']
+          },
+          message: { type: 'string', description: 'Brief message about the revision' }
+        },
+        required: ['step_index', 'revised_group']
+      }
+    }
   }
 ];
