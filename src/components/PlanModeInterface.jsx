@@ -6,16 +6,19 @@ export default function PlanModeInterface({
   plan,
   currentGroupIndex,
   results,
+  skippedGroups = [],
   currentConfirmation,
   onYes,
   onRevise,
   onSkip,
   onCancel,
+  onGoToGroup,
   executing
 }) {
   if (!plan) return null;
 
-  const completedCount = results.length;
+  const completedCount = results.filter(r => r).length;
+  const skippedCount = skippedGroups.length;
   const totalGroups = plan.totalGroups;
   const isComplete = currentGroupIndex >= totalGroups;
 
@@ -66,19 +69,25 @@ export default function PlanModeInterface({
       {/* Progress List */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
         {plan.groups.map((group, index) => {
-          const isCompleted = index < currentGroupIndex;
+          const isCompleted = index < currentGroupIndex && !skippedGroups.includes(index);
           const isCurrent = index === currentGroupIndex;
+          const isSkipped = skippedGroups.includes(index);
+          const isPast = index < currentGroupIndex;
           const result = results[index];
+          const canClick = isPast && !isCurrent && onGoToGroup;
 
           return (
             <div
               key={group.id}
+              onClick={() => canClick && onGoToGroup(index)}
               style={{
                 marginBottom: 12,
                 padding: '12px 14px',
                 background: isCurrent ? colors.bg : 'transparent',
                 border: `1px solid ${isCurrent ? colors.primary : colors.border}`,
-                position: 'relative'
+                position: 'relative',
+                opacity: isSkipped ? 0.5 : 1,
+                cursor: canClick ? 'pointer' : 'default'
               }}
             >
               {/* Status Icon */}
@@ -90,25 +99,51 @@ export default function PlanModeInterface({
                 width: 16,
                 height: 16,
                 borderRadius: '50%',
-                background: isCompleted ? '#4CAF50' : colors.surface,
-                border: `2px solid ${isCompleted ? '#4CAF50' : colors.border}`,
+                background: isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : colors.surface,
+                border: `2px solid ${isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : colors.border}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
                 {isCompleted && <Check size={10} color={colors.bg} strokeWidth={3} />}
+                {isSkipped && <SkipForward size={8} color={colors.bg} />}
               </div>
 
               {/* Group Info */}
-              <p style={{
-                color: isCurrent ? colors.primary : isCompleted ? colors.textMuted : colors.textPrimary,
-                fontSize: 12,
-                fontWeight: isCurrent ? 600 : 400,
-                margin: 0,
-                lineHeight: 1.4
-              }}>
-                {index + 1}. {group.description}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <p style={{
+                  color: isCurrent ? colors.primary : isCompleted ? colors.textMuted : isSkipped ? colors.textMuted : colors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: isCurrent ? 600 : 400,
+                  margin: 0,
+                  lineHeight: 1.4,
+                  textDecoration: isSkipped ? 'line-through' : 'none'
+                }}>
+                  {index + 1}. {group.description}
+                </p>
+                {isSkipped && (
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: colors.textMuted,
+                    background: colors.border,
+                    padding: '2px 6px',
+                    letterSpacing: 0.5
+                  }}>
+                    SKIPPED
+                  </span>
+                )}
+              </div>
+              {canClick && (
+                <p style={{
+                  color: colors.primary,
+                  fontSize: 10,
+                  margin: '2px 0 0 0',
+                  opacity: 0.7
+                }}>
+                  Click to revise
+                </p>
+              )}
 
               {/* Action Count */}
               <p style={{
