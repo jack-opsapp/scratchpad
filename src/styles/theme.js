@@ -20,6 +20,7 @@ export const colors = {
 
   // Text
   textPrimary: '#ffffff',
+  textSecondary: '#cccccc',  // Brighter than muted, for agent responses
   textMuted: '#888888',
 
   // Semantic

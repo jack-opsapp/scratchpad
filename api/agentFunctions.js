@@ -1,0 +1,702 @@
+/**
+ * Server-side function implementations for Scratchpad Agent
+ * Each function queries or modifies Supabase
+ */
+
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client (called per-request for serverless)
+function getSupabase() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    throw new Error('Supabase not configured');
+  }
+
+  return createClient(url, key);
+}
+
+/**
+ * Main function executor - routes to specific implementations
+ */
+export async function executeFunction(name, args, userId) {
+  let supabase;
+  try {
+    supabase = getSupabase();
+  } catch (err) {
+    console.error('Failed to initialize Supabase:', err);
+    return { error: 'Database connection failed: ' + err.message };
+  }
+
+  try {
+    switch (name) {
+      // Data Queries
+      case 'get_pages':
+        return await getPages(supabase, userId);
+      case 'get_sections':
+        return await getSections(supabase, userId, args);
+      case 'get_notes':
+        return await getNotes(supabase, userId, args);
+      case 'count_notes':
+        return await countNotes(supabase, userId, args);
+
+      // Page Operations
+      case 'create_page':
+        return await createPage(supabase, userId, args);
+      case 'rename_page':
+        return await renamePage(supabase, userId, args);
+      case 'delete_page':
+        return await deletePage(supabase, userId, args);
+
+      // Section Operations
+      case 'create_section':
+        return await createSection(supabase, userId, args);
+      case 'rename_section':
+        return await renameSection(supabase, userId, args);
+      case 'delete_section':
+        return await deleteSection(supabase, userId, args);
+      case 'move_section':
+        return await moveSection(supabase, userId, args);
+
+      // Note Operations
+      case 'create_note':
+        return await createNote(supabase, userId, args);
+      case 'update_note':
+        return await updateNote(supabase, userId, args);
+      case 'delete_note':
+        return await deleteNote(supabase, userId, args);
+      case 'move_note':
+        return await moveNote(supabase, userId, args);
+
+      // Bulk Operations
+      case 'bulk_update_notes':
+        return await bulkUpdateNotes(supabase, userId, args);
+      case 'bulk_delete_notes':
+        return await bulkDeleteNotes(supabase, userId, args);
+
+      default:
+        return { error: `Unknown function: ${name}` };
+    }
+  } catch (error) {
+    console.error(`Function ${name} error:`, error);
+    return {
+      error: error.message,
+      function: name,
+      details: error.code || error.hint || 'Unknown error'
+    };
+  }
+}
+
+// ============ HELPER FUNCTIONS ============
+
+async function resolvePageId(supabase, userId, { page_id, page_name }) {
+  if (page_id) return page_id;
+  if (!page_name) return null;
+
+  const { data } = await supabase
+    .from('pages')
+    .select('id')
+    .eq('user_id', userId)
+    .ilike('name', page_name)
+    .single();
+
+  return data?.id;
+}
+
+async function resolveSectionId(supabase, userId, { section_id, section_name, page_name }) {
+  if (section_id) return section_id;
+  if (!section_name) return null;
+
+  // Get user's page IDs first
+  const { data: pages } = await supabase
+    .from('pages')
+    .select('id')
+    .eq('user_id', userId);
+
+  if (!pages?.length) return null;
+
+  let query = supabase
+    .from('sections')
+    .select('id, page_id')
+    .in('page_id', pages.map(p => p.id))
+    .ilike('name', section_name);
+
+  // If page_name provided, filter further
+  if (page_name) {
+    const pageId = await resolvePageId(supabase, userId, { page_name });
+    if (pageId) {
+      query = query.eq('page_id', pageId);
+    }
+  }
+
+  const { data } = await query.limit(1).single();
+  return data?.id;
+}
+
+async function getUserPageIds(supabase, userId) {
+  console.log('getUserPageIds called with userId:', userId);
+  const { data: pages, error } = await supabase
+    .from('pages')
+    .select('id')
+    .eq('user_id', userId);
+
+  console.log('getUserPageIds result:', { pages, error, count: pages?.length });
+  return pages?.map(p => p.id) || [];
+}
+
+async function getUserSectionIds(supabase, userId, pageIds = null) {
+  if (!pageIds) {
+    pageIds = await getUserPageIds(supabase, userId);
+  }
+  console.log('getUserSectionIds pageIds:', pageIds);
+  if (!pageIds.length) return [];
+
+  const { data: sections, error } = await supabase
+    .from('sections')
+    .select('id')
+    .in('page_id', pageIds);
+
+  console.log('getUserSectionIds result:', { sections, error, count: sections?.length });
+  return sections?.map(s => s.id) || [];
+}
+
+// ============ DATA QUERIES ============
+
+async function getPages(supabase, userId) {
+  console.log('getPages called with userId:', userId);
+
+  const { data, error } = await supabase
+    .from('pages')
+    .select('id, name, starred')
+    .eq('user_id', userId)
+    .order('position');
+
+  console.log('getPages result:', { data, error, count: data?.length });
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function getSections(supabase, userId, args) {
+  const pageIds = await getUserPageIds(supabase, userId);
+  if (!pageIds.length) return [];
+
+  let query = supabase
+    .from('sections')
+    .select('id, name, page_id, pages(name)')
+    .in('page_id', pageIds)
+    .order('position');
+
+  if (args.page_id) {
+    query = query.eq('page_id', args.page_id);
+  } else if (args.page_name) {
+    const pageId = await resolvePageId(supabase, userId, { page_name: args.page_name });
+    if (pageId) {
+      query = query.eq('page_id', pageId);
+    }
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data || []).map(s => ({
+    id: s.id,
+    name: s.name,
+    page_id: s.page_id,
+    page_name: s.pages?.name
+  }));
+}
+
+async function getNotes(supabase, userId, args) {
+  console.log('getNotes called with userId:', userId, 'args:', JSON.stringify(args));
+
+  // First get user's pages
+  const { data: pages, error: pagesErr } = await supabase
+    .from('pages')
+    .select('id')
+    .eq('user_id', userId);
+
+  console.log('getNotes pages:', pages?.length, 'error:', pagesErr?.message);
+  if (pagesErr) throw pagesErr;
+  if (!pages?.length) return [];
+
+  // Then get sections for those pages
+  const pageIds = pages.map(p => p.id);
+  const { data: sections, error: sectionsErr } = await supabase
+    .from('sections')
+    .select('id')
+    .in('page_id', pageIds);
+
+  console.log('getNotes sections:', sections?.length, 'error:', sectionsErr?.message);
+  if (sectionsErr) throw sectionsErr;
+  if (!sections?.length) return [];
+
+  const sectionIds = sections.map(s => s.id);
+
+  // Now get notes - simplified query first
+  let query = supabase
+    .from('notes')
+    .select('id, content, tags, date, completed, created_at, section_id')
+    .in('section_id', sectionIds)
+    .order('created_at', { ascending: false })
+    .limit(args.limit || 50);
+
+  // Apply filters
+  if (args.section_id) {
+    query = query.eq('section_id', args.section_id);
+  } else if (args.section_name) {
+    const sectionId = await resolveSectionId(supabase, userId, {
+      section_name: args.section_name,
+      page_name: args.page_name
+    });
+    if (sectionId) {
+      query = query.eq('section_id', sectionId);
+    }
+  } else if (args.page_name) {
+    const pageId = await resolvePageId(supabase, userId, { page_name: args.page_name });
+    if (pageId) {
+      const { data: sections } = await supabase
+        .from('sections')
+        .select('id')
+        .eq('page_id', pageId);
+      if (sections?.length) {
+        query = query.in('section_id', sections.map(s => s.id));
+      }
+    }
+  }
+
+  if (args.tags?.length) {
+    query = query.overlaps('tags', args.tags);
+  }
+
+  if (args.has_no_tags) {
+    query = query.or('tags.is.null,tags.eq.{}');
+  }
+
+  if (args.completed !== undefined) {
+    query = query.eq('completed', args.completed);
+  }
+
+  if (args.search) {
+    query = query.ilike('content', `%${args.search}%`);
+  }
+
+  const { data, error } = await query;
+  console.log('getNotes query result:', 'error:', error?.message, 'count:', data?.length);
+  if (error) {
+    console.error('getNotes error:', error);
+    throw error;
+  }
+
+  // Build section/page name lookup
+  const sectionMap = {};
+  for (const section of sections) {
+    sectionMap[section.id] = section;
+  }
+
+  return (data || []).map(note => ({
+    id: note.id,
+    content: note.content,
+    tags: note.tags || [],
+    date: note.date,
+    completed: note.completed,
+    section_id: note.section_id
+  }));
+}
+
+async function countNotes(supabase, userId, args) {
+  const sectionIds = await getUserSectionIds(supabase, userId);
+  if (!sectionIds.length) return { count: 0 };
+
+  let query = supabase
+    .from('notes')
+    .select('id', { count: 'exact', head: true })
+    .in('section_id', sectionIds);
+
+  // Apply same filters as getNotes
+  if (args.section_id) {
+    query = query.eq('section_id', args.section_id);
+  } else if (args.section_name) {
+    const sectionId = await resolveSectionId(supabase, userId, {
+      section_name: args.section_name,
+      page_name: args.page_name
+    });
+    if (sectionId) {
+      query = query.eq('section_id', sectionId);
+    }
+  }
+
+  if (args.tags?.length) {
+    query = query.overlaps('tags', args.tags);
+  }
+
+  if (args.has_no_tags) {
+    query = query.or('tags.is.null,tags.eq.{}');
+  }
+
+  if (args.completed !== undefined) {
+    query = query.eq('completed', args.completed);
+  }
+
+  if (args.search) {
+    query = query.ilike('content', `%${args.search}%`);
+  }
+
+  const { count, error } = await query;
+  if (error) throw error;
+
+  return { count: count || 0 };
+}
+
+// ============ PAGE OPERATIONS ============
+
+async function createPage(supabase, userId, args) {
+  // Get max position
+  const { data: existing } = await supabase
+    .from('pages')
+    .select('position')
+    .eq('user_id', userId)
+    .order('position', { ascending: false })
+    .limit(1);
+
+  const position = (existing?.[0]?.position ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from('pages')
+    .insert({ name: args.name, user_id: userId, position })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return { id: data.id, name: data.name };
+}
+
+async function renamePage(supabase, userId, args) {
+  const pageId = await resolvePageId(supabase, userId, args);
+  if (!pageId) return { error: 'Page not found' };
+
+  const { error } = await supabase
+    .from('pages')
+    .update({ name: args.new_name })
+    .eq('id', pageId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+async function deletePage(supabase, userId, args) {
+  const pageId = await resolvePageId(supabase, userId, args);
+  if (!pageId) return { error: 'Page not found' };
+
+  // Delete cascades to sections and notes via FK
+  const { error } = await supabase
+    .from('pages')
+    .delete()
+    .eq('id', pageId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+// ============ SECTION OPERATIONS ============
+
+async function createSection(supabase, userId, args) {
+  const pageId = await resolvePageId(supabase, userId, {
+    page_id: args.page_id,
+    page_name: args.page_name
+  });
+  if (!pageId) return { error: 'Page not found' };
+
+  // Get max position
+  const { data: existing } = await supabase
+    .from('sections')
+    .select('position')
+    .eq('page_id', pageId)
+    .order('position', { ascending: false })
+    .limit(1);
+
+  const position = (existing?.[0]?.position ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from('sections')
+    .insert({ name: args.name, page_id: pageId, position })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return { id: data.id, name: data.name, page_id: pageId };
+}
+
+async function renameSection(supabase, userId, args) {
+  const sectionId = await resolveSectionId(supabase, userId, args);
+  if (!sectionId) return { error: 'Section not found' };
+
+  const { error } = await supabase
+    .from('sections')
+    .update({ name: args.new_name })
+    .eq('id', sectionId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+async function deleteSection(supabase, userId, args) {
+  const sectionId = await resolveSectionId(supabase, userId, args);
+  if (!sectionId) return { error: 'Section not found' };
+
+  // Delete cascades to notes via FK
+  const { error } = await supabase
+    .from('sections')
+    .delete()
+    .eq('id', sectionId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+async function moveSection(supabase, userId, args) {
+  const sectionId = await resolveSectionId(supabase, userId, args);
+  if (!sectionId) return { error: 'Section not found' };
+
+  const toPageId = await resolvePageId(supabase, userId, {
+    page_id: args.to_page_id,
+    page_name: args.to_page_name
+  });
+  if (!toPageId) return { error: 'Destination page not found' };
+
+  const { error } = await supabase
+    .from('sections')
+    .update({ page_id: toPageId })
+    .eq('id', sectionId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+// ============ NOTE OPERATIONS ============
+
+async function createNote(supabase, userId, args) {
+  const sectionId = await resolveSectionId(supabase, userId, {
+    section_id: args.section_id,
+    section_name: args.section_name,
+    page_name: args.page_name
+  });
+  if (!sectionId) return { error: 'Section not found' };
+
+  const noteData = {
+    content: args.content,
+    section_id: sectionId,
+    tags: args.tags || [],
+    date: args.date || null,
+    completed: false
+  };
+
+  const { data, error } = await supabase
+    .from('notes')
+    .insert(noteData)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return { id: data.id, content: data.content };
+}
+
+async function updateNote(supabase, userId, args) {
+  // Verify note belongs to user
+  const sectionIds = await getUserSectionIds(supabase, userId);
+
+  const { data: note } = await supabase
+    .from('notes')
+    .select('id, tags, section_id')
+    .eq('id', args.note_id)
+    .in('section_id', sectionIds)
+    .single();
+
+  if (!note) return { error: 'Note not found' };
+
+  const updates = {};
+
+  if (args.content !== undefined) updates.content = args.content;
+  if (args.date !== undefined) updates.date = args.date;
+  if (args.completed !== undefined) updates.completed = args.completed;
+
+  // Handle tags
+  if (args.tags !== undefined) {
+    updates.tags = args.tags;
+  } else if (args.add_tags || args.remove_tags) {
+    let newTags = [...(note.tags || [])];
+    if (args.add_tags) {
+      newTags = [...new Set([...newTags, ...args.add_tags])];
+    }
+    if (args.remove_tags) {
+      newTags = newTags.filter(t => !args.remove_tags.includes(t));
+    }
+    updates.tags = newTags;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { success: true, message: 'No updates to apply' };
+  }
+
+  const { error } = await supabase
+    .from('notes')
+    .update(updates)
+    .eq('id', args.note_id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+async function deleteNote(supabase, userId, args) {
+  const sectionIds = await getUserSectionIds(supabase, userId);
+
+  const { error } = await supabase
+    .from('notes')
+    .delete()
+    .eq('id', args.note_id)
+    .in('section_id', sectionIds);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+async function moveNote(supabase, userId, args) {
+  const sectionIds = await getUserSectionIds(supabase, userId);
+
+  // Verify note exists and belongs to user
+  const { data: note } = await supabase
+    .from('notes')
+    .select('id')
+    .eq('id', args.note_id)
+    .in('section_id', sectionIds)
+    .single();
+
+  if (!note) return { error: 'Note not found' };
+
+  const toSectionId = await resolveSectionId(supabase, userId, {
+    section_id: args.to_section_id,
+    section_name: args.to_section_name,
+    page_name: args.to_page_name
+  });
+  if (!toSectionId) return { error: 'Destination section not found' };
+
+  const { error } = await supabase
+    .from('notes')
+    .update({ section_id: toSectionId })
+    .eq('id', args.note_id);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+// ============ BULK OPERATIONS ============
+
+async function bulkUpdateNotes(supabase, userId, args) {
+  const { filter, updates } = args;
+
+  // Get notes matching filter
+  const notes = await getNotes(supabase, userId, { ...filter, limit: 1000 });
+
+  if (!notes.length) {
+    return { updated_count: 0, message: 'No notes matched the filter' };
+  }
+
+  // If specific note_ids provided, filter to those
+  let noteIds = notes.map(n => n.id);
+  if (filter.note_ids?.length) {
+    noteIds = noteIds.filter(id => filter.note_ids.includes(id));
+  }
+
+  if (!noteIds.length) {
+    return { updated_count: 0, message: 'No notes matched the filter' };
+  }
+
+  // Build update object
+  const updateObj = {};
+
+  if (updates.completed !== undefined) {
+    updateObj.completed = updates.completed;
+  }
+
+  if (updates.set_tags !== undefined) {
+    updateObj.tags = updates.set_tags;
+  }
+
+  // Handle move
+  if (updates.move_to_section_id || updates.move_to_section_name) {
+    const toSectionId = await resolveSectionId(supabase, userId, {
+      section_id: updates.move_to_section_id,
+      section_name: updates.move_to_section_name
+    });
+    if (toSectionId) {
+      updateObj.section_id = toSectionId;
+    }
+  }
+
+  // For add_tags/remove_tags, we need to update each note individually
+  if (updates.add_tags || updates.remove_tags) {
+    let updatedCount = 0;
+
+    for (const note of notes) {
+      if (!noteIds.includes(note.id)) continue;
+
+      let newTags = [...(note.tags || [])];
+      if (updates.add_tags) {
+        newTags = [...new Set([...newTags, ...updates.add_tags])];
+      }
+      if (updates.remove_tags) {
+        newTags = newTags.filter(t => !updates.remove_tags.includes(t));
+      }
+
+      const noteUpdate = { ...updateObj, tags: newTags };
+
+      const { error } = await supabase
+        .from('notes')
+        .update(noteUpdate)
+        .eq('id', note.id);
+
+      if (!error) updatedCount++;
+    }
+
+    return { updated_count: updatedCount };
+  }
+
+  // Bulk update if no tag manipulation needed
+  if (Object.keys(updateObj).length > 0) {
+    const { error } = await supabase
+      .from('notes')
+      .update(updateObj)
+      .in('id', noteIds);
+
+    if (error) throw error;
+  }
+
+  return { updated_count: noteIds.length };
+}
+
+async function bulkDeleteNotes(supabase, userId, args) {
+  const { filter } = args;
+
+  // Get notes matching filter
+  const notes = await getNotes(supabase, userId, { ...filter, limit: 1000 });
+
+  if (!notes.length) {
+    return { deleted_count: 0, message: 'No notes matched the filter' };
+  }
+
+  let noteIds = notes.map(n => n.id);
+  if (filter.note_ids?.length) {
+    noteIds = noteIds.filter(id => filter.note_ids.includes(id));
+  }
+
+  const { error } = await supabase
+    .from('notes')
+    .delete()
+    .in('id', noteIds);
+
+  if (error) throw error;
+  return { deleted_count: noteIds.length };
+}

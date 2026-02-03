@@ -4,16 +4,17 @@ import { colors } from '../styles/theme.js';
 import VoiceInput from './VoiceInput.jsx';
 import MarkdownText from './MarkdownText.jsx';
 
-const INPUT_ONLY_HEIGHT = 56;
-const COLLAPSED_HEIGHT = 60;
+const INPUT_ONLY_HEIGHT = 76; // Just input with padding (input ~40px + padding 20px + border 2px + breathing room)
+const COLLAPSED_HEIGHT = 110; // Input + collapsed indicator bar when there are messages
 const AUTO_EXPAND_HEIGHT = 180;
 const MAX_HEIGHT = 600;
-const SNAP_THRESHOLD = 20;
+const SNAP_THRESHOLD = 40; // Larger threshold for easier snapping
 
-// Mobile-specific heights - minimum shows input bar only (no collapsed state)
-const MOBILE_MIN_HEIGHT = 100; // Just drag handle + input area
+// Mobile-specific heights
+const MOBILE_MIN_HEIGHT = 76; // Just input area
 const MOBILE_HEIGHTS = {
-  inputOnly: 100,  // Minimum - just input bar visible
+  inputOnly: 76,   // Minimum - just input bar visible (no messages)
+  collapsed: 110,  // Input + expand bar when there are messages
   small: 250,      // Input + some messages
   medium: 400,
   large: typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.8) : 600
@@ -31,7 +32,8 @@ const ChatPanel = forwardRef(function ChatPanel({
   onViewClick,
   onNavigate,
   planState,
-  onGoToGroup,
+  onExecutePlan,
+  onCancelPlan,
   sidebarWidth = 240,
   isMobile = false,
   isOnline = true
@@ -51,6 +53,8 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [planVersion, setPlanVersion] = useState(0); // Tracks plan changes for forcing re-render
   const [reviseMode, setReviseMode] = useState(false); // When true, show revision text input
   const [reviseInput, setReviseInput] = useState('');
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [audioWaveform, setAudioWaveform] = useState([]);
   const planContainerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -67,8 +71,40 @@ const ChatPanel = forwardRef(function ChatPanel({
   );
   const pendingMessageIndex = pendingMessage ? messages.indexOf(pendingMessage) : -1;
 
-  // Get action buttons based on pending message type
+  // Get action buttons based on pending message type or plan state
   const getActionButtons = () => {
+    // Plan mode buttons take priority
+    if (planState?.isReviewing) {
+      const currentStatus = planState.groupStatuses?.[planState.currentGroupIndex];
+      const allDecided = planState.allGroupsDecided?.();
+      const counts = planState.getCounts?.() || { approved: 0 };
+
+      if (allDecided && counts.approved > 0) {
+        // All groups decided - show Execute button
+        return [
+          { label: `Execute (${counts.approved})`, value: 'execute', primary: true },
+          { label: 'Review', value: 'review' },
+          { label: 'Cancel', value: 'cancel' }
+        ];
+      } else if (currentStatus === 'pending') {
+        // Current step needs decision
+        return [
+          { label: 'Approve', value: 'approve', primary: true },
+          { label: 'Revise', value: 'revise' },
+          { label: 'Skip', value: 'skip' },
+          { label: 'Cancel', value: 'cancel' }
+        ];
+      } else {
+        // Current step already decided - allow changing or moving on
+        return [
+          { label: 'Change', value: 'change' },
+          { label: 'Revise', value: 'revise' },
+          { label: currentStatus === 'approved' ? 'Approved' : 'Skipped', value: 'status', disabled: true },
+          { label: 'Cancel', value: 'cancel' }
+        ];
+      }
+    }
+
     if (!pendingMessage) return [];
 
     switch (pendingMessage.type) {
@@ -82,13 +118,6 @@ const ChatPanel = forwardRef(function ChatPanel({
           label: opt.label,
           value: opt.value
         })) || [];
-      case 'group_confirmation':
-        return [
-          { label: 'Yes', value: 'yes', primary: true },
-          { label: 'Revise', value: 'revise' },
-          { label: 'Skip', value: 'skip' },
-          { label: 'Cancel', value: 'cancel' }
-        ];
       default:
         return [];
     }
@@ -96,10 +125,43 @@ const ChatPanel = forwardRef(function ChatPanel({
 
   const actionButtons = getActionButtons();
 
-  // Get completion status from planState (not messages, which persist across sessions)
-  const completedSteps = planState?.isInPlanMode ? (planState.results?.length || 0) : 0;
+  // Handle plan mode button clicks
+  const handlePlanAction = (action) => {
+    if (!planState) return;
+
+    switch (action) {
+      case 'approve':
+        planState.approveAndNext();
+        break;
+      case 'skip':
+        planState.skipAndNext();
+        break;
+      case 'change':
+        planState.resetGroup(planState.currentGroupIndex);
+        break;
+      case 'revise':
+        // Enter revise mode - show text input
+        setReviseMode(true);
+        setReviseInput('');
+        setTimeout(() => reviseInputRef.current?.focus(), 50);
+        break;
+      case 'execute':
+        onExecutePlan?.();
+        break;
+      case 'cancel':
+        onCancelPlan?.();
+        break;
+      case 'review':
+        // Go back to first undecided or first group
+        planState.goToGroup(0);
+        break;
+    }
+  };
+
+  // Get status from planState
+  const planCounts = planState?.getCounts?.() || { approved: 0, skipped: 0, pending: 0, total: 0 };
   const totalSteps = planState?.plan?.totalGroups || 0;
-  const isPlanComplete = completedSteps >= totalSteps && totalSteps > 0;
+  const allDecided = planState?.allGroupsDecided?.() || false;
   const skippedGroups = planState?.skippedGroups || [];
 
   // Generate pixel grid based on container size
@@ -218,9 +280,11 @@ const ChatPanel = forwardRef(function ChatPanel({
     }
   }, [planState?.plan]);
 
-  // Auto-expand when plan mode is entered
+  // Auto-expand and show plan UI when plan mode is entered
   useEffect(() => {
     if (planState?.isInPlanMode && planState?.plan) {
+      // Show the plan UI
+      setPlanUIVisible(true);
       // Expand to show plan view
       const minPlanHeight = isMobile ? MOBILE_HEIGHTS.medium : 350;
       if (height < minPlanHeight) {
@@ -230,6 +294,9 @@ const ChatPanel = forwardRef(function ChatPanel({
       if (isMinimized) {
         setIsMinimized(false);
       }
+    } else if (!planState?.isInPlanMode) {
+      // Hide plan UI when not in plan mode
+      setPlanUIVisible(false);
     }
   }, [planState?.isInPlanMode, planState?.plan]);
 
@@ -258,25 +325,30 @@ const ChatPanel = forwardRef(function ChatPanel({
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const btn = actionButtons[selectedButtonIndex];
-        if (btn && pendingMessageIndex >= 0) {
-          // Handle revise specially - enter revise mode instead of sending
-          if (btn.value === 'revise') {
+        if (btn && !btn.disabled) {
+          if (planState?.isReviewing) {
+            handlePlanAction(btn.value);
+          } else if (btn.value === 'revise') {
             setReviseMode(true);
             setReviseInput('');
             setTimeout(() => reviseInputRef.current?.focus(), 50);
-          } else {
+          } else if (pendingMessageIndex >= 0) {
             onUserResponse(btn.value, pendingMessageIndex);
           }
         }
-      } else if (e.key === 'Escape' && pendingMessage?.type === 'group_confirmation') {
+      } else if (e.key === 'Escape') {
         e.preventDefault();
-        onUserResponse('cancel', pendingMessageIndex);
+        if (planState?.isReviewing) {
+          handlePlanAction('cancel');
+        } else if (pendingMessage?.type === 'group_confirmation') {
+          onUserResponse('cancel', pendingMessageIndex);
+        }
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [actionButtons, selectedButtonIndex, pendingMessageIndex, onUserResponse, pendingMessage?.type, reviseMode]);
+  }, [actionButtons, selectedButtonIndex, pendingMessageIndex, onUserResponse, pendingMessage?.type, reviseMode, planState?.isReviewing]);
 
   const handleDragStart = (e) => {
     setIsDragging(true);
@@ -290,7 +362,10 @@ const ChatPanel = forwardRef(function ChatPanel({
     const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
     const deltaY = dragStartY.current - clientY;
     const maxH = isMobile ? MOBILE_HEIGHTS.large : MAX_HEIGHT;
-    const minH = isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT;
+    // Minimum height depends on whether there are messages
+    const minH = messages.length > 0
+      ? (isMobile ? MOBILE_HEIGHTS.collapsed : COLLAPSED_HEIGHT)
+      : (isMobile ? MOBILE_HEIGHTS.inputOnly : INPUT_ONLY_HEIGHT);
     const newHeight = Math.max(minH, Math.min(maxH, dragStartHeight.current + deltaY));
     setHeight(newHeight);
   };
@@ -298,10 +373,15 @@ const ChatPanel = forwardRef(function ChatPanel({
   const handleDragEnd = () => {
     setIsDragging(false);
 
+    // Minimum snap point depends on whether there are messages
+    const minSnap = messages.length > 0
+      ? (isMobile ? MOBILE_HEIGHTS.collapsed : COLLAPSED_HEIGHT)
+      : (isMobile ? MOBILE_HEIGHTS.inputOnly : INPUT_ONLY_HEIGHT);
+
     if (isMobile) {
-      // Mobile snap points - no collapsed state, minimum is inputOnly
+      // Mobile snap points
       const snapPoints = [
-        MOBILE_HEIGHTS.inputOnly,
+        minSnap,
         MOBILE_HEIGHTS.small,
         MOBILE_HEIGHTS.medium,
         MOBILE_HEIGHTS.large
@@ -311,14 +391,13 @@ const ChatPanel = forwardRef(function ChatPanel({
       );
       setHeight(closest);
     } else {
-      // Desktop snap points
-      const snapPoints = [COLLAPSED_HEIGHT, AUTO_EXPAND_HEIGHT, 350, MAX_HEIGHT];
+      // Desktop snap points - always snap to nearest
+      const snapPoints = [minSnap, AUTO_EXPAND_HEIGHT, 350, MAX_HEIGHT];
       const closest = snapPoints.reduce((prev, curr) =>
         Math.abs(curr - height) < Math.abs(prev - height) ? curr : prev
       );
-      if (Math.abs(closest - height) < SNAP_THRESHOLD) {
-        setHeight(closest);
-      }
+      // Always snap to nearest point
+      setHeight(closest);
     }
   };
 
@@ -396,7 +475,16 @@ const ChatPanel = forwardRef(function ChatPanel({
   // Handle submitting revision notes
   const handleReviseSubmit = () => {
     if (!reviseInput.trim()) return;
-    onUserResponse(`revise: ${reviseInput.trim()}`, pendingMessageIndex);
+
+    if (planState?.isReviewing) {
+      // In plan mode, send revision request to agent
+      const currentGroup = planState.getCurrentGroup?.();
+      const revisionMessage = `Revise step ${planState.currentGroupIndex + 1} "${currentGroup?.title || currentGroup?.description}": ${reviseInput.trim()}`;
+      onSendMessage(revisionMessage);
+    } else {
+      onUserResponse(`revise: ${reviseInput.trim()}`, pendingMessageIndex);
+    }
+
     setReviseMode(false);
     setReviseInput('');
   };
@@ -434,26 +522,26 @@ const ChatPanel = forwardRef(function ChatPanel({
     <div
       style={{
         position: 'fixed',
-        bottom: isMobile ? 0 : 20,
-        left: isMobile ? 0 : sidebarWidth + 20,
-        right: isMobile ? 0 : 20,
+        bottom: isMobile ? 12 : 20,
+        left: isMobile ? 12 : sidebarWidth + 20,
+        right: isMobile ? 12 : 20,
         height: isMinimized ? INPUT_ONLY_HEIGHT : height,
-        background: 'rgba(20, 20, 20, 0.65)',
-        backdropFilter: 'blur(40px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-        border: isMobile ? 'none' : `1px solid rgba(255,255,255,0.08)`,
-        borderRadius: isMobile ? 0 : 12,
+        background: 'rgba(20, 20, 20, 0.45)',
+        backdropFilter: 'blur(24px) saturate(150%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+        border: `1px solid rgba(255,255,255,0.08)`,
+        borderRadius: 12,
         display: 'flex',
         flexDirection: 'column',
         transition: isDragging ? 'none' : 'all 0.3s ease',
         zIndex: 900,
         paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0,
-        boxShadow: isMobile ? 'none' : '0 8px 32px rgba(0,0,0,0.5)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         overflow: 'hidden'
       }}
     >
-      {/* Header with drag handle and minimize button */}
-      {!isMinimized && (
+      {/* Header with drag handle and minimize button - hide when collapsed or no messages */}
+      {!isMinimized && height > COLLAPSED_HEIGHT && messages.length > 0 && (
         <div
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
@@ -511,7 +599,7 @@ const ChatPanel = forwardRef(function ChatPanel({
       )}
 
       {/* Plan Mode UI */}
-      {planUIVisible && planState?.plan && height > (isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT) && (
+      {planUIVisible && planState?.plan && height > (isMobile ? MOBILE_HEIGHTS.collapsed : COLLAPSED_HEIGHT) && (
         <div
           ref={planContainerRef}
           className={`plan-container ${['completing', 'success', 'exiting', 'collapsing'].includes(planAnimation) ? planAnimation : ''}`}
@@ -591,7 +679,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                 color: colors.textMuted,
                 fontSize: 11
               }}>
-                {completedSteps}/{totalSteps} complete
+                {planCounts.approved} approved, {planCounts.skipped} skipped of {totalSteps}
               </span>
             </div>
             <button
@@ -616,25 +704,25 @@ const ChatPanel = forwardRef(function ChatPanel({
             style={{ padding: '12px 20px', display: 'flex', gap: 8, overflowX: 'auto' }}
           >
             {planState.plan.groups.map((group, i) => {
-              const isSkipped = skippedGroups.includes(i);
-              const isCompleted = i < planState.currentGroupIndex && !isSkipped;
+              const status = planState.groupStatuses?.[i] || 'pending';
+              const isApproved = status === 'approved';
+              const isSkipped = status === 'skipped';
               const isCurrent = i === planState.currentGroupIndex;
-              const isPast = i < planState.currentGroupIndex;
-              const canClick = isPast && onGoToGroup;
+              const canClick = i !== planState.currentGroupIndex && planState.isReviewing;
 
               return (
                 <div
                   key={`${planVersion}-${group.id}`}
                   className="step-box"
-                  onClick={() => canClick && onGoToGroup(i)}
+                  onClick={() => canClick && planState.goToGroup(i)}
                   style={{
                     flex: '0 0 auto',
                     minWidth: 140,
                     padding: '10px 12px',
                     background: isCurrent ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    border: `1px solid ${isCurrent ? colors.primary : isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : 'rgba(255,255,255,0.1)'}`,
+                    border: `1px solid ${isCurrent ? colors.primary : isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : 'rgba(255,255,255,0.1)'}`,
                     borderRadius: 6,
-                    opacity: isSkipped ? 0.5 : isCompleted ? 0.7 : 1,
+                    opacity: isSkipped ? 0.5 : 1,
                     transition: 'all 0.2s ease',
                     cursor: canClick ? 'pointer' : 'default'
                   }}
@@ -650,14 +738,14 @@ const ChatPanel = forwardRef(function ChatPanel({
                       width: 16,
                       height: 16,
                       borderRadius: '50%',
-                      background: isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
-                      border: `2px solid ${isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
+                      background: isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
+                      border: `2px solid ${isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       flexShrink: 0
                     }}>
-                      {isCompleted ? (
+                      {isApproved ? (
                         <Check size={10} color={colors.bg} strokeWidth={3} />
                       ) : isSkipped ? (
                         <SkipForward size={8} color={colors.bg} />
@@ -675,11 +763,11 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <span style={{
                       fontSize: 10,
                       fontWeight: 600,
-                      color: isSkipped ? colors.textMuted : isCompleted ? '#4CAF50' : isCurrent ? colors.primary : colors.textMuted,
+                      color: isSkipped ? colors.textMuted : isApproved ? '#4CAF50' : isCurrent ? colors.primary : colors.textMuted,
                       textTransform: 'uppercase',
                       letterSpacing: 0.5
                     }}>
-                      {isSkipped ? 'Skipped' : isCompleted ? 'Done' : isCurrent ? 'Current' : `Step ${i + 1}`}
+                      {isSkipped ? 'Skipped' : isApproved ? 'Approved' : isCurrent ? 'Current' : `Step ${i + 1}`}
                     </span>
                   </div>
                   {canClick && (
@@ -689,7 +777,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                       margin: '0 0 4px 0',
                       opacity: 0.7
                     }}>
-                      Click to revise
+                      Click to review
                     </p>
                   )}
 
@@ -746,8 +834,8 @@ const ChatPanel = forwardRef(function ChatPanel({
         </div>
       )}
 
-      {/* Messages Area - show when expanded beyond input-only height and not minimized */}
-      {!isMinimized && height > (isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT) && (
+      {/* Messages Area - show when expanded beyond collapsed height and not minimized */}
+      {!isMinimized && height > (isMobile ? MOBILE_HEIGHTS.collapsed : COLLAPSED_HEIGHT) && (
         <div
           ref={messagesContainerRef}
           style={{
@@ -875,18 +963,18 @@ const ChatPanel = forwardRef(function ChatPanel({
         </div>
       )}
 
-      {/* Collapsed Indicator Bar - show when collapsed but has messages */}
-      {!isMinimized && messages.length > 0 && height <= (isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT) && (
+      {/* Collapsed Indicator Bar - show when collapsed and has messages */}
+      {!isMinimized && messages.length > 0 && height <= (isMobile ? MOBILE_HEIGHTS.collapsed : COLLAPSED_HEIGHT) && (
         <button
           onClick={() => setHeight(isMobile ? MOBILE_HEIGHTS.small : AUTO_EXPAND_HEIGHT)}
           style={{
             width: '100%',
-            padding: '8px 20px',
+            padding: '6px 20px',
             background: 'transparent',
             border: 'none',
             borderBottom: `1px solid rgba(255,255,255,0.06)`,
             color: colors.textMuted,
-            fontSize: 10,
+            fontSize: 9,
             fontWeight: 600,
             letterSpacing: 1,
             textTransform: 'uppercase',
@@ -894,20 +982,20 @@ const ChatPanel = forwardRef(function ChatPanel({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            flexShrink: 0
+            gap: 6,
+            flexShrink: 0,
+            minHeight: 0
           }}
         >
           <span style={{ opacity: 0.6 }}>↑</span>
-          Expand to view conversation
+          Expand conversation
           <span style={{ opacity: 0.6 }}>↑</span>
         </button>
       )}
 
       {/* Input Area */}
       <div style={{
-        padding: '12px 20px',
-        borderTop: `1px solid rgba(255,255,255,0.06)`,
+        padding: '14px 16px',
         background: 'transparent',
         flexShrink: 0,
         marginTop: 'auto'
@@ -968,8 +1056,11 @@ const ChatPanel = forwardRef(function ChatPanel({
               <button
                 key={idx}
                 ref={el => buttonRefs.current[idx] = el}
+                disabled={btn.disabled}
                 onClick={() => {
-                  if (btn.value === 'revise') {
+                  if (planState?.isReviewing) {
+                    handlePlanAction(btn.value);
+                  } else if (btn.value === 'revise') {
                     handleReviseClick();
                   } else {
                     onUserResponse(btn.value, pendingMessageIndex);
@@ -977,21 +1068,29 @@ const ChatPanel = forwardRef(function ChatPanel({
                 }}
                 style={{
                   padding: '8px 14px',
-                  background: btn.primary ? colors.primary : 'transparent',
-                  border: btn.primary ? 'none' : `1px solid ${selectedButtonIndex === idx ? colors.primary : colors.border}`,
-                  color: btn.primary ? colors.bg : selectedButtonIndex === idx ? colors.primary : colors.textMuted,
+                  background: selectedButtonIndex === idx ? `${colors.primary}22` : 'transparent',
+                  border: `1px solid ${selectedButtonIndex === idx ? colors.primary : colors.border}`,
+                  color: selectedButtonIndex === idx ? colors.primary : colors.textMuted,
                   fontSize: 12,
-                  fontWeight: btn.primary ? 600 : 400,
-                  cursor: 'pointer',
+                  fontWeight: selectedButtonIndex === idx ? 600 : 400,
+                  cursor: btn.disabled ? 'default' : 'pointer',
+                  opacity: btn.disabled ? 0.5 : 1,
                   transition: 'all 0.15s ease'
                 }}
               >
                 {btn.label}
               </button>
             ))}
-            <span style={{ fontSize: 10, color: colors.textMuted, marginLeft: 'auto' }}>
-              ← → Enter
-            </span>
+            {planState?.isReviewing && (
+              <span style={{ fontSize: 10, color: colors.textMuted, marginLeft: 'auto' }}>
+                Step {(planState.currentGroupIndex || 0) + 1}/{planState.plan?.groups?.length || 0}
+              </span>
+            )}
+            {!planState?.isReviewing && (
+              <span style={{ fontSize: 10, color: colors.textMuted, marginLeft: 'auto' }}>
+                ← → Enter
+              </span>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: isMobile ? 10 : 10, alignItems: 'center' }}>
@@ -1019,25 +1118,62 @@ const ChatPanel = forwardRef(function ChatPanel({
             {isMobile && (
               <VoiceInput
                 onTranscript={handleVoiceTranscript}
+                onRecordingChange={setIsVoiceRecording}
+                onAudioData={setAudioWaveform}
                 disabled={false}
                 isOnline={isOnline}
               />
             )}
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
-              style={{
+            {isVoiceRecording ? (
+              /* Audio Waveform Visualization */
+              <div style={{
                 flex: 1,
-                background: 'transparent',
-                border: 'none',
-                color: colors.textPrimary,
-                fontSize: isMobile ? 16 : 13, // 16px prevents iOS zoom
-                outline: 'none'
-              }}
-            />
+                height: 36,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                padding: '0 12px',
+                background: 'rgba(255,68,68,0.1)',
+                borderRadius: 6,
+                border: '1px solid rgba(255,68,68,0.2)'
+              }}>
+                {audioWaveform.length > 0 ? (
+                  audioWaveform.map((level, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: 3,
+                        height: Math.max(4, level * 28),
+                        background: `rgba(255, 68, 68, ${0.5 + level * 0.5})`,
+                        borderRadius: 2,
+                        transition: 'height 0.05s ease'
+                      }}
+                    />
+                  ))
+                ) : (
+                  <span style={{ color: '#ff4444', fontSize: 12, fontWeight: 500 }}>
+                    Listening...
+                  </span>
+                )}
+              </div>
+            ) : (
+              <input
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  color: colors.textPrimary,
+                  fontSize: isMobile ? 16 : 13, // 16px prevents iOS zoom
+                  outline: 'none'
+                }}
+              />
+            )}
             <button
               onClick={handleSubmit}
               disabled={!inputValue.trim()}

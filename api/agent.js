@@ -42,6 +42,7 @@ RULES:
 - Ambiguous request: ask_clarification
 - Always end with respond_to_user
 - Read note contents before auto-tagging
+- MULTI-STEP: If request involves creating page+sections, or 2+ different entity types, MUST use propose_plan() - never execute directly
 
 SEARCH:
 - Check tags, content, section names, page names
@@ -91,6 +92,26 @@ Examples:
 - 2 bug notes → List them: "Found 2 bug notes: 'Fix login error' and 'Debug API timeout'"
 - 5 bug notes → List them + "Want a dedicated view for these?"
 - 15 bug notes → create_custom_view(title: "BUG NOTES", filter: {tags: ["bug"]}) + "Showing 15 bug notes."
+
+PLAN MODE (CRITICAL - MUST FOLLOW):
+When request involves page+sections OR 2+ different operations, you MUST call propose_plan().
+DO NOT call create_page, create_section, create_note directly for multi-step requests.
+The propose_plan function triggers a special UI that lets users approve each step.
+
+MUST use propose_plan() for:
+- "Create project X with sections Y, Z" → propose_plan() NOT create_page+create_section
+- "Set up a workspace" → propose_plan()
+- "Reorganize notes" → propose_plan()
+- Creating page + anything else → propose_plan()
+
+OK to execute directly (no plan needed):
+- Single note creation
+- Single page creation (no sections)
+- Single section creation
+- Simple navigation
+
+WRONG: create_page("Test") then create_section("A") then create_section("B")
+RIGHT: propose_plan({ summary: "Create Test with A, B", groups: [...] })
 
 Execute. Report. Done.`;
 
@@ -190,6 +211,11 @@ export default async function handler(req, res) {
       const choice = completion.choices[0];
       const assistantMessage = choice.message;
 
+      // Log tool calls for debugging
+      if (assistantMessage.tool_calls) {
+        console.log('Agent tool calls:', assistantMessage.tool_calls.map(tc => tc.function.name));
+      }
+
       // Add assistant message to conversation
       messages.push(assistantMessage);
 
@@ -239,6 +265,35 @@ export default async function handler(req, res) {
             type: 'confirmation',
             message: args.message,
             confirmValue: args.confirm_value,
+            actions: frontendActions
+          };
+          break;
+        }
+
+        if (functionName === 'propose_plan') {
+          // Transform to format expected by frontend
+          const planGroups = args.groups.map((g, idx) => ({
+            id: `group-${idx}`,
+            title: g.title,
+            description: g.description,
+            actions: g.operations.map((op, opIdx) => ({
+              id: `action-${idx}-${opIdx}`,
+              type: op.type,
+              ...op.params
+            }))
+          }));
+
+          const totalActions = planGroups.reduce((sum, g) => sum + g.actions.length, 0);
+
+          finalResponse = {
+            type: 'plan_proposal',
+            message: args.summary,
+            plan: {
+              summary: args.summary,
+              groups: planGroups,
+              totalGroups: planGroups.length,
+              totalActions: totalActions
+            },
             actions: frontendActions
           };
           break;

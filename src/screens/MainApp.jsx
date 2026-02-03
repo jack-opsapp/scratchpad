@@ -660,35 +660,12 @@ export function MainApp({ user, onSignOut }) {
       // Handle different response types
       switch (result.type) {
         case 'plan_proposal':
-          // Start plan mode
+          // Start plan review mode
           planState.startPlan(result.plan);
           setChatResponse({
             message: result.message,
-            note: `Plan has ${result.plan.totalGroups} groups with ${result.plan.totalActions} total actions.`
+            note: `Plan has ${result.plan.totalGroups} groups. Review and approve in the panel.`
           });
-          // Move to first group and set confirmation
-          planState.nextGroup();
-          if (result.plan.groups[0]) {
-            setCurrentConfirmation({
-              type: 'group_confirmation',
-              group: result.plan.groups[0],
-              message: result.plan.groups[0].description,
-              progress: `1/${result.plan.totalGroups}`
-            });
-          }
-          break;
-
-        case 'group_confirmation':
-          setCurrentConfirmation(result);
-          break;
-
-        case 'skip_group':
-          planState.skipGroup();
-          if (planState.isPlanComplete()) {
-            planState.completePlan();
-            setChatResponse({ message: 'Plan complete!', note: 'Skipped remaining groups.' });
-            setCurrentConfirmation(null);
-          }
           break;
 
         case 'cancel_plan':
@@ -821,156 +798,69 @@ export function MainApp({ user, onSignOut }) {
     setPendingNote(null);
   };
 
-  // Plan mode action handlers
-  const handlePlanYes = async () => {
-    if (!currentConfirmation || !currentConfirmation.group) return;
+  // Plan mode - execute all approved groups
+  const handleExecutePlan = async () => {
+    if (!planState.plan || !planState.hasApprovedGroups()) return;
 
+    planState.startExecution();
     setProcessing(true);
 
+    let currentContext = { ...planState.context };
+    const allAnimatingIds = new Set();
+
     try {
-      // Execute current group
-      // Use allPages for lookups, and update ownedPages for new items (since user owns them)
-      const { results, updatedContext } = await executeGroup(
-        currentConfirmation.group.actions,
-        planState.context,
-        allPages,
-        setOwnedPages,
-        setNotes
+      // Execute each approved group in sequence
+      for (let i = 0; i < planState.plan.groups.length; i++) {
+        if (planState.groupStatuses[i] !== 'approved') continue;
+
+        const group = planState.plan.groups[i];
+
+        // Execute this group
+        const { results, updatedContext } = await executeGroup(
+          group.actions,
+          currentContext,
+          allPages,
+          setOwnedPages,
+          setNotes
+        );
+
+        // Update context for next group
+        currentContext = { ...currentContext, ...updatedContext };
+
+        // Record results
+        const summary = summarizeResults(results);
+        planState.recordGroupResult(i, { results, summary }, updatedContext);
+
+        // Track newly created items for animation
+        updatedContext.createdPages?.forEach(p => allAnimatingIds.add(p.id));
+        updatedContext.createdSections?.forEach(s => allAnimatingIds.add(s.id));
+      }
+
+      // All done
+      planState.completeExecution();
+
+      // Animate new items
+      if (allAnimatingIds.size > 0) {
+        setAnimatingItems(prev => new Set([...prev, ...allAnimatingIds]));
+      }
+
+      // Show completion message
+      chatState.addAgentMessage(
+        `Plan complete! Created ${currentContext.createdPages?.length || 0} pages, ${currentContext.createdSections?.length || 0} sections, ${currentContext.createdNotes?.length || 0} notes.`,
+        'text_response'
       );
-
-      // Record results
-      const summary = summarizeResults(results);
-      planState.recordResults({ results, summary }, updatedContext);
-
-      // Track newly created items for typewriter animation
-      const newAnimatingIds = new Set();
-      updatedContext.createdPages?.forEach(p => newAnimatingIds.add(p.id));
-      updatedContext.createdSections?.forEach(s => newAnimatingIds.add(s.id));
-      if (newAnimatingIds.size > 0) {
-        setAnimatingItems(prev => new Set([...prev, ...newAnimatingIds]));
-      }
-
-      // Show execution result
-      setChatResponse({
-        message: `${summary.succeeded} succeeded${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
-        note: currentConfirmation.group.description
-      });
-
-      // Check if plan is done
-      if (planState.isPlanComplete()) {
-        planState.completePlan();
-        setCurrentConfirmation(null);
-
-        // Show final summary
-        setChatResponse({
-          message: 'Plan complete!',
-          note: `Created ${updatedContext.createdPages.length} pages, ${updatedContext.createdSections.length} sections, ${updatedContext.createdNotes.length} notes.`
-        });
-      } else {
-        // Move to next group
-        planState.nextGroup();
-
-        // Set next group confirmation
-        const nextIndex = planState.currentGroupIndex + 1;
-        const nextGroup = planState.plan.groups[nextIndex];
-        if (nextGroup) {
-          setCurrentConfirmation({
-            type: 'group_confirmation',
-            group: nextGroup,
-            message: nextGroup.description,
-            progress: `${nextIndex + 1}/${planState.plan.totalGroups}`
-          });
-        }
-      }
 
     } catch (error) {
       console.error('Execution error:', error);
-      setChatResponse({ message: 'Error executing group.', note: error.message });
+      chatState.addAgentMessage(`Error executing plan: ${error.message}`, 'error');
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const handlePlanRevise = () => {
-    setShowRevisionInput(true);
-  };
-
-  const handleRevisionSubmit = async () => {
-    if (!revisionInput.trim()) return;
-
-    setProcessing(true);
-
-    try {
-      const revised = await callAgent(`revise ${revisionInput}`, {
-        pages,
-        sections: allSections,
-        tags,
-        currentPage: currentPageData?.name,
-        currentSection: currentSectionData?.name
-      }, {
-        mode: planState.PLAN_STATES.CONFIRMING,
-        plan: planState.plan,
-        currentGroupIndex: planState.currentGroupIndex,
-        context: planState.context
-      });
-
-      if (revised.group) {
-        setCurrentConfirmation(revised);
-      }
-      setRevisionInput('');
-      setShowRevisionInput(false);
-
-    } catch (error) {
-      console.error('Revision error:', error);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handlePlanSkip = () => {
-    planState.skipGroup();
-
-    if (planState.isPlanComplete()) {
-      planState.completePlan();
-      setCurrentConfirmation(null);
-      setChatResponse({ message: 'Plan complete (with skips).', note: '' });
-    } else {
-      // Move to next group
-      const nextIndex = planState.currentGroupIndex + 1;
-      const nextGroup = planState.plan.groups[nextIndex];
-      if (nextGroup) {
-        setCurrentConfirmation({
-          type: 'group_confirmation',
-          group: nextGroup,
-          message: nextGroup.description,
-          progress: `${nextIndex + 1}/${planState.plan.totalGroups}`
-        });
-      }
-    }
-  };
-
-  const handleGoToGroup = (groupIndex) => {
-    planState.goToGroup(groupIndex);
-    const group = planState.plan.groups[groupIndex];
-    if (group) {
-      setCurrentConfirmation({
-        type: 'group_confirmation',
-        group: group,
-        message: group.description,
-        progress: `${groupIndex + 1}/${planState.plan.totalGroups}`
-      });
     }
   };
 
   const handlePlanCancel = () => {
-    const completed = planState.currentGroupIndex;
-    const total = planState.plan?.totalGroups || 0;
     planState.cancelPlan();
-    setCurrentConfirmation(null);
-    setChatResponse({
-      message: 'Plan cancelled.',
-      note: completed > 0 ? `Completed ${completed} of ${total} groups.` : ''
-    });
+    chatState.addAgentMessage('Plan cancelled.', 'text_response');
   };
 
   // Build conversation history from chat messages
@@ -1141,6 +1031,15 @@ export function MainApp({ user, onSignOut }) {
             confirmValue: result.confirmValue
           });
           setAwaitingResponse({ type: 'confirmation', data: result });
+          break;
+
+        case 'plan_proposal':
+          // Agent proposed a multi-step plan - start review mode
+          planState.startPlan(result.plan);
+          chatState.addAgentMessage(result.message, 'plan_proposal', {
+            plan: result.plan
+          });
+          // Plan panel will show on right side for review
           break;
 
         case 'error':
@@ -2935,12 +2834,14 @@ export function MainApp({ user, onSignOut }) {
             }
           }}
           planState={planState}
-          onGoToGroup={handleGoToGroup}
+          onExecutePlan={handleExecutePlan}
+          onCancelPlan={handlePlanCancel}
           sidebarWidth={isMobile ? 0 : (sidebarOpen ? 240 : 0)}
           isMobile={isMobile}
           isOnline={isOnline}
         />
       )}
+
 
       {/* Search modal */}
       {searchOpen && (

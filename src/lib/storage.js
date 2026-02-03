@@ -489,6 +489,7 @@ export const dataStore = {
    * Save notes for the current user
    * Performs full sync: creates, updates, and deletes as needed
    * Includes completion tracking with user attribution
+   * Generates embeddings for new/updated notes for RAG search
    * @param {Array} notes - Notes array in app format
    * @returns {Promise<boolean>}
    */
@@ -522,14 +523,18 @@ export const dataStore = {
 
       if (allSectionIds.length === 0) return true;
 
-      // Get existing notes
+      // Get existing notes with content (to detect changes)
       const { data: existingNotes } = await supabase
         .from('notes')
-        .select('id')
+        .select('id, content')
         .in('section_id', allSectionIds);
 
+      const existingNoteMap = new Map((existingNotes || []).map(n => [n.id, n.content]));
       const existingNoteIds = new Set((existingNotes || []).map(n => n.id));
       const newNoteIds = new Set(notes.map(n => n.id));
+
+      // Track notes that need embedding (new or content changed)
+      const notesNeedingEmbedding = [];
 
       // Delete notes that no longer exist
       const notesToDelete = [...existingNoteIds].filter(id => !newNoteIds.has(id));
@@ -544,6 +549,10 @@ export const dataStore = {
           console.warn(`setNotes: Skipping note ${note.id} - section ${note.sectionId} not accessible`);
           continue;
         }
+
+        // Check if this is a new note or content has changed
+        const existingContent = existingNoteMap.get(note.id);
+        const needsEmbedding = !existingContent || existingContent !== note.content;
 
         const noteData = {
           id: note.id,
@@ -563,13 +572,42 @@ export const dataStore = {
 
         if (error) {
           console.error('setNotes upsert error:', error);
+        } else if (needsEmbedding) {
+          notesNeedingEmbedding.push({ id: note.id, content: note.content });
         }
+      }
+
+      // Generate embeddings for new/updated notes (async, non-blocking)
+      if (notesNeedingEmbedding.length > 0) {
+        this.generateEmbeddingsForNotes(notesNeedingEmbedding).catch(() => {});
       }
 
       return true;
     } catch (error) {
       console.error('setNotes error:', error);
       return false;
+    }
+  },
+
+  /**
+   * Generate embeddings for notes (called async, non-blocking)
+   * @param {Array<{id: string, content: string}>} notes
+   */
+  async generateEmbeddingsForNotes(notes) {
+    for (const note of notes) {
+      try {
+        await fetch('/api/embeddings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'embed_note',
+            noteId: note.id,
+            content: note.content
+          })
+        });
+      } catch (error) {
+        console.error(`Failed to embed note ${note.id}:`, error);
+      }
     }
   },
 

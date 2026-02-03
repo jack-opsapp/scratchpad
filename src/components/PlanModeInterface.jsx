@@ -1,36 +1,56 @@
-import React from 'react';
-import { Check, X, Edit3, SkipForward, XCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, X, SkipForward, Play, RotateCcw, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { colors } from '../styles/theme.js';
 
 export default function PlanModeInterface({
-  plan,
-  currentGroupIndex,
-  results,
-  skippedGroups = [],
-  currentConfirmation,
-  onYes,
-  onRevise,
-  onSkip,
-  onCancel,
-  onGoToGroup,
-  executing
+  planState,
+  onExecute,
+  onCancel
 }) {
-  if (!plan) return null;
+  const [expandedGroups, setExpandedGroups] = useState({});
 
-  const completedCount = results.filter(r => r).length;
-  const skippedCount = skippedGroups.length;
-  const totalGroups = plan.totalGroups;
-  const isComplete = currentGroupIndex >= totalGroups;
+  if (!planState.plan || !planState.isInPlanMode) return null;
+
+  const { plan, groupStatuses, isReviewing, isExecuting, isComplete, executionIndex } = planState;
+  const counts = planState.getCounts();
+
+  const toggleExpand = (index) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'approved': return '#4CAF50';
+      case 'skipped': return colors.textMuted;
+      default: return colors.border;
+    }
+  };
+
+  const getStatusIcon = (status, index) => {
+    if (isExecuting && index === executionIndex) {
+      return <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />;
+    }
+    if (isExecuting && index < executionIndex && groupStatuses[index] === 'approved') {
+      return <Check size={12} strokeWidth={3} />;
+    }
+    switch (status) {
+      case 'approved': return <Check size={12} strokeWidth={3} />;
+      case 'skipped': return <SkipForward size={10} />;
+      default: return null;
+    }
+  };
 
   return (
     <div style={{
       position: 'fixed',
       top: 0,
       right: 0,
-      width: 320,
+      width: 360,
       height: '100vh',
-      background: `${colors.surface}ee`,
-      backdropFilter: 'blur(20px)',
+      background: `${colors.surface}`,
       borderLeft: `1px solid ${colors.border}`,
       display: 'flex',
       flexDirection: 'column',
@@ -46,127 +66,222 @@ export default function PlanModeInterface({
       }}>
         <div>
           <p style={{ color: colors.primary, fontSize: 11, fontWeight: 600, letterSpacing: 1.5, margin: 0 }}>
-            PLAN MODE
+            {isExecuting ? 'EXECUTING PLAN' : isComplete ? 'PLAN COMPLETE' : 'REVIEW PLAN'}
           </p>
           <p style={{ color: colors.textMuted, fontSize: 12, margin: '4px 0 0 0' }}>
-            {completedCount}/{totalGroups} groups
+            {plan.groups.length} groups - {counts.approved} approved, {counts.skipped} skipped
           </p>
         </div>
-        <button
-          onClick={onCancel}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: colors.textMuted,
-            cursor: 'pointer',
-            padding: 4
-          }}
-        >
-          <X size={16} />
-        </button>
+        {!isExecuting && (
+          <button
+            onClick={onCancel}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: colors.textMuted,
+              cursor: 'pointer',
+              padding: 4
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
-      {/* Progress List */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+      {/* Summary */}
+      <div style={{
+        padding: '12px 20px',
+        background: colors.bg,
+        borderBottom: `1px solid ${colors.border}`
+      }}>
+        <p style={{ color: colors.textPrimary, fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+          {plan.summary || 'Plan summary'}
+        </p>
+      </div>
+
+      {/* Groups List */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
         {plan.groups.map((group, index) => {
-          const isCompleted = index < currentGroupIndex && !skippedGroups.includes(index);
-          const isCurrent = index === currentGroupIndex;
-          const isSkipped = skippedGroups.includes(index);
-          const isPast = index < currentGroupIndex;
-          const result = results[index];
-          const canClick = isPast && !isCurrent && onGoToGroup;
+          const status = groupStatuses[index];
+          const isExpanded = expandedGroups[index];
+          const isCurrentlyExecuting = isExecuting && index === executionIndex;
+          const wasExecuted = isExecuting && index < executionIndex;
+          const result = planState.results[index];
 
           return (
             <div
-              key={group.id}
-              onClick={() => canClick && onGoToGroup(index)}
+              key={group.id || index}
               style={{
                 marginBottom: 12,
-                padding: '12px 14px',
-                background: isCurrent ? colors.bg : 'transparent',
-                border: `1px solid ${isCurrent ? colors.primary : colors.border}`,
-                position: 'relative',
-                opacity: isSkipped ? 0.5 : 1,
-                cursor: canClick ? 'pointer' : 'default'
+                border: `1px solid ${isCurrentlyExecuting ? colors.primary : colors.border}`,
+                background: isCurrentlyExecuting ? `${colors.primary}11` : 'transparent',
+                opacity: status === 'skipped' && !isExecuting ? 0.6 : 1
               }}
             >
-              {/* Status Icon */}
-              <div style={{
-                position: 'absolute',
-                left: -8,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                background: isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : colors.surface,
-                border: `2px solid ${isCompleted ? '#4CAF50' : isSkipped ? colors.textMuted : colors.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {isCompleted && <Check size={10} color={colors.bg} strokeWidth={3} />}
-                {isSkipped && <SkipForward size={8} color={colors.bg} />}
+              {/* Group Header */}
+              <div
+                onClick={() => toggleExpand(index)}
+                style={{
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  cursor: 'pointer'
+                }}
+              >
+                {/* Status Indicator */}
+                <div style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: wasExecuted && status === 'approved' ? '#4CAF50' : getStatusColor(status),
+                  border: `2px solid ${wasExecuted && status === 'approved' ? '#4CAF50' : getStatusColor(status)}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: status === 'pending' ? colors.textMuted : colors.bg,
+                  flexShrink: 0
+                }}>
+                  {getStatusIcon(status, index)}
+                </div>
+
+                {/* Group Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{
+                    color: colors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    margin: 0,
+                    textDecoration: status === 'skipped' ? 'line-through' : 'none'
+                  }}>
+                    {group.title || `Group ${index + 1}`}
+                  </p>
+                  <p style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    margin: '2px 0 0 0'
+                  }}>
+                    {group.description} - {group.actions?.length || 0} actions
+                  </p>
+                </div>
+
+                {/* Expand Toggle */}
+                {isExpanded ? <ChevronUp size={16} color={colors.textMuted} /> : <ChevronDown size={16} color={colors.textMuted} />}
               </div>
 
-              {/* Group Info */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <p style={{
-                  color: isCurrent ? colors.primary : isCompleted ? colors.textMuted : isSkipped ? colors.textMuted : colors.textPrimary,
-                  fontSize: 12,
-                  fontWeight: isCurrent ? 600 : 400,
-                  margin: 0,
-                  lineHeight: 1.4,
-                  textDecoration: isSkipped ? 'line-through' : 'none'
+              {/* Expanded Actions Preview */}
+              {isExpanded && (
+                <div style={{
+                  padding: '0 14px 12px 44px',
+                  borderTop: `1px solid ${colors.border}`
                 }}>
-                  {index + 1}. {group.description}
-                </p>
-                {isSkipped && (
-                  <span style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: colors.textMuted,
-                    background: colors.border,
-                    padding: '2px 6px',
-                    letterSpacing: 0.5
-                  }}>
-                    SKIPPED
-                  </span>
-                )}
-              </div>
-              {canClick && (
-                <p style={{
-                  color: colors.primary,
-                  fontSize: 10,
-                  margin: '2px 0 0 0',
-                  opacity: 0.7
-                }}>
-                  Click to revise
-                </p>
+                  <div style={{ paddingTop: 12 }}>
+                    {group.actions?.map((action, actionIndex) => (
+                      <p key={actionIndex} style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        margin: '4px 0',
+                        paddingLeft: 8,
+                        borderLeft: `2px solid ${colors.border}`
+                      }}>
+                        {action.type === 'create_page' && `Create page: ${action.name}`}
+                        {action.type === 'create_section' && `Add section: ${action.name}`}
+                        {action.type === 'create_note' && `Add note: ${action.content?.substring(0, 40)}${action.content?.length > 40 ? '...' : ''}`}
+                        {action.type === 'delete_page' && `Delete page: ${action.name}`}
+                        {action.type === 'delete_section' && `Delete section: ${action.name}`}
+                        {action.type === 'bulk_add_tag' && `Add tag: ${action.tag}`}
+                        {action.type === 'bulk_mark_complete' && `Mark complete`}
+                      </p>
+                    ))}
+                  </div>
+                </div>
               )}
 
-              {/* Action Count */}
-              <p style={{
-                color: colors.textMuted,
-                fontSize: 10,
-                margin: '4px 0 0 0'
-              }}>
-                {group.actionCount} action{group.actionCount !== 1 ? 's' : ''}
-              </p>
+              {/* Action Buttons - Only show in review mode */}
+              {isReviewing && (
+                <div style={{
+                  padding: '8px 14px',
+                  borderTop: `1px solid ${colors.border}`,
+                  display: 'flex',
+                  gap: 8
+                }}>
+                  {status === 'pending' ? (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); planState.approveGroup(index); }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          background: colors.primary,
+                          border: 'none',
+                          color: colors.bg,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4
+                        }}
+                      >
+                        <Check size={12} /> Approve
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); planState.skipGroup(index); }}
+                        style={{
+                          padding: '6px 10px',
+                          background: 'transparent',
+                          border: `1px solid ${colors.border}`,
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4
+                        }}
+                      >
+                        <SkipForward size={12} /> Skip
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); planState.resetGroup(index); }}
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        background: 'transparent',
+                        border: `1px solid ${colors.border}`,
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4
+                      }}
+                    >
+                      <RotateCcw size={12} /> Change Decision
+                    </button>
+                  )}
+                </div>
+              )}
 
-              {/* Results Summary */}
+              {/* Execution Results */}
               {result && (
-                <div style={{ marginTop: 8, fontSize: 11, color: colors.textMuted }}>
-                  {result.summary.succeeded > 0 && (
-                    <span style={{ color: '#4CAF50' }}>
-                      {result.summary.succeeded} succeeded
-                    </span>
-                  )}
-                  {result.summary.failed > 0 && (
-                    <span style={{ color: '#ff6b6b', marginLeft: 8 }}>
-                      {result.summary.failed} failed
-                    </span>
-                  )}
+                <div style={{
+                  padding: '8px 14px',
+                  borderTop: `1px solid ${colors.border}`,
+                  background: colors.bg
+                }}>
+                  <p style={{ color: '#4CAF50', fontSize: 11, margin: 0 }}>
+                    {result.summary?.succeeded || result.results?.filter(r => r.success).length || 0} succeeded
+                    {(result.summary?.failed > 0 || result.results?.some(r => !r.success)) && (
+                      <span style={{ color: '#ff6b6b', marginLeft: 8 }}>
+                        {result.summary?.failed || result.results?.filter(r => !r.success).length || 0} failed
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
             </div>
@@ -174,198 +289,120 @@ export default function PlanModeInterface({
         })}
       </div>
 
-      {/* Current Confirmation */}
-      {currentConfirmation && !isComplete && (
-        <div style={{
-          padding: 20,
-          borderTop: `1px solid ${colors.border}`,
-          background: colors.bg
-        }}>
-          <p style={{
-            color: colors.textPrimary,
-            fontSize: 13,
-            fontFamily: "'Manrope', sans-serif",
-            marginBottom: 4,
-            lineHeight: 1.5
-          }}>
-            {currentConfirmation.message || currentConfirmation.group?.description}
-          </p>
-
-          {/* Preview Items */}
-          {currentConfirmation.group?.preview && (
-            <div style={{ margin: '12px 0' }}>
-              {currentConfirmation.group.preview.map((item, i) => (
-                <p key={i} style={{
+      {/* Footer Actions */}
+      <div style={{
+        padding: '16px 20px',
+        borderTop: `1px solid ${colors.border}`,
+        background: colors.bg
+      }}>
+        {isReviewing && (
+          <>
+            {/* Quick Actions */}
+            {counts.pending > 0 && (
+              <button
+                onClick={() => planState.approveAll()}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  marginBottom: 10,
+                  background: 'transparent',
+                  border: `1px solid ${colors.border}`,
                   color: colors.textMuted,
-                  fontSize: 12,
-                  margin: '4px 0',
-                  paddingLeft: 8,
-                  borderLeft: `2px solid ${colors.border}`
-                }}>
-                  {item}
-                </p>
-              ))}
-            </div>
-          )}
+                  fontSize: 11,
+                  cursor: 'pointer'
+                }}
+              >
+                Approve All Remaining ({counts.pending})
+              </button>
+            )}
 
-          {/* Action Items Preview */}
-          {currentConfirmation.group?.actions && !currentConfirmation.group?.preview && (
-            <div style={{ margin: '12px 0' }}>
-              {currentConfirmation.group.actions.slice(0, 5).map((action, i) => (
-                <p key={i} style={{
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  margin: '4px 0',
-                  paddingLeft: 8,
-                  borderLeft: `2px solid ${colors.border}`
-                }}>
-                  {action.type === 'create_page' && `Create page: ${action.name}`}
-                  {action.type === 'create_section' && `Add section: ${action.name}`}
-                  {action.type === 'create_note' && `Add note: ${action.content?.substring(0, 30)}...`}
-                </p>
-              ))}
-              {currentConfirmation.group.actions.length > 5 && (
-                <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-                  +{currentConfirmation.group.actions.length - 5} more...
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+            {/* Execute Button */}
             <button
-              onClick={onYes}
-              disabled={executing}
+              onClick={onExecute}
+              disabled={counts.approved === 0}
               style={{
-                padding: '10px 14px',
-                background: colors.primary,
+                width: '100%',
+                padding: '12px 16px',
+                background: counts.approved > 0 ? colors.primary : colors.border,
                 border: 'none',
-                color: colors.bg,
+                color: counts.approved > 0 ? colors.bg : colors.textMuted,
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: executing ? 'not-allowed' : 'pointer',
-                opacity: executing ? 0.5 : 1,
+                cursor: counts.approved > 0 ? 'pointer' : 'not-allowed',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8
+                gap: 8,
+                marginBottom: 10
               }}
             >
-              <Check size={14} />
-              {executing ? 'Executing...' : 'Yes, proceed'}
+              <Play size={14} />
+              Execute Plan ({counts.approved} groups)
             </button>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={onRevise}
-                disabled={executing}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  background: 'transparent',
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  cursor: executing ? 'not-allowed' : 'pointer',
-                  opacity: executing ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <Edit3 size={12} />
-                Revise
-              </button>
-
-              <button
-                onClick={onSkip}
-                disabled={executing}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  background: 'transparent',
-                  border: `1px solid ${colors.border}`,
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  cursor: executing ? 'not-allowed' : 'pointer',
-                  opacity: executing ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <SkipForward size={12} />
-                Skip
-              </button>
-            </div>
 
             <button
               onClick={onCancel}
-              disabled={executing}
               style={{
+                width: '100%',
                 padding: '8px 12px',
                 background: 'transparent',
                 border: `1px solid ${colors.border}`,
                 color: colors.textMuted,
                 fontSize: 11,
-                cursor: executing ? 'not-allowed' : 'pointer',
-                opacity: executing ? 0.5 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
+                cursor: 'pointer'
               }}
             >
-              <XCircle size={12} />
               Cancel Plan
             </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
 
-      {/* Plan Complete */}
-      {isComplete && (
-        <div style={{
-          padding: 20,
-          borderTop: `1px solid ${colors.border}`,
-          background: colors.bg
-        }}>
-          <p style={{
-            color: '#4CAF50',
-            fontSize: 14,
-            fontWeight: 600,
-            marginBottom: 8
-          }}>
-            Plan Complete
-          </p>
-          <p style={{
-            color: colors.textMuted,
-            fontSize: 12,
-            marginBottom: 16,
-            lineHeight: 1.5
-          }}>
-            All groups executed successfully.
-          </p>
-          <button
-            onClick={onCancel}
-            style={{
-              width: '100%',
-              padding: '10px 14px',
-              background: colors.primary,
-              border: 'none',
-              color: colors.bg,
-              fontSize: 13,
+        {isExecuting && (
+          <div style={{ textAlign: 'center' }}>
+            <Loader size={24} color={colors.primary} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
+            <p style={{ color: colors.textMuted, fontSize: 12, margin: 0 }}>
+              Executing group {executionIndex + 1} of {counts.approved}...
+            </p>
+          </div>
+        )}
+
+        {isComplete && (
+          <>
+            <p style={{
+              color: '#4CAF50',
+              fontSize: 14,
               fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Return to Normal Mode
-          </button>
-        </div>
-      )}
+              marginBottom: 8,
+              textAlign: 'center'
+            }}>
+              Plan Executed Successfully
+            </p>
+            <button
+              onClick={onCancel}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                background: colors.primary,
+                border: 'none',
+                color: colors.bg,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Done
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* CSS for spinner animation */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

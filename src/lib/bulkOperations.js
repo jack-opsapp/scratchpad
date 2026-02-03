@@ -149,9 +149,30 @@ function filterNotes(notes, filters) {
       if (note.sectionId !== filters.sectionId) return false;
     }
 
+    // Page filter (requires looking up section's page)
+    if (filters.pageId) {
+      // This requires section-to-page mapping passed in context
+      // For now, handled at the caller level
+    }
+
     // Creator filter
     if (filters.createdBy) {
       if (note.created_by_user_id !== filters.createdBy) return false;
+    }
+
+    // Untagged filter - notes with no tags
+    if (filters.untagged) {
+      if (note.tags && note.tags.length > 0) return false;
+    }
+
+    // Content contains filter (for keyword-based operations)
+    if (filters.contentContains) {
+      const content = (note.content || '').toLowerCase();
+      const keywords = Array.isArray(filters.contentContains)
+        ? filters.contentContains
+        : [filters.contentContains];
+      const hasKeyword = keywords.some(kw => content.includes(kw.toLowerCase()));
+      if (!hasKeyword) return false;
     }
 
     return true;

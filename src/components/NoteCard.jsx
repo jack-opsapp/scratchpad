@@ -18,6 +18,7 @@ import UserAvatar from './UserAvatar.jsx';
  * @param {boolean} props.canEdit - Whether user can edit this note
  * @param {boolean} props.canDelete - Whether user can delete this note
  * @param {boolean} props.canToggle - Whether user can toggle completion
+ * @param {boolean} props.compact - Hide details (tags, dates, avatars) for easy copy
  */
 export function NoteCard({
   note,
@@ -29,6 +30,7 @@ export function NoteCard({
   canEdit = true,
   canDelete = true,
   canToggle = true,
+  compact = false,
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
@@ -61,8 +63,8 @@ export function NoteCard({
           {note.completed && <Check size={10} color={colors.bg} strokeWidth={3} />}
         </button>
 
-        {/* Creator Avatar (for shared pages) */}
-        {showCreatorAvatar && (
+        {/* Creator Avatar (for shared pages) - hidden in compact mode */}
+        {showCreatorAvatar && !compact && (
           <div style={{ flexShrink: 0, marginTop: 2 }}>
             <UserAvatar userId={note.created_by_user_id} size="sm" showTooltip={true} />
           </div>
@@ -115,8 +117,8 @@ export function NoteCard({
             </p>
           )}
 
-          {/* Tags and date */}
-          {(note.tags?.length > 0 || note.date) && (!isNew || typewriter.done) && (
+          {/* Tags and date - hidden in compact mode */}
+          {!compact && (note.tags?.length > 0 || note.date) && (!isNew || typewriter.done) && (
             <div
               style={{
                 display: 'flex',
@@ -143,8 +145,8 @@ export function NoteCard({
             </div>
           )}
 
-          {/* Completion info */}
-          {note.completed && note.completed_by_user_id && (
+          {/* Completion info - hidden in compact mode */}
+          {!compact && note.completed && note.completed_by_user_id && (
             <div
               style={{
                 display: 'flex',
@@ -171,8 +173,8 @@ export function NoteCard({
           )}
         </div>
 
-        {/* Delete button */}
-        {canDelete && (
+        {/* Delete button - hidden in compact mode */}
+        {canDelete && !compact && (
           <button
             onClick={() => onDelete(note.id)}
             style={{
