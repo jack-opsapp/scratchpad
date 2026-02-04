@@ -6,6 +6,12 @@
 import { functionDefinitions } from './agentDefinitions.js';
 import { executeFunction } from './agentFunctions.js';
 import { createClient } from '@supabase/supabase-js';
+import {
+  getMem0Profile,
+  buildMem0Context,
+  extractObservations,
+  storeObservationsAsync
+} from './mem0.js';
 
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4o-2024-11-20';
@@ -202,28 +208,53 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing message or userId' });
     }
 
-    // Fetch user's AI response style preference
+    // Fetch user's AI response style preference and mem0 profile in parallel
     let responseStyle = 'tactical'; // Default
-    if (supabaseUrl && supabaseServiceKey) {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('ai_response_style')
-          .eq('user_id', userId)
-          .single();
+    let mem0Profile = null;
 
-        if (settings?.ai_response_style) {
-          responseStyle = settings.ai_response_style;
+    const fetchPromises = [];
+
+    // Settings fetch promise
+    if (supabaseUrl && supabaseServiceKey) {
+      const settingsPromise = (async () => {
+        try {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('ai_response_style')
+            .eq('user_id', userId)
+            .single();
+
+          if (settings?.ai_response_style) {
+            responseStyle = settings.ai_response_style;
+          }
+        } catch (e) {
+          console.log('Could not fetch user settings, using default style:', e.message);
         }
-      } catch (e) {
-        console.log('Could not fetch user settings, using default style:', e.message);
-      }
+      })();
+      fetchPromises.push(settingsPromise);
     }
 
-    // Build personality-aware system prompt
+    // mem0 profile fetch promise (with graceful degradation)
+    const mem0Promise = (async () => {
+      try {
+        mem0Profile = await getMem0Profile(userId);
+        if (mem0Profile) {
+          console.log('mem0 profile loaded for user');
+        }
+      } catch (e) {
+        console.log('mem0 profile fetch failed, continuing without:', e.message);
+      }
+    })();
+    fetchPromises.push(mem0Promise);
+
+    // Wait for both to complete
+    await Promise.all(fetchPromises);
+
+    // Build personality-aware system prompt with mem0 context
     const personalityPrompt = PERSONALITY_PROMPTS[responseStyle] || PERSONALITY_PROMPTS.tactical;
-    const fullSystemPrompt = `${personalityPrompt}\n\n${SYSTEM_PROMPT}`;
+    const mem0Context = buildMem0Context(mem0Profile);
+    const fullSystemPrompt = `${personalityPrompt}\n\n${SYSTEM_PROMPT}${mem0Context}`;
 
     // Build context string for the agent
     let contextInfo = '';
@@ -443,6 +474,22 @@ export default async function handler(req, res) {
     // Add the messages exchanged for debugging/conversation history
     finalResponse.messageCount = messages.length;
     finalResponse.iterations = iterations;
+
+    // Fire-and-forget: Store behavioral observations to mem0
+    setImmediate(() => {
+      try {
+        const observations = extractObservations({
+          userMessage: message,
+          agentResponse: finalResponse,
+          context
+        });
+        if (observations.length > 0) {
+          storeObservationsAsync(userId, observations);
+        }
+      } catch (e) {
+        console.warn('mem0 observation extraction failed:', e.message);
+      }
+    });
 
     return res.status(200).json(finalResponse);
 

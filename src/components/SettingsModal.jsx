@@ -19,7 +19,8 @@ import {
   Table,
   HardDrive,
   Send,
-  RotateCcw
+  RotateCcw,
+  Brain
 } from 'lucide-react';
 import { useSettings, DEFAULT_SETTINGS } from '../hooks/useSettings.js';
 import { ACCENT_COLORS, calculateChatColor } from '../lib/themes.js';
@@ -228,7 +229,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user }) {
               <ContentTab settings={localSettings} pages={pages} onChange={handleChange} />
             )}
             {activeTab === 'data' && (
-              <DataPrivacyTab settings={localSettings} onChange={handleChange} />
+              <DataPrivacyTab settings={localSettings} onChange={handleChange} user={user} />
             )}
             {activeTab === 'account' && (
               <AccountTab user={user} />
@@ -909,8 +910,10 @@ function ContentTab({ settings, pages, onChange }) {
 // Data & Privacy Tab
 // =============================================================================
 
-function DataPrivacyTab({ settings, onChange }) {
+function DataPrivacyTab({ settings, onChange, user }) {
   const [exporting, setExporting] = useState(null);
+  const [clearingMemory, setClearingMemory] = useState(false);
+  const [memoryCleared, setMemoryCleared] = useState(false);
 
   const handleExport = async (type) => {
     setExporting(type);
@@ -934,6 +937,37 @@ function DataPrivacyTab({ settings, onChange }) {
       alert('Export failed. Please try again.');
     } finally {
       setExporting(null);
+    }
+  };
+
+  const handleClearMemory = async () => {
+    if (!user?.id) return;
+
+    if (!confirm('Clear all AI memory? Slate will forget your behavioral patterns and preferences.')) {
+      return;
+    }
+
+    setClearingMemory(true);
+    try {
+      const response = await fetch('/api/mem0-settings', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setMemoryCleared(true);
+        setTimeout(() => setMemoryCleared(false), 3000);
+      } else {
+        alert('Failed to clear memory. Please try again.');
+      }
+    } catch (error) {
+      console.error('Clear memory failed:', error);
+      alert('Failed to clear memory. Please try again.');
+    } finally {
+      setClearingMemory(false);
     }
   };
 
@@ -982,6 +1016,58 @@ function DataPrivacyTab({ settings, onChange }) {
           </SelectButton>
         </div>
       </SettingGroup>
+
+      {/* AI Memory Section */}
+      <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${colors.border}` }}>
+        <h4 style={{
+          color: colors.textPrimary,
+          fontSize: 14,
+          fontWeight: 600,
+          marginBottom: 12,
+          letterSpacing: 0.5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontFamily: "'Manrope', sans-serif"
+        }}>
+          <Brain size={16} />
+          AI MEMORY
+        </h4>
+        <p style={{ color: colors.textMuted, fontSize: 12, marginBottom: 16, lineHeight: 1.5 }}>
+          Slate learns from your interactions to personalize responses. This includes your
+          communication preferences, frequently used tags, and workflow patterns. No note
+          content is stored.
+        </p>
+        <button
+          onClick={handleClearMemory}
+          disabled={clearingMemory || !user?.id}
+          style={{
+            padding: '10px 16px',
+            background: 'transparent',
+            border: `1px solid ${colors.border}`,
+            color: memoryCleared ? colors.success : colors.textMuted,
+            fontSize: 14,
+            cursor: clearingMemory || !user?.id ? 'not-allowed' : 'pointer',
+            opacity: clearingMemory ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            transition: 'all 0.2s'
+          }}
+        >
+          {memoryCleared ? (
+            <>
+              <Check size={16} />
+              Memory Cleared
+            </>
+          ) : (
+            <>
+              <Trash2 size={16} />
+              {clearingMemory ? 'Clearing...' : 'Clear Memory'}
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Export Section */}
       <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${colors.border}` }}>
