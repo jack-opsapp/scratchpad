@@ -318,6 +318,7 @@ export default async function handler(req, res) {
       return false;
     };
     const expectsNoteCreation = isNoteCreationRequest(message);
+    console.log('Note creation detection:', { message: message.substring(0, 50), expectsNoteCreation });
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
@@ -514,6 +515,7 @@ export default async function handler(req, res) {
     }
 
     // Safeguard: If message looked like note creation but no note was created, warn user
+    console.log('Safeguard check:', { expectsNoteCreation, noteCreated, responseType: finalResponse?.type });
     if (expectsNoteCreation && !noteCreated && finalResponse.type === 'response') {
       console.warn('Note creation pattern detected but create_note was not called');
       finalResponse = {
