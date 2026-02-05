@@ -46,7 +46,7 @@ export async function getMem0Profile(userId) {
       },
       body: JSON.stringify({
         query: 'user behavioral profile and preferences',
-        user_id: userId,
+        filters: { user_id: userId },
         limit: 20
       }),
       signal: controller.signal
@@ -87,7 +87,7 @@ export async function storeObservation(userId, observation) {
   }
 
   try {
-    const response = await fetch(`${MEM0_BASE_URL}/memories`, {
+    const response = await fetch(`${MEM0_BASE_URL}/memories/add`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -97,15 +97,14 @@ export async function storeObservation(userId, observation) {
         messages: [
           {
             role: 'user',
-            content: `Behavioral observation: ${observation.content}`
+            content: `${observation.type}: ${observation.content}`
+          },
+          {
+            role: 'assistant',
+            content: 'Noted.'
           }
         ],
-        user_id: userId,
-        metadata: {
-          type: observation.type,
-          timestamp: new Date().toISOString(),
-          ...observation.metadata
-        }
+        user_id: userId
       })
     });
 
