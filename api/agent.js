@@ -213,6 +213,7 @@ export default async function handler(req, res) {
   const DEFAULT_OPENAI_KEY = process.env.OPENAI_API_KEY;
 
   try {
+    const startTime = Date.now();
     const { message, userId, conversationHistory = [], confirmed, context } = req.body;
 
     if (!message || !userId) {
@@ -269,6 +270,7 @@ export default async function handler(req, res) {
 
     // Wait for both to complete
     await Promise.all(fetchPromises);
+    console.log(`[TIMING] Settings/mem0 fetch: ${Date.now() - startTime}ms`);
 
     // Determine which API key and model to use (after settings are fetched)
     const OPENAI_KEY = customOpenAIKey || DEFAULT_OPENAI_KEY;
@@ -337,6 +339,7 @@ export default async function handler(req, res) {
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
+      const iterStartTime = Date.now();
 
       // Call OpenAI
       const response = await fetch(OPENAI_ENDPOINT, {
@@ -364,6 +367,7 @@ export default async function handler(req, res) {
       }
 
       const completion = await response.json();
+      console.log(`[TIMING] OpenAI call #${iterations}: ${Date.now() - iterStartTime}ms`);
       const choice = completion.choices[0];
       const assistantMessage = choice.message;
 
@@ -581,6 +585,7 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log(`[TIMING] Total request time: ${Date.now() - startTime}ms (${iterations} iterations)`);
     return res.status(200).json(finalResponse);
 
   } catch (error) {
