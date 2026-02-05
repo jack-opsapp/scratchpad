@@ -307,6 +307,17 @@ export default async function handler(req, res) {
     const frontendActions = []; // Collect navigation/filter actions
     let finalResponse = null;
     let iterations = 0;
+    let noteCreated = false; // Track if create_note was called
+
+    // Detect note creation patterns in user message
+    const isNoteCreationRequest = (msg) => {
+      // Pattern: "page/section: content"
+      if (/^[\w\s]+\/[\w\s]+:\s*.+/i.test(msg)) return true;
+      // Pattern: starts with hyphen "- content"
+      if (/^-\s+.+/.test(msg)) return true;
+      return false;
+    };
+    const expectsNoteCreation = isNoteCreationRequest(message);
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
@@ -480,6 +491,11 @@ export default async function handler(req, res) {
         const result = await executeFunction(functionName, args, userId);
         console.log(`Function result:`, JSON.stringify(result).substring(0, 200));
 
+        // Track note creation
+        if (functionName === 'create_note' && result.id) {
+          noteCreated = true;
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -494,6 +510,16 @@ export default async function handler(req, res) {
       finalResponse = {
         type: 'error',
         message: 'Agent did not complete properly. Please try again.'
+      };
+    }
+
+    // Safeguard: If message looked like note creation but no note was created, warn user
+    if (expectsNoteCreation && !noteCreated && finalResponse.type === 'response') {
+      console.warn('Note creation pattern detected but create_note was not called');
+      finalResponse = {
+        type: 'error',
+        message: 'Failed to create note. Please try again.',
+        _debug: 'Note pattern detected but create_note not called'
       };
     }
 
