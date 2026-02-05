@@ -311,8 +311,8 @@ export default async function handler(req, res) {
 
     // Detect note creation patterns in user message
     const isNoteCreationRequest = (msg) => {
-      // Pattern: "page/section: content"
-      if (/^[\w\s]+\/[\w\s]+:\s*.+/i.test(msg)) return true;
+      // Pattern: "page/section: content" or "page/section content" (colon optional)
+      if (/^[\w\s]+\/[\w\s]+:?\s+.+/i.test(msg)) return true;
       // Pattern: starts with hyphen "- content"
       if (/^-\s+.+/.test(msg)) return true;
       return false;
