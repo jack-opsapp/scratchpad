@@ -912,10 +912,13 @@ export function MainApp({ user, onSignOut }) {
 
   // Build conversation history from chat messages
   const getConversationHistory = () => {
-    return chatState.messages.slice(-10).map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'assistant',
-      content: msg.content
-    }));
+    return chatState.messages
+      .slice(-10)
+      .filter(msg => msg.content && typeof msg.content === 'string')
+      .map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
   };
 
   // Execute frontend actions returned by agent
@@ -1056,7 +1059,7 @@ export function MainApp({ user, onSignOut }) {
       switch (result.type) {
         case 'response':
           // Normal response - agent has completed the operation
-          chatState.addAgentMessage(result.message, 'text_response', {
+          chatState.addAgentMessage(result.message || 'Done.', 'text_response', {
             viewConfig, // Store view config if one was created
             navConfig   // Store navigation config if agent navigated
           });
@@ -1066,7 +1069,7 @@ export function MainApp({ user, onSignOut }) {
 
         case 'clarification':
           // Agent needs more information
-          chatState.addAgentMessage(result.question, 'clarification', {
+          chatState.addAgentMessage(result.question || 'Could you clarify?', 'clarification', {
             options: result.options
           });
           setAwaitingResponse({ type: 'clarification', data: result });
@@ -1074,7 +1077,7 @@ export function MainApp({ user, onSignOut }) {
 
         case 'confirmation':
           // Agent wants user to confirm before proceeding
-          chatState.addAgentMessage(result.message, 'bulk_confirmation', {
+          chatState.addAgentMessage(result.message || 'Confirm?', 'bulk_confirmation', {
             confirmValue: result.confirmValue
           });
           setAwaitingResponse({ type: 'confirmation', data: result });
@@ -1083,7 +1086,7 @@ export function MainApp({ user, onSignOut }) {
         case 'plan_proposal':
           // Agent proposed a multi-step plan - start review mode
           planState.startPlan(result.plan);
-          chatState.addAgentMessage(result.message, 'plan_proposal', {
+          chatState.addAgentMessage(result.message || result.plan?.summary || 'Review the plan.', 'plan_proposal', {
             plan: result.plan
           });
           // Plan panel will show on right side for review
@@ -1105,7 +1108,7 @@ export function MainApp({ user, onSignOut }) {
           break;
 
         case 'error':
-          chatState.addAgentMessage(result.message, 'error');
+          chatState.addAgentMessage(result.message || 'An error occurred.', 'error');
           break;
 
         default:
