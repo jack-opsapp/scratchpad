@@ -5,7 +5,7 @@ const MAX_MESSAGES = 100; // Before compacting
 export default function useChatState() {
   const [messages, setMessages] = useState([]);
   const [processing, setProcessing] = useState(false);
-  const [messageQueue, setMessageQueue] = useState([]);
+  const messageQueueRef = useRef([]); // Ref for immediate access (no batching delay)
   const contextWindowRef = useRef(0);
   const processingRef = useRef(false); // For immediate access without re-render
 
@@ -97,23 +97,18 @@ export default function useChatState() {
     }));
   }, [messages]);
 
-  // Queue management
+  // Queue management (uses ref for immediate access, avoids React batching delays)
   const addToQueue = useCallback((message, confirmedValue = null) => {
-    setMessageQueue(prev => [...prev, { message, confirmedValue }]);
+    messageQueueRef.current.push({ message, confirmedValue });
   }, []);
 
   const getNextFromQueue = useCallback(() => {
-    let next = null;
-    setMessageQueue(prev => {
-      if (prev.length === 0) return prev;
-      next = prev[0];
-      return prev.slice(1);
-    });
-    return next;
+    if (messageQueueRef.current.length === 0) return null;
+    return messageQueueRef.current.shift();
   }, []);
 
   const clearQueue = useCallback(() => {
-    setMessageQueue([]);
+    messageQueueRef.current = [];
   }, []);
 
   // Wrapped setProcessing that also updates ref
@@ -132,8 +127,7 @@ export default function useChatState() {
     processing,
     setProcessing: setProcessingState,
     isProcessing,
-    messageQueue,
-    queueLength: messageQueue.length,
+    queueLength: messageQueueRef.current.length,
     addToQueue,
     getNextFromQueue,
     clearQueue,
