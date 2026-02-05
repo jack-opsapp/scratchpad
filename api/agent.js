@@ -121,11 +121,13 @@ When a message contains "page/section:" pattern, parse it as a targeted note:
 - "marketing/campaigns: launch email sequence" → create note in marketing/campaigns
 - The format is: page_name/section_name: note_content
 
+CRITICAL: You MUST call create_note() to actually create the note. Do NOT just respond with "Got it" - you must make the function call first. If you respond without calling create_note, the note will NOT be created.
+
 Steps when you see this pattern:
 1. Parse the path (before colon) and content (after colon)
-2. Call get_sections(page_name: "...") to verify the section exists and get its ID
-3. Create the note in that section with create_note(section_id: ..., content: ...)
-4. If page/section not found, tell the user and offer to create it
+2. Call create_note(page_name: "...", section_name: "...", content: "...")
+3. Then call respond_to_user with confirmation
+4. If section not found, tell the user and offer to create it
 
 NOTE CREATION:
 - When user doesn't specify a page/section, use CURRENT VIEW context (provided at end of system prompt)
@@ -348,6 +350,7 @@ export default async function handler(req, res) {
 
       // If no tool calls, agent is done
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        console.log('Agent responded without tool calls:', assistantMessage.content?.substring(0, 100));
         finalResponse = {
           type: 'response',
           message: assistantMessage.content || 'Done.',
