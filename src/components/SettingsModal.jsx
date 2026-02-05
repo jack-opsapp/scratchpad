@@ -20,7 +20,8 @@ import {
   HardDrive,
   Send,
   RotateCcw,
-  Brain
+  Brain,
+  Code
 } from 'lucide-react';
 import { useSettings, DEFAULT_SETTINGS } from '../hooks/useSettings.js';
 import { ACCENT_COLORS, calculateChatColor } from '../lib/themes.js';
@@ -52,7 +53,8 @@ const TABS = [
   { id: 'ai', label: 'AI Behavior' },
   { id: 'content', label: 'Content' },
   { id: 'data', label: 'Data & Privacy' },
-  { id: 'account', label: 'Account' }
+  { id: 'account', label: 'Account' },
+  { id: 'developer', label: 'Developer' }
 ];
 
 // =============================================================================
@@ -233,6 +235,9 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user }) {
             )}
             {activeTab === 'account' && (
               <AccountTab user={user} />
+            )}
+            {activeTab === 'developer' && (
+              <DeveloperTab settings={localSettings} onChange={handleChange} />
             )}
           </div>
         </div>
@@ -1271,6 +1276,103 @@ function AccountTab({ user }) {
         >
           Sign Out
         </button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Developer Tab
+// =============================================================================
+
+function DeveloperTab({ settings, onChange }) {
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  return (
+    <div>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 8, fontFamily: "'Manrope', sans-serif" }}>
+        Developer Settings
+      </h3>
+      <p style={{ color: colors.textMuted, fontSize: 12, marginBottom: 24, lineHeight: 1.5 }}>
+        Configure your own OpenAI API key and model. Leave blank to use the default.
+      </p>
+
+      {/* OpenAI API Key */}
+      <SettingGroup label="OPENAI API KEY" description="Your personal OpenAI API key (stored securely)">
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type={showApiKey ? 'text' : 'password'}
+            value={settings.customOpenAIKey || ''}
+            onChange={(e) => onChange({ customOpenAIKey: e.target.value || null })}
+            placeholder="sk-..."
+            style={{
+              flex: 1,
+              maxWidth: 400,
+              padding: '10px 12px',
+              background: colors.bg,
+              border: `1px solid ${colors.border}`,
+              color: colors.textPrimary,
+              fontSize: 14,
+              fontFamily: 'monospace'
+            }}
+          />
+          <button
+            onClick={() => setShowApiKey(!showApiKey)}
+            style={{
+              padding: '10px 12px',
+              background: 'transparent',
+              border: `1px solid ${colors.border}`,
+              color: colors.textMuted,
+              cursor: 'pointer'
+            }}
+          >
+            {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </SettingGroup>
+
+      {/* OpenAI Model */}
+      <SettingGroup label="OPENAI MODEL" description="Model to use for AI agent (e.g., gpt-4o-mini, gpt-4o)">
+        <input
+          type="text"
+          value={settings.customOpenAIModel || ''}
+          onChange={(e) => onChange({ customOpenAIModel: e.target.value || null })}
+          placeholder="gpt-4o-mini"
+          style={{
+            width: '100%',
+            maxWidth: 400,
+            padding: '10px 12px',
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+            color: colors.textPrimary,
+            fontSize: 14,
+            fontFamily: 'monospace'
+          }}
+        />
+      </SettingGroup>
+
+      {/* Info Box */}
+      <div style={{
+        marginTop: 32,
+        padding: 16,
+        background: `${colors.primary}10`,
+        border: `1px solid ${colors.primary}30`,
+        display: 'flex',
+        gap: 12,
+        alignItems: 'flex-start'
+      }}>
+        <Code size={20} color={colors.primary} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <p style={{ color: colors.textPrimary, fontSize: 13, margin: 0, marginBottom: 8, fontWeight: 500 }}>
+            Using your own API key
+          </p>
+          <ul style={{ color: colors.textMuted, fontSize: 12, margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+            <li>Bypasses rate limits from shared key</li>
+            <li>Costs are billed to your OpenAI account</li>
+            <li>Key is stored encrypted in your user settings</li>
+            <li>Leave blank to use the default shared key</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

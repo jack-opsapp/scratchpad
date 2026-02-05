@@ -49,8 +49,9 @@ export const DEFAULT_SETTINGS = {
   // Keyboard Shortcuts
   customShortcuts: {},
 
-  // API Keys
+  // Developer / API
   customOpenAIKey: null,
+  customOpenAIModel: null,
 
   // Team
   defaultMemberPermission: 'team',
@@ -90,6 +91,7 @@ const SETTING_TO_COLUMN = {
   ragContextEnabled: 'rag_context_enabled',
   customShortcuts: 'custom_shortcuts',
   customOpenAIKey: 'custom_openai_key',
+  customOpenAIModel: 'custom_openai_model',
   defaultMemberPermission: 'default_member_permission',
   requireInviteApproval: 'require_invite_approval'
 };

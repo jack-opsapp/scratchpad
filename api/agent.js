@@ -210,10 +210,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const OPENAI_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_KEY) {
-    return res.status(500).json({ error: 'OpenAI not configured' });
-  }
+  const DEFAULT_OPENAI_KEY = process.env.OPENAI_API_KEY;
 
   try {
     const { message, userId, conversationHistory = [], confirmed, context } = req.body;
@@ -222,8 +219,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing message or userId' });
     }
 
-    // Fetch user's AI response style preference and mem0 profile in parallel
+    // Fetch user's settings including custom API key/model and mem0 profile in parallel
     let responseStyle = 'tactical'; // Default
+    let customOpenAIKey = null;
+    let customOpenAIModel = null;
     let mem0Profile = null;
 
     const fetchPromises = [];
@@ -235,15 +234,21 @@ export default async function handler(req, res) {
           const supabase = createClient(supabaseUrl, supabaseServiceKey);
           const { data: settings } = await supabase
             .from('user_settings')
-            .select('ai_response_style')
+            .select('ai_response_style, custom_openai_key, custom_openai_model')
             .eq('user_id', userId)
             .single();
 
           if (settings?.ai_response_style) {
             responseStyle = settings.ai_response_style;
           }
+          if (settings?.custom_openai_key) {
+            customOpenAIKey = settings.custom_openai_key;
+          }
+          if (settings?.custom_openai_model) {
+            customOpenAIModel = settings.custom_openai_model;
+          }
         } catch (e) {
-          console.log('Could not fetch user settings, using default style:', e.message);
+          console.log('Could not fetch user settings, using defaults:', e.message);
         }
       })();
       fetchPromises.push(settingsPromise);
@@ -264,6 +269,16 @@ export default async function handler(req, res) {
 
     // Wait for both to complete
     await Promise.all(fetchPromises);
+
+    // Determine which API key and model to use (after settings are fetched)
+    const OPENAI_KEY = customOpenAIKey || DEFAULT_OPENAI_KEY;
+    const ACTIVE_MODEL = customOpenAIModel || MODEL;
+
+    if (!OPENAI_KEY) {
+      return res.status(500).json({ error: 'OpenAI not configured. Add your API key in Settings > Developer.' });
+    }
+
+    console.log('Using model:', ACTIVE_MODEL, customOpenAIKey ? '(custom key)' : '(default key)');
 
     // Build personality-aware system prompt with mem0 context
     const personalityPrompt = PERSONALITY_PROMPTS[responseStyle] || PERSONALITY_PROMPTS.tactical;
@@ -331,7 +346,7 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${OPENAI_KEY}`,
         },
         body: JSON.stringify({
-          model: MODEL,
+          model: ACTIVE_MODEL,
           messages,
           tools: functionDefinitions,
           tool_choice: 'auto'
