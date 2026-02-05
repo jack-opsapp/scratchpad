@@ -43,7 +43,10 @@ export async function callAgent(message, userId, conversationHistory = [], confi
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API error: ${response.status}`);
+      const errorMsg = errorData.details
+        ? `${errorData.error}: ${errorData.details}`
+        : (errorData.error || `API error: ${response.status}`);
+      throw new Error(errorMsg);
     }
 
     const data = await response.json();
