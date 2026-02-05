@@ -1108,7 +1108,10 @@ export function MainApp({ user, onSignOut }) {
           break;
 
         case 'error':
-          chatState.addAgentMessage(result.message || 'An error occurred.', 'error');
+          const errorMsg = result.details
+            ? `${result.message || 'Error'}: ${result.details}`
+            : (result.message || 'An error occurred.');
+          chatState.addAgentMessage(errorMsg, 'error');
           break;
 
         default:
@@ -1123,7 +1126,7 @@ export function MainApp({ user, onSignOut }) {
 
     } catch (error) {
       console.error('Chat error:', error);
-      chatState.addAgentMessage('Sorry, I encountered an error. Please try again.', 'error');
+      chatState.addAgentMessage(`Error: ${error.message}`, 'error');
     } finally {
       chatState.setProcessing(false);
     }

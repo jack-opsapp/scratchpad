@@ -53,7 +53,7 @@ export async function callAgent(message, userId, conversationHistory = [], confi
     console.error('Agent call failed:', error);
     return {
       type: 'error',
-      message: 'Sorry, I encountered an error. Please try again.',
+      message: `Error: ${error.message}`,
       _source: 'error',
       _error: error.message
     };
