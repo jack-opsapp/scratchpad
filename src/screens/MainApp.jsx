@@ -879,8 +879,13 @@ export function MainApp({ user, onSignOut }) {
       try {
         const result = await callAgent(
           `Plan execution complete. Summarize: ${JSON.stringify(executionSummary)}`,
-          { pages, sections: allSections, tags },
-          null
+          user?.id,
+          [],
+          null,
+          {
+            currentPage: currentPageData?.name || null,
+            currentSection: currentSectionData?.name || null
+          }
         );
         chatState.addAgentMessage(result.message || 'Done.', 'execution_result');
       } catch (e) {
