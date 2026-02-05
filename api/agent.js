@@ -356,23 +356,19 @@ export default async function handler(req, res) {
         break;
       }
 
-      // Separate terminal and non-terminal tool calls
-      // Terminal functions (respond_to_user, etc.) should be processed LAST
-      // so that data operations (create_note, etc.) execute first
-      const terminalCalls = [];
-      const dataCalls = [];
+      // Sort tool calls so terminal functions (respond_to_user, etc.) come LAST
+      // This ensures data operations (create_note) execute before we respond
+      const terminalFunctions = ['respond_to_user', 'ask_clarification', 'confirm_action', 'propose_plan', 'revise_plan_step'];
+      const sortedToolCalls = [...assistantMessage.tool_calls].sort((a, b) => {
+        const aIsTerminal = terminalFunctions.includes(a.function.name);
+        const bIsTerminal = terminalFunctions.includes(b.function.name);
+        if (aIsTerminal && !bIsTerminal) return 1;  // a comes after b
+        if (!aIsTerminal && bIsTerminal) return -1; // a comes before b
+        return 0;
+      });
 
-      for (const toolCall of assistantMessage.tool_calls) {
-        const functionName = toolCall.function.name;
-        if (['respond_to_user', 'ask_clarification', 'confirm_action', 'propose_plan', 'revise_plan_step'].includes(functionName)) {
-          terminalCalls.push(toolCall);
-        } else {
-          dataCalls.push(toolCall);
-        }
-      }
-
-      // Process data calls first (create_note, get_notes, navigate, etc.)
-      for (const toolCall of dataCalls) {
+      // Process each tool call
+      for (const toolCall of sortedToolCalls) {
         const functionName = toolCall.function.name;
         let args = {};
 
@@ -382,41 +378,7 @@ export default async function handler(req, res) {
           console.error('Failed to parse function arguments:', e);
         }
 
-        // Navigation/filter/view actions - collect for frontend
-        if (['navigate', 'apply_filter', 'clear_filters', 'create_custom_view'].includes(functionName)) {
-          console.log('Adding frontend action:', functionName, args);
-          frontendActions.push({ function: functionName, ...args });
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ success: true })
-          });
-          continue;
-        }
-
-        // Execute data query or mutation
-        console.log(`Executing function: ${functionName}`, args, 'for userId:', userId);
-        const result = await executeFunction(functionName, args, userId);
-        console.log(`Function result:`, JSON.stringify(result).substring(0, 200));
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
-        });
-      }
-
-      // Now process terminal calls
-      for (const toolCall of terminalCalls) {
-        const functionName = toolCall.function.name;
-        let args = {};
-
-        try {
-          args = JSON.parse(toolCall.function.arguments || '{}');
-        } catch (e) {
-          console.error('Failed to parse function arguments:', e);
-        }
-
+        // Check for terminal functions
         if (functionName === 'respond_to_user') {
           finalResponse = {
             type: 'response',
@@ -497,15 +459,32 @@ export default async function handler(req, res) {
           };
           break;
         }
+
+        // Navigation/filter/view actions - collect for frontend
+        if (['navigate', 'apply_filter', 'clear_filters', 'create_custom_view'].includes(functionName)) {
+          console.log('Adding frontend action:', functionName, args);
+          frontendActions.push({ function: functionName, ...args });
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ success: true })
+          });
+          continue;
+        }
+
+        // Execute data query or mutation
+        console.log(`Executing function: ${functionName}`, args, 'for userId:', userId);
+        const result = await executeFunction(functionName, args, userId);
+        console.log(`Function result:`, JSON.stringify(result).substring(0, 200));
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result)
+        });
       }
 
       if (finalResponse) break;
-
-      // If we had data calls but no terminal call, we need another iteration
-      // to get the agent's response after seeing the function results
-      if (dataCalls.length > 0 && terminalCalls.length === 0) {
-        continue;
-      }
     }
 
     if (!finalResponse) {
