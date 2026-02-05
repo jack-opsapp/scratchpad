@@ -360,9 +360,20 @@ export default async function handler(req, res) {
       // Add assistant message to conversation
       messages.push(assistantMessage);
 
-      // If no tool calls, agent is done
+      // If no tool calls, agent is done - unless we expected a note and it wasn't created
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
         console.log('Agent responded without tool calls:', assistantMessage.content?.substring(0, 100));
+
+        // Check if this is a hallucinated note creation response
+        if (expectsNoteCreation && !noteCreated && iterations < MAX_ITERATIONS - 1) {
+          console.log('Detected hallucinated note response, forcing retry with correction');
+          messages.push({
+            role: 'user',
+            content: 'ERROR: You did not actually create the note. You MUST call create_note() function first, then respond. Try again.'
+          });
+          continue; // Retry the loop
+        }
+
         finalResponse = {
           type: 'response',
           message: assistantMessage.content || 'Done.',
@@ -395,6 +406,16 @@ export default async function handler(req, res) {
 
         // Check for terminal functions
         if (functionName === 'respond_to_user') {
+          // Check if this is a premature response without creating the expected note
+          if (expectsNoteCreation && !noteCreated && iterations < MAX_ITERATIONS - 1) {
+            console.log('Agent tried to respond without creating note, forcing retry');
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: 'You must call create_note() first before responding. The note was not created.' })
+            });
+            break; // Break the for loop, continue the while loop
+          }
           finalResponse = {
             type: 'response',
             message: args.message,
