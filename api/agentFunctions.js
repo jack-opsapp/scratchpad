@@ -282,6 +282,14 @@ async function getNotes(supabase, userId, args) {
     query = query.ilike('content', `%${args.search}%`);
   }
 
+  if (args.created_after) {
+    query = query.gte('created_at', args.created_after);
+  }
+
+  if (args.created_before) {
+    query = query.lte('created_at', args.created_before);
+  }
+
   const { data, error } = await query;
   console.log('getNotes query result:', 'error:', error?.message, 'count:', data?.length);
   if (error) {
@@ -301,7 +309,8 @@ async function getNotes(supabase, userId, args) {
     tags: note.tags || [],
     date: note.date,
     completed: note.completed,
-    section_id: note.section_id
+    section_id: note.section_id,
+    created_at: note.created_at
   }));
 }
 

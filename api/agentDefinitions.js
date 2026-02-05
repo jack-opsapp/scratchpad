@@ -47,6 +47,8 @@ export const functionDefinitions = [
           has_no_tags: { type: 'boolean', description: 'Filter to notes without tags' },
           completed: { type: 'boolean', description: 'Filter by completion status' },
           search: { type: 'string', description: 'Text search in content' },
+          created_after: { type: 'string', description: 'Filter notes created after this ISO date (e.g., "2024-02-04" for yesterday)' },
+          created_before: { type: 'string', description: 'Filter notes created before this ISO date' },
           limit: { type: 'number', description: 'Max results (default 50)' }
         },
         required: []
