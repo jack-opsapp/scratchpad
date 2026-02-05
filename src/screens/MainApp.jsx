@@ -1009,13 +1009,8 @@ export function MainApp({ user, onSignOut }) {
     }
   };
 
-  // Chat message handler - new simplified architecture
-  const handleChatMessage = async (message, confirmedValue = null) => {
-    chatState.setProcessing(true);
-    if (!confirmedValue) {
-      chatState.addUserMessage(message);
-    }
-
+  // Process a single message (internal)
+  const processMessage = async (message, confirmedValue = null) => {
     try {
       // Call the new agent endpoint with current context
       const result = await callAgent(
@@ -1127,9 +1122,41 @@ export function MainApp({ user, onSignOut }) {
     } catch (error) {
       console.error('Chat error:', error);
       chatState.addAgentMessage(`Error: ${error.message}`, 'error');
-    } finally {
+    }
+  };
+
+  // Process next message from queue
+  const processNextInQueue = async () => {
+    const next = chatState.getNextFromQueue();
+    if (next) {
+      await processMessage(next.message, next.confirmedValue);
+      // Check for more in queue
+      await processNextInQueue();
+    } else {
       chatState.setProcessing(false);
     }
+  };
+
+  // Chat message handler - queues messages if already processing
+  const handleChatMessage = async (message, confirmedValue = null) => {
+    // Always show user message immediately
+    if (!confirmedValue) {
+      chatState.addUserMessage(message);
+    }
+
+    // If already processing, add to queue
+    if (chatState.isProcessing()) {
+      chatState.addToQueue(message, confirmedValue);
+      console.log('Message queued, queue length:', chatState.queueLength + 1);
+      return;
+    }
+
+    // Start processing
+    chatState.setProcessing(true);
+    await processMessage(message, confirmedValue);
+
+    // Process any queued messages
+    await processNextInQueue();
   };
 
   // Handle user response for confirmations/clarifications
@@ -2881,6 +2908,7 @@ export function MainApp({ user, onSignOut }) {
           messages={chatState.messages}
           onSendMessage={handleChatMessage}
           processing={chatState.processing}
+          queueLength={chatState.queueLength}
           onUserResponse={handleUserResponse}
           onViewClick={(viewConfig) => setAgentView(viewConfig)}
           onNavigate={(pageName, sectionName) => {

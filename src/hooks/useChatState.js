@@ -5,7 +5,9 @@ const MAX_MESSAGES = 100; // Before compacting
 export default function useChatState() {
   const [messages, setMessages] = useState([]);
   const [processing, setProcessing] = useState(false);
+  const [messageQueue, setMessageQueue] = useState([]);
   const contextWindowRef = useRef(0);
+  const processingRef = useRef(false); // For immediate access without re-render
 
   // Add user message
   const addUserMessage = useCallback((content) => {
@@ -95,10 +97,46 @@ export default function useChatState() {
     }));
   }, [messages]);
 
+  // Queue management
+  const addToQueue = useCallback((message, confirmedValue = null) => {
+    setMessageQueue(prev => [...prev, { message, confirmedValue }]);
+  }, []);
+
+  const getNextFromQueue = useCallback(() => {
+    let next = null;
+    setMessageQueue(prev => {
+      if (prev.length === 0) return prev;
+      next = prev[0];
+      return prev.slice(1);
+    });
+    return next;
+  }, []);
+
+  const clearQueue = useCallback(() => {
+    setMessageQueue([]);
+  }, []);
+
+  // Wrapped setProcessing that also updates ref
+  const setProcessingState = useCallback((value) => {
+    processingRef.current = value;
+    setProcessing(value);
+  }, []);
+
+  // Check if currently processing (immediate, no re-render)
+  const isProcessing = useCallback(() => {
+    return processingRef.current;
+  }, []);
+
   return {
     messages,
     processing,
-    setProcessing,
+    setProcessing: setProcessingState,
+    isProcessing,
+    messageQueue,
+    queueLength: messageQueue.length,
+    addToQueue,
+    getNextFromQueue,
+    clearQueue,
     addUserMessage,
     addAgentMessage,
     addSystemMessage,

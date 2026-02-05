@@ -28,6 +28,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   messages,
   onSendMessage,
   processing,
+  queueLength = 0,
   onUserResponse,
   onViewClick,
   onNavigate,
@@ -954,10 +955,17 @@ const ChatPanel = forwardRef(function ChatPanel({
           {processing && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
               <span style={{ color: colors.primary, fontSize: 11, flexShrink: 0 }}>←</span>
-              <div className="thinking-dots" style={{ display: 'flex', gap: 4, alignItems: 'center', height: 20 }}>
-                <span className="dot dot-1" />
-                <span className="dot dot-2" />
-                <span className="dot dot-3" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="thinking-dots" style={{ display: 'flex', gap: 4, alignItems: 'center', height: 20 }}>
+                  <span className="dot dot-1" />
+                  <span className="dot dot-2" />
+                  <span className="dot dot-3" />
+                </div>
+                {queueLength > 0 && (
+                  <span style={{ color: colors.textMuted, fontSize: 10 }}>
+                    +{queueLength} queued
+                  </span>
+                )}
               </div>
             </div>
           )}
