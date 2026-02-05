@@ -9,6 +9,53 @@
  */
 
 /**
+ * Interpret error messages into user-friendly responses
+ */
+function interpretError(error, statusCode) {
+  const msg = error.toLowerCase();
+
+  // OpenAI API errors
+  if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid api key')) {
+    return 'AI service not configured. Please check the API key.';
+  }
+  if (msg.includes('429') || msg.includes('rate limit')) {
+    return 'Too many requests. Please wait a moment and try again.';
+  }
+  if (msg.includes('503') || msg.includes('overloaded')) {
+    return 'AI service is busy. Please try again shortly.';
+  }
+  if (msg.includes('timeout') || msg.includes('timed out')) {
+    return 'Request timed out. Please try again.';
+  }
+
+  // Database errors
+  if (msg.includes('database') || msg.includes('supabase')) {
+    return 'Database connection issue. Please try again.';
+  }
+
+  // Network errors
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch')) {
+    return 'Connection failed. Check your internet and try again.';
+  }
+
+  // OpenAI not configured
+  if (msg.includes('openai not configured')) {
+    return 'AI service not configured. Contact support.';
+  }
+
+  // Generic AI service error - include status if available
+  if (msg.includes('ai service error')) {
+    if (statusCode) {
+      return `AI service error (${statusCode}). Please try again.`;
+    }
+    return 'AI service temporarily unavailable. Please try again.';
+  }
+
+  // Default: return original with prefix
+  return `Something went wrong: ${error}`;
+}
+
+/**
  * Call the AI agent
  * @param {string} message - User message
  * @param {string} userId - User ID for data access
@@ -43,10 +90,16 @@ export async function callAgent(message, userId, conversationHistory = [], confi
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData.details
+      const rawError = errorData.details
         ? `${errorData.error}: ${errorData.details}`
         : (errorData.error || `API error: ${response.status}`);
-      throw new Error(errorMsg);
+      const friendlyMsg = interpretError(rawError, errorData.status || response.status);
+      return {
+        type: 'error',
+        message: friendlyMsg,
+        _source: 'api_error',
+        _rawError: rawError
+      };
     }
 
     const data = await response.json();
@@ -54,11 +107,12 @@ export async function callAgent(message, userId, conversationHistory = [], confi
 
   } catch (error) {
     console.error('Agent call failed:', error);
+    const friendlyMsg = interpretError(error.message, null);
     return {
       type: 'error',
-      message: `Error: ${error.message}`,
+      message: friendlyMsg,
       _source: 'error',
-      _error: error.message
+      _rawError: error.message
     };
   }
 }
