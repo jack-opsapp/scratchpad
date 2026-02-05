@@ -4,7 +4,7 @@
  */
 
 const MEM0_API_KEY = process.env.MEM0_API_KEY;
-const MEM0_BASE_URL = 'https://api.mem0.ai/v1';
+const MEM0_BASE_URL = 'https://api.mem0.ai';
 const PROFILE_TIMEOUT_MS = 2000;
 
 // =============================================================================
@@ -38,7 +38,7 @@ export async function getMem0Profile(userId) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), PROFILE_TIMEOUT_MS);
 
-    const response = await fetch(`${MEM0_BASE_URL}/memories/search`, {
+    const response = await fetch(`${MEM0_BASE_URL}/v2/memories/search/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -47,7 +47,7 @@ export async function getMem0Profile(userId) {
       body: JSON.stringify({
         query: 'user behavioral profile and preferences',
         filters: { user_id: userId },
-        limit: 20
+        top_k: 20
       }),
       signal: controller.signal
     });
@@ -87,7 +87,7 @@ export async function storeObservation(userId, observation) {
   }
 
   try {
-    const response = await fetch(`${MEM0_BASE_URL}/memories/add`, {
+    const response = await fetch(`${MEM0_BASE_URL}/v1/memories/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -98,10 +98,6 @@ export async function storeObservation(userId, observation) {
           {
             role: 'user',
             content: `${observation.type}: ${observation.content}`
-          },
-          {
-            role: 'assistant',
-            content: 'Noted.'
           }
         ],
         user_id: userId
@@ -132,15 +128,11 @@ export async function clearUserMemory(userId) {
   }
 
   try {
-    const response = await fetch(`${MEM0_BASE_URL}/memories`, {
+    const response = await fetch(`${MEM0_BASE_URL}/v1/memories/?user_id=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Token ${MEM0_API_KEY}`
-      },
-      body: JSON.stringify({
-        user_id: userId
-      })
+      }
     });
 
     if (!response.ok) {
