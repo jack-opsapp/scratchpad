@@ -14,7 +14,7 @@ import {
 } from './mem0.js';
 
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-const MODEL = 'gpt-4o-mini';
+const MODEL = 'gpt-5-mini-2025-08-07';
 const MAX_ITERATIONS = 10;
 
 // Supabase client for fetching user settings
