@@ -105,6 +105,7 @@ export async function getPageCollaborators(pageId) {
     .select(`
       id,
       role,
+      status,
       user_id,
       users:user_id (
         id,
@@ -121,6 +122,7 @@ export async function getPageCollaborators(pageId) {
     permissionId: p.id,
     userId: p.user_id,
     role: p.role,
+    status: p.status || 'accepted',
     email: p.users?.email || '',
     name: p.users?.email?.split('@')[0] || 'Unknown',
   }));

@@ -388,10 +388,23 @@ export default function ShareModal({
                     color: colors.textPrimary,
                     fontSize: 13,
                     margin: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                 >
                   {collab.email.split('@')[0]}{' '}
                   {collab.userId === currentUserId && '(You)'}
+                  {collab.status === 'pending' && (
+                    <span style={{
+                      fontSize: 9,
+                      fontWeight: 600,
+                      color: colors.textMuted,
+                      border: `1px solid ${colors.border}`,
+                      padding: '1px 5px',
+                      letterSpacing: 0.5,
+                    }}>PENDING</span>
+                  )}
                 </p>
                 <p
                   style={{
