@@ -147,15 +147,33 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
     .single();
 
   if (existingUser) {
-    // User exists - add or re-invite (upsert handles re-invites after decline/leave)
-    const { error } = await supabase.from('page_permissions').upsert({
-      page_id: pageId,
-      user_id: existingUser.id,
-      role: role,
-      status: 'pending',
-    }, { onConflict: 'page_id,user_id' });
+    // Check if permission row already exists (re-invite after leave/decline)
+    const { data: existing } = await supabase
+      .from('page_permissions')
+      .select('id')
+      .eq('page_id', pageId)
+      .eq('user_id', existingUser.id)
+      .single();
 
-    if (error) throw error;
+    if (existing) {
+      // Update existing row back to pending
+      const { error } = await supabase
+        .from('page_permissions')
+        .update({ role: role, status: 'pending' })
+        .eq('page_id', pageId)
+        .eq('user_id', existingUser.id);
+      if (error) throw error;
+    } else {
+      // Insert new permission
+      const { error } = await supabase.from('page_permissions').insert({
+        page_id: pageId,
+        user_id: existingUser.id,
+        role: role,
+        status: 'pending',
+      });
+      if (error) throw error;
+    }
+
     return { status: 'added', userId: existingUser.id };
   } else {
     // User doesn't exist - create pending invitation
