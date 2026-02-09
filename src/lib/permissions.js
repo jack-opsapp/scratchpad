@@ -147,13 +147,13 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
     .single();
 
   if (existingUser) {
-    // User exists - add permission directly
-    const { error } = await supabase.from('page_permissions').insert({
+    // User exists - add or re-invite (upsert handles re-invites after decline/leave)
+    const { error } = await supabase.from('page_permissions').upsert({
       page_id: pageId,
       user_id: existingUser.id,
       role: role,
       status: 'pending',
-    });
+    }, { onConflict: 'page_id,user_id' });
 
     if (error) throw error;
     return { status: 'added', userId: existingUser.id };

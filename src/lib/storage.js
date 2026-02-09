@@ -464,21 +464,32 @@ export const dataStore = {
         return null;
       }
 
-      // Get all section IDs that belong to user's pages
-      const { data: pages } = await supabase
+      // Get all section IDs from owned pages
+      const { data: ownedPages } = await supabase
         .from('pages')
-        .select('sections(id)')
+        .select('id, sections(id)')
         .eq('user_id', userId);
 
-      if (!pages) return [];
+      const ownedSectionIds = (ownedPages || []).flatMap(p => (p.sections || []).map(s => s.id));
 
-      const sectionIds = pages.flatMap(p => (p.sections || []).map(s => s.id));
-      if (sectionIds.length === 0) return [];
+      // Get all section IDs from shared pages
+      const { data: sharedPerms } = await supabase
+        .from('page_permissions')
+        .select('page_id, pages:page_id(sections(id))')
+        .eq('user_id', userId);
+
+      const ownedPageIds = new Set((ownedPages || []).map(p => p.id));
+      const sharedSectionIds = (sharedPerms || [])
+        .filter(p => !ownedPageIds.has(p.page_id))
+        .flatMap(p => p.pages?.sections?.map(s => s.id) || []);
+
+      const allSectionIds = [...ownedSectionIds, ...sharedSectionIds];
+      if (allSectionIds.length === 0) return [];
 
       const { data, error } = await supabase
         .from('notes')
         .select('*')
-        .in('section_id', sectionIds)
+        .in('section_id', allSectionIds)
         .order('created_at', { ascending: false });
 
       if (error) {
