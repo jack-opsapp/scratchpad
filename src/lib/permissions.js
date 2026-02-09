@@ -115,20 +115,15 @@ export async function getPageCollaborators(pageId) {
     .eq('page_id', pageId)
     .order('role'); // Owner first
 
-  console.log('[COLLABS] Raw page_permissions for page', pageId, ':', JSON.stringify(data), 'error:', error);
-
   if (error) throw error;
 
-  const result = data.map((p) => ({
+  return data.map((p) => ({
     permissionId: p.id,
     userId: p.user_id,
     role: p.role,
     email: p.users?.email || '',
     name: p.users?.email?.split('@')[0] || 'Unknown',
   }));
-
-  console.log('[COLLABS] Mapped result:', JSON.stringify(result));
-  return result;
 }
 
 export async function getPendingInvitations(pageId) {
@@ -145,53 +140,22 @@ export async function getPendingInvitations(pageId) {
 
 export async function inviteUserByEmail(pageId, email, role, inviterId) {
   // Check if user exists
-  const { data: existingUser, error: lookupError } = await supabase
+  const { data: existingUser } = await supabase
     .from('users')
     .select('id')
     .eq('email', email)
     .single();
 
-  console.log('[INVITE] Lookup user by email:', email, '→', existingUser, 'error:', lookupError);
-
   if (existingUser) {
-    // Check if permission row already exists (re-invite after leave/decline)
-    const { data: existing } = await supabase
-      .from('page_permissions')
-      .select('id')
-      .eq('page_id', pageId)
-      .eq('user_id', existingUser.id)
-      .single();
+    // Use SECURITY DEFINER function to bypass RLS for cross-user insert
+    const { error } = await supabase.rpc('invite_user_to_page', {
+      p_page_id: pageId,
+      p_user_id: existingUser.id,
+      p_role: role,
+      p_status: 'pending',
+    });
 
-    console.log('[INVITE] Existing permission:', existing);
-
-    if (existing) {
-      // Update existing row back to pending
-      const { error } = await supabase
-        .from('page_permissions')
-        .update({ role: role, status: 'pending' })
-        .eq('page_id', pageId)
-        .eq('user_id', existingUser.id);
-      console.log('[INVITE] Updated existing permission, error:', error);
-      if (error) throw error;
-    } else {
-      // Insert new permission
-      const { data: inserted, error } = await supabase.from('page_permissions').insert({
-        page_id: pageId,
-        user_id: existingUser.id,
-        role: role,
-        status: 'pending',
-      }).select();
-      console.log('[INVITE] Insert result — data:', JSON.stringify(inserted), 'error:', error);
-      if (error) throw error;
-    }
-
-    // Verify the row exists
-    const { data: verify, error: verifyErr } = await supabase
-      .from('page_permissions')
-      .select('id, role, user_id, status')
-      .eq('page_id', pageId);
-    console.log('[INVITE] Verification — all permissions for page:', JSON.stringify(verify), 'error:', verifyErr);
-
+    if (error) throw error;
     return { status: 'added', userId: existingUser.id };
   } else {
     // User doesn't exist - create pending invitation
