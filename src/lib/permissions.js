@@ -115,15 +115,20 @@ export async function getPageCollaborators(pageId) {
     .eq('page_id', pageId)
     .order('role'); // Owner first
 
+  console.log('[COLLABS] Raw page_permissions for page', pageId, ':', JSON.stringify(data), 'error:', error);
+
   if (error) throw error;
 
-  return data.map((p) => ({
+  const result = data.map((p) => ({
     permissionId: p.id,
     userId: p.user_id,
     role: p.role,
     email: p.users?.email || '',
     name: p.users?.email?.split('@')[0] || 'Unknown',
   }));
+
+  console.log('[COLLABS] Mapped result:', JSON.stringify(result));
+  return result;
 }
 
 export async function getPendingInvitations(pageId) {
@@ -140,11 +145,13 @@ export async function getPendingInvitations(pageId) {
 
 export async function inviteUserByEmail(pageId, email, role, inviterId) {
   // Check if user exists
-  const { data: existingUser } = await supabase
+  const { data: existingUser, error: lookupError } = await supabase
     .from('users')
     .select('id')
     .eq('email', email)
     .single();
+
+  console.log('[INVITE] Lookup user by email:', email, '→', existingUser, 'error:', lookupError);
 
   if (existingUser) {
     // Check if permission row already exists (re-invite after leave/decline)
@@ -155,6 +162,8 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
       .eq('user_id', existingUser.id)
       .single();
 
+    console.log('[INVITE] Existing permission:', existing);
+
     if (existing) {
       // Update existing row back to pending
       const { error } = await supabase
@@ -162,6 +171,7 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
         .update({ role: role, status: 'pending' })
         .eq('page_id', pageId)
         .eq('user_id', existingUser.id);
+      console.log('[INVITE] Updated existing permission, error:', error);
       if (error) throw error;
     } else {
       // Insert new permission
@@ -171,6 +181,7 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
         role: role,
         status: 'pending',
       });
+      console.log('[INVITE] Inserted new permission, error:', error);
       if (error) throw error;
     }
 
