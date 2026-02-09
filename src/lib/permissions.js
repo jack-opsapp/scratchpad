@@ -121,8 +121,8 @@ export async function getPageCollaborators(pageId) {
     permissionId: p.id,
     userId: p.user_id,
     role: p.role,
-    email: p.users.email,
-    name: p.users.email.split('@')[0], // Use email prefix as name for now
+    email: p.users?.email || '',
+    name: p.users?.email?.split('@')[0] || 'Unknown',
   }));
 }
 
