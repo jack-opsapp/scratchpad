@@ -175,15 +175,22 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
       if (error) throw error;
     } else {
       // Insert new permission
-      const { error } = await supabase.from('page_permissions').insert({
+      const { data: inserted, error } = await supabase.from('page_permissions').insert({
         page_id: pageId,
         user_id: existingUser.id,
         role: role,
         status: 'pending',
-      });
-      console.log('[INVITE] Inserted new permission, error:', error);
+      }).select();
+      console.log('[INVITE] Insert result — data:', JSON.stringify(inserted), 'error:', error);
       if (error) throw error;
     }
+
+    // Verify the row exists
+    const { data: verify, error: verifyErr } = await supabase
+      .from('page_permissions')
+      .select('id, role, user_id, status')
+      .eq('page_id', pageId);
+    console.log('[INVITE] Verification — all permissions for page:', JSON.stringify(verify), 'error:', verifyErr);
 
     return { status: 'added', userId: existingUser.id };
   } else {
