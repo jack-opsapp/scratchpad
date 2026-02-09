@@ -103,6 +103,8 @@ import {
   getPageRole,
   getPageCollaborators,
   leaveSharedPage,
+  acceptPageShare,
+  declinePageShare,
 } from '../lib/permissions.js';
 
 import {
@@ -1724,6 +1726,17 @@ export function MainApp({ user, onSignOut }) {
                           >
                             {page.name}
                           </span>
+                          {page.permissionStatus === 'pending' && (
+                            <span style={{
+                              background: colors.primary,
+                              color: colors.bg,
+                              fontSize: 9,
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              marginRight: 4,
+                              letterSpacing: 0.5,
+                            }}>NEW</span>
+                          )}
                           {page.starred && (
                             <Star
                               size={10}
@@ -2394,6 +2407,76 @@ export function MainApp({ user, onSignOut }) {
             ) : (
               /* Normal Page/Section Header */
               <>
+                {/* Pending share accept/decline banner */}
+                {sharedPages.find(p => p.id === currentPage)?.permissionStatus === 'pending' && (() => {
+                  const pendingPage = sharedPages.find(p => p.id === currentPage);
+                  return (
+                    <div style={{
+                      background: colors.surface || '#0a0a0a',
+                      borderBottom: `1px solid ${colors.border}`,
+                      padding: '12px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 16,
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: colors.textSecondary || '#ccc' }}>
+                          {pendingPage?.ownerEmail} shared this page
+                        </div>
+                        <span style={{
+                          border: `1px solid ${colors.primary}`,
+                          padding: '2px 8px',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: colors.primary,
+                          letterSpacing: 0.5,
+                          textTransform: 'uppercase',
+                          marginTop: 4,
+                          display: 'inline-block',
+                        }}>
+                          {(pageRoles[currentPage] || '').replace('-', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={async () => {
+                          try {
+                            await acceptPageShare(currentPage, user.id);
+                            await refreshData();
+                          } catch (e) {
+                            alert(e.message);
+                          }
+                        }} style={{
+                          background: colors.primary,
+                          color: colors.bg,
+                          border: 'none',
+                          padding: '8px 16px',
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}>Accept</button>
+                        <button onClick={async () => {
+                          try {
+                            await declinePageShare(currentPage, user.id);
+                            window.location.reload();
+                          } catch (e) {
+                            alert(e.message);
+                          }
+                        }} style={{
+                          background: 'transparent',
+                          border: `1px solid ${colors.border}`,
+                          color: colors.textMuted,
+                          padding: '8px 16px',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}>Decline</button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span
                     onClick={() => setViewingPageLevel(true)}

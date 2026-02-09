@@ -232,7 +232,7 @@ export const dataStore = {
     // First get page IDs where user has permissions but doesn't own
     const { data: permissions, error: permError } = await supabase
       .from('page_permissions')
-      .select('page_id, role')
+      .select('page_id, role, status')
       .eq('user_id', user.id);
 
     if (permError || !permissions) {
@@ -248,19 +248,25 @@ export const dataStore = {
 
     const ownedIds = new Set((ownedPages || []).map(p => p.id));
 
-    // Filter to only pages user doesn't own
-    const sharedPermissions = permissions.filter(p => !ownedIds.has(p.page_id));
+    // Filter to only pages user doesn't own and not declined
+    const sharedPermissions = permissions.filter(
+      p => !ownedIds.has(p.page_id) && p.status !== 'declined'
+    );
 
     if (sharedPermissions.length === 0) return [];
 
     const sharedPageIds = sharedPermissions.map(p => p.page_id);
     const roleMap = {};
-    sharedPermissions.forEach(p => { roleMap[p.page_id] = p.role; });
+    const statusMap = {};
+    sharedPermissions.forEach(p => {
+      roleMap[p.page_id] = p.role;
+      statusMap[p.page_id] = p.status;
+    });
 
-    // Fetch the actual pages with sections
+    // Fetch the actual pages with sections + owner email
     const { data: pages, error: pagesError } = await supabase
       .from('pages')
-      .select('*, sections(*)')
+      .select('*, sections(*), users:user_id(email)')
       .in('id', sharedPageIds)
       .order('name');
 
@@ -271,7 +277,9 @@ export const dataStore = {
 
     return pages.map(p => ({
       ...transformPagesToAppFormat([p])[0],
-      myRole: roleMap[p.id]
+      myRole: roleMap[p.id],
+      permissionStatus: statusMap[p.id] || 'accepted',
+      ownerEmail: p.users?.email || '',
     }));
   },
 

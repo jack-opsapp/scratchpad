@@ -152,6 +152,7 @@ export async function inviteUserByEmail(pageId, email, role, inviterId) {
       page_id: pageId,
       user_id: existingUser.id,
       role: role,
+      status: 'pending',
     });
 
     if (error) throw error;
@@ -245,6 +246,26 @@ export async function resendInvitation(pageId, email) {
     .update({ expires_at: newExpiry.toISOString() })
     .eq('page_id', pageId)
     .eq('email', email);
+
+  if (error) throw error;
+}
+
+export async function acceptPageShare(pageId, userId) {
+  const { error } = await supabase
+    .from('page_permissions')
+    .update({ status: 'accepted' })
+    .eq('page_id', pageId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+}
+
+export async function declinePageShare(pageId, userId) {
+  const { error } = await supabase
+    .from('page_permissions')
+    .delete()
+    .eq('page_id', pageId)
+    .eq('user_id', userId);
 
   if (error) throw error;
 }
