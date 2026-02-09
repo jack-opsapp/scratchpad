@@ -277,8 +277,12 @@ export function MainApp({ user, onSignOut }) {
       setOwnedPages(owned || []);
       setSharedPages(shared || []);
       setPages(allPages);
-      setTags([]); // Tags derived from notes
       setNotes(notesData || []);
+      // Derive tags from notes
+      const allTags = [...new Set(
+        (notesData || []).flatMap(n => n.tags || []).filter(Boolean)
+      )];
+      setTags(allTags);
       setBoxConfigs(boxConfigsData || {});
 
       // Set roles
