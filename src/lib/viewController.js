@@ -19,7 +19,8 @@ export function executeViewChanges(actions, state, setters) {
     setFilterIncomplete,
     setViewMode,
     setSortBy,
-    setExpandedPages
+    setExpandedPages,
+    setCustomSortOrder,
   } = setters;
 
   const results = [];
@@ -51,6 +52,18 @@ export function executeViewChanges(actions, state, setters) {
         case 'sort':
           setSortBy(action.sortBy);
           results.push({ action: 'sort', success: true, sortBy: action.sortBy });
+          break;
+
+        case 'custom_sort':
+          if (action.sortedIds?.length && setCustomSortOrder) {
+            const contextKey = action.contextKey || 'current';
+            setCustomSortOrder(prev => ({
+              ...prev,
+              [contextKey]: { ids: action.sortedIds, criteria: action.criteria || 'custom' }
+            }));
+            setSortBy('custom');
+            results.push({ action: 'custom_sort', success: true, criteria: action.criteria });
+          }
           break;
 
         default:

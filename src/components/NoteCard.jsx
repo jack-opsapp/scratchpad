@@ -31,6 +31,7 @@ export function NoteCard({
   canDelete = true,
   canToggle = true,
   compact = false,
+  onTagClick,
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
@@ -129,7 +130,7 @@ export function NoteCard({
               }}
             >
               {note.tags?.map(tag => (
-                <TagPill key={tag} tag={tag} small />
+                <TagPill key={tag} tag={tag} small onClick={() => onTagClick?.(tag)} />
               ))}
               {note.date && (
                 <span

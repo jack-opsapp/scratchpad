@@ -5,6 +5,7 @@ export { TagPill } from './TagPill.jsx';
 
 // Note Components
 export { NoteCard } from './NoteCard.jsx';
+export { HomeView } from './HomeView.jsx';
 export { ChatResponseBox } from './ChatResponseBox.jsx';
 
 // View Components

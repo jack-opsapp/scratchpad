@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, GripHorizontal, Check, X, LayoutGrid, Minus, Maximize2, SkipForward } from 'lucide-react';
+import { Send, GripHorizontal, Check, X, LayoutGrid, Minus, Maximize2, SkipForward, Copy } from 'lucide-react';
 import { colors } from '../styles/theme.js';
 import VoiceInput from './VoiceInput.jsx';
 import MarkdownText from './MarkdownText.jsx';
@@ -54,6 +54,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [planVersion, setPlanVersion] = useState(0); // Tracks plan changes for forcing re-render
   const [reviseMode, setReviseMode] = useState(false); // When true, show revision text input
   const [reviseInput, setReviseInput] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState(null);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [audioWaveform, setAudioWaveform] = useState([]);
   const planContainerRef = useRef(null);
@@ -850,7 +851,9 @@ const ChatPanel = forwardRef(function ChatPanel({
           }}
         >
           {messages.map((msg, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
+            <div key={i} style={{ marginBottom: 10, position: 'relative' }}
+              className="chat-message-row"
+            >
               {msg.role === 'user' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <span style={{ color: 'var(--chat-user-text-color, ' + colors.textMuted + ')', fontSize: 11, flexShrink: 0, opacity: 0.6 }}>→</span>
@@ -858,10 +861,32 @@ const ChatPanel = forwardRef(function ChatPanel({
                     color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
                     fontSize: 'var(--chat-font-message, 13px)',
                     margin: 0,
-                    lineHeight: 1.4
+                    lineHeight: 1.4,
+                    flex: 1
                   }}>
                     {msg.content}
                   </p>
+                  <button
+                    className="chat-copy-btn"
+                    onClick={() => {
+                      navigator.clipboard.writeText(msg.content);
+                      setCopiedIndex(i);
+                      setTimeout(() => setCopiedIndex(null), 1500);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: copiedIndex === i ? '#4CAF50' : colors.textMuted,
+                      cursor: 'pointer',
+                      padding: 2,
+                      opacity: copiedIndex === i ? 1 : 0,
+                      transition: 'opacity 0.15s',
+                      flexShrink: 0,
+                    }}
+                    title="Copy message"
+                  >
+                    {copiedIndex === i ? <Check size={11} /> : <Copy size={11} />}
+                  </button>
                 </div>
               )}
 
@@ -946,6 +971,27 @@ const ChatPanel = forwardRef(function ChatPanel({
                       </button>
                     )}
                   </div>
+                  <button
+                    className="chat-copy-btn"
+                    onClick={() => {
+                      navigator.clipboard.writeText(msg.content);
+                      setCopiedIndex(i);
+                      setTimeout(() => setCopiedIndex(null), 1500);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: copiedIndex === i ? '#4CAF50' : colors.textMuted,
+                      cursor: 'pointer',
+                      padding: 2,
+                      opacity: copiedIndex === i ? 1 : 0,
+                      transition: 'opacity 0.15s',
+                      flexShrink: 0,
+                    }}
+                    title="Copy message"
+                  >
+                    {copiedIndex === i ? <Check size={11} /> : <Copy size={11} />}
+                  </button>
                 </div>
               )}
             </div>
@@ -1322,6 +1368,14 @@ const ChatPanel = forwardRef(function ChatPanel({
           letter-spacing: 2px;
           font-family: monospace;
           animation: successFade 1.5s ease-in-out forwards;
+        }
+
+        /* Copy button hover visibility */
+        .chat-message-row:hover .chat-copy-btn {
+          opacity: 0.5 !important;
+        }
+        .chat-copy-btn:hover {
+          opacity: 1 !important;
         }
 
         /* Thinking dots animation */

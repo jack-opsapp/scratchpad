@@ -22,6 +22,7 @@ import {
   Keyboard,
   Share2,
   AlignJustify,
+  Home,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
@@ -94,6 +95,7 @@ function ApiErrorBadge({ error, onDismiss }) {
 
 import useChatState from '../hooks/useChatState.js';
 import { dataStore } from '../lib/storage.js';
+import { supabase } from '../config/supabase.js';
 import { callAgent } from '../lib/agent.js';
 import { executeGroup, summarizeResults } from '../lib/planExecutor.js';
 import { executeViewChanges } from '../lib/viewController.js';
@@ -112,6 +114,7 @@ import {
   ContextMenu,
   TagPill,
   NoteCard,
+  HomeView,
   ChatResponseBox,
   CalendarView,
   BoxesView,
@@ -219,6 +222,7 @@ export function MainApp({ user, onSignOut }) {
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterTag, setFilterTag] = useState([]);
   const [sortBy, setSortBy] = useState('status'); // Default: incomplete first
+  const [customSortOrder, setCustomSortOrder] = useState({}); // { [contextKey]: { ids: string[], criteria: string } }
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [groupBy] = useState('status');
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
@@ -304,13 +308,23 @@ export function MainApp({ user, onSignOut }) {
       setCollabCounts(counts);
 
       setExpandedPages(allPages.map(p => p.id));
-      if (owned.length > 0) {
-        setCurrentPage(owned[0].id);
-        setCurrentSection(owned[0].sections?.[0]?.id || null);
-      } else if (shared.length > 0) {
-        setCurrentPage(shared[0].id);
-        setCurrentSection(shared[0].sections?.[0]?.id || null);
+
+      // Check for default page/section from settings
+      if (settings?.defaultPageId) {
+        const defaultPage = allPages.find(p => p.id === settings.defaultPageId);
+        if (defaultPage) {
+          setCurrentPage(defaultPage.id);
+          if (settings.defaultSectionId) {
+            const defaultSection = defaultPage.sections?.find(s => s.id === settings.defaultSectionId);
+            setCurrentSection(defaultSection?.id || defaultPage.sections?.[0]?.id || null);
+          } else {
+            setCurrentSection(defaultPage.sections?.[0]?.id || null);
+          }
+        }
+        // If default page not found, fall through to home view (currentPage stays null)
       }
+      // If no default set, currentPage stays null = home view
+
       setLoading(false);
     };
     load();
@@ -440,6 +454,19 @@ export function MainApp({ user, onSignOut }) {
       n => filterTag.length === 0 || filterTag.some(t => n.tags?.includes(t))
     )
     .sort((a, b) => {
+      if (sortBy === 'custom') {
+        const contextKey = viewingPageLevel ? `page-${currentPage}` : `section-${currentSection}`;
+        const sortOrder = customSortOrder[contextKey] || customSortOrder['current'];
+        if (sortOrder?.ids) {
+          const aIdx = sortOrder.ids.indexOf(a.id);
+          const bIdx = sortOrder.ids.indexOf(b.id);
+          // Notes not in the sort order go to the end
+          if (aIdx === -1 && bIdx === -1) return 0;
+          if (aIdx === -1) return 1;
+          if (bIdx === -1) return -1;
+          return aIdx - bIdx;
+        }
+      }
       if (sortBy === 'status') {
         // Incomplete first, then by created date
         if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -988,6 +1015,18 @@ export function MainApp({ user, onSignOut }) {
           setCurrentSection(null);
           setViewingPageLevel(false);
           break;
+
+        case 'sort_notes':
+          // Apply custom sort order from AI
+          if (action.sorted_ids?.length) {
+            const contextKey = viewingPageLevel ? `page-${currentPage}` : `section-${currentSection}`;
+            setCustomSortOrder(prev => ({
+              ...prev,
+              [contextKey]: { ids: action.sorted_ids, criteria: action.criteria || 'custom' }
+            }));
+            setSortBy('custom');
+          }
+          break;
       }
     }
   };
@@ -1013,6 +1052,45 @@ export function MainApp({ user, onSignOut }) {
     } catch (err) {
       console.error('Failed to refresh data:', err);
     }
+  };
+
+  // Toggle note completion with direct Supabase persistence
+  const handleNoteToggle = (id) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    const newCompleted = !note.completed;
+    const completed_by_user_id = newCompleted ? user.id : null;
+    const completed_at = newCompleted ? new Date().toISOString() : null;
+
+    // Optimistic UI update
+    setNotes(notes.map(n =>
+      n.id === id
+        ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
+        : n
+    ));
+
+    // Direct Supabase persist
+    supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id)
+      .then(({ error }) => { if (error) console.error('Toggle persist failed:', error); });
+  };
+
+  // Edit note content with direct Supabase persistence
+  const handleNoteEdit = (id, content) => {
+    // Optimistic UI update
+    setNotes(notes.map(n =>
+      n.id === id ? { ...n, content } : n
+    ));
+
+    // Direct Supabase persist
+    supabase.from('notes').update({ content }).eq('id', id)
+      .then(({ error }) => { if (error) console.error('Edit persist failed:', error); });
+  };
+
+  // Delete note with direct Supabase persistence
+  const handleNoteDelete = (id) => {
+    setNotes(notes.filter(n => n.id !== id));
+    supabase.from('notes').delete().eq('id', id)
+      .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
   };
 
   // Process a single message (internal)
@@ -1434,6 +1512,30 @@ export function MainApp({ user, onSignOut }) {
               <div
                 style={{ flex: 1, overflow: 'auto', padding: '20px 16px' }}
               >
+                {/* Home button */}
+                <div
+                  onClick={() => {
+                    setCurrentPage(null);
+                    setCurrentSection(null);
+                    setViewingPageLevel(false);
+                    setAgentView(null);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 0',
+                    marginBottom: 16,
+                    cursor: 'pointer',
+                    color: !currentPage && !agentView ? colors.textPrimary : colors.textMuted,
+                    fontSize: 13,
+                    fontWeight: !currentPage && !agentView ? 600 : 400,
+                  }}
+                >
+                  <Home size={14} />
+                  <span>Home</span>
+                </div>
+
                 {/* MY PAGES section */}
                 <div style={{ marginBottom: 32 }}>
                   <div
@@ -2228,8 +2330,8 @@ export function MainApp({ user, onSignOut }) {
             overflow: 'hidden',
           }}
         >
-          {/* Toolbar - hide on mobile, MobileHeader handles navigation */}
-          {!isMobile && (
+          {/* Toolbar - hide on mobile and home view, MobileHeader handles navigation */}
+          {!isMobile && (currentPage || agentView) && (
           <div
             style={{
               height: 48,
@@ -2292,7 +2394,7 @@ export function MainApp({ user, onSignOut }) {
               }}
             >
               <ArrowUpDown size={12} />
-              SORT
+              {sortBy === 'custom' ? 'CUSTOM SORT' : 'SORT'}
             </button>
             <button
               onClick={() => setCompactMode(!compactMode)}
@@ -2349,7 +2451,18 @@ export function MainApp({ user, onSignOut }) {
           {/* Header - hide on mobile since MobileHeader shows the title */}
           {!isMobile && (
           <div style={{ padding: '32px 40px 16px' }}>
-            {agentView ? (
+            {!currentPage && !agentView ? (
+              /* Home View Header */
+              <h1 style={{
+                color: colors.textPrimary,
+                fontSize: 24,
+                fontWeight: 600,
+                letterSpacing: -1,
+                margin: 0,
+              }}>
+                HOME
+              </h1>
+            ) : agentView ? (
               /* Agent View Header */
               <div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -2659,30 +2772,10 @@ export function MainApp({ user, onSignOut }) {
                             canDelete={true}
                             canToggle={true}
                             compact={compactMode}
-                            onToggle={id =>
-                              setNotes(
-                                notes.map(n =>
-                                  n.id === id
-                                    ? {
-                                        ...n,
-                                        completed: !n.completed,
-                                        completed_by_user_id: !n.completed ? user.id : null,
-                                        completed_at: !n.completed ? new Date().toISOString() : null,
-                                      }
-                                    : n
-                                )
-                              )
-                            }
-                            onEdit={(id, c) =>
-                              setNotes(
-                                notes.map(n =>
-                                  n.id === id ? { ...n, content: c } : n
-                                )
-                              )
-                            }
-                            onDelete={id =>
-                              setNotes(notes.filter(n => n.id !== id))
-                            }
+                            onToggle={handleNoteToggle}
+                            onEdit={handleNoteEdit}
+                            onDelete={handleNoteDelete}
+                            onTagClick={(tag) => setFilterTag([tag])}
                           />
                         </div>
                       );
@@ -2790,6 +2883,24 @@ export function MainApp({ user, onSignOut }) {
                   />
                 )}
               </>
+            ) : !currentPage ? (
+              /* Home view when no page is selected */
+              <HomeView
+                notes={notes}
+                pages={[...ownedPages, ...sharedPages]}
+                allSections={allSections}
+                user={user}
+                newNoteId={newNoteId}
+                onNavigate={(pageId, sectionId) => {
+                  setCurrentPage(pageId);
+                  setCurrentSection(sectionId);
+                  setViewingPageLevel(false);
+                }}
+                onToggle={handleNoteToggle}
+                onEdit={handleNoteEdit}
+                onDelete={handleNoteDelete}
+                onTagClick={(tag) => setFilterTag([tag])}
+              />
             ) : (
               /* Normal view when no agent view is active */
               <>
@@ -2834,30 +2945,10 @@ export function MainApp({ user, onSignOut }) {
                               canDelete={canDeleteNote}
                               canToggle={canToggleNote}
                               compact={compactMode}
-                              onToggle={id =>
-                                setNotes(
-                                  notes.map(n =>
-                                    n.id === id
-                                      ? {
-                                          ...n,
-                                          completed: !n.completed,
-                                          completed_by_user_id: !n.completed ? user.id : null,
-                                          completed_at: !n.completed ? new Date().toISOString() : null,
-                                        }
-                                      : n
-                                  )
-                                )
-                              }
-                              onEdit={(id, c) =>
-                                setNotes(
-                                  notes.map(n =>
-                                    n.id === id ? { ...n, content: c } : n
-                                  )
-                                )
-                              }
-                              onDelete={id =>
-                                setNotes(notes.filter(n => n.id !== id))
-                              }
+                              onToggle={handleNoteToggle}
+                              onEdit={handleNoteEdit}
+                              onDelete={handleNoteDelete}
+                              onTagClick={(tag) => setFilterTag([tag])}
                             />
                           );
                         })}
@@ -2881,30 +2972,10 @@ export function MainApp({ user, onSignOut }) {
                           canDelete={canDeleteNote}
                           canToggle={canToggleNote}
                           compact={compactMode}
-                          onToggle={id =>
-                            setNotes(
-                              notes.map(n =>
-                                n.id === id
-                                  ? {
-                                      ...n,
-                                      completed: !n.completed,
-                                      completed_by_user_id: !n.completed ? user.id : null,
-                                      completed_at: !n.completed ? new Date().toISOString() : null,
-                                    }
-                                  : n
-                              )
-                            )
-                          }
-                          onEdit={(id, c) =>
-                            setNotes(
-                              notes.map(n =>
-                                n.id === id ? { ...n, content: c } : n
-                              )
-                            )
-                          }
-                          onDelete={id =>
-                            setNotes(notes.filter(n => n.id !== id))
-                          }
+                          onToggle={handleNoteToggle}
+                          onEdit={handleNoteEdit}
+                          onDelete={handleNoteDelete}
+                          onTagClick={(tag) => setFilterTag([tag])}
                         />
                       );
                     })
@@ -3333,6 +3404,11 @@ export function MainApp({ user, onSignOut }) {
             { label: 'Incomplete first', action: () => setSortBy('status') },
             { label: 'Date created', action: () => setSortBy('created') },
             { label: 'Alphabetical', action: () => setSortBy('alpha') },
+            ...((() => {
+              const contextKey = viewingPageLevel ? `page-${currentPage}` : `section-${currentSection}`;
+              const savedSort = customSortOrder[contextKey];
+              return savedSort ? [{ label: `Custom: ${savedSort.criteria}`, action: () => setSortBy('custom') }] : [];
+            })()),
           ]}
         />
       )}

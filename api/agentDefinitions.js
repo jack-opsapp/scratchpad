@@ -531,6 +531,24 @@ EXAMPLE:
   {
     type: 'function',
     function: {
+      name: 'sort_notes',
+      description: 'Sort/reorder notes based on custom criteria (e.g., urgency, priority, due date proximity). Analyzes note content and returns an ordered list of note IDs. The frontend will apply this ordering.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criteria: { type: 'string', description: 'Sort criteria description, e.g., "urgency", "priority", "due date proximity", "alphabetical by topic"' },
+          section_id: { type: 'string', description: 'Section ID to sort notes within' },
+          section_name: { type: 'string', description: 'Section name to sort notes within' },
+          page_name: { type: 'string', description: 'Page name (to disambiguate section or sort entire page)' },
+          note_ids: { type: 'array', items: { type: 'string' }, description: 'Specific note IDs to sort (if not provided, sorts all notes in the section/page)' }
+        },
+        required: ['criteria']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'revise_plan_step',
       description: `Revise a single step in an existing plan. Use this when the user requests changes to a specific step.
 DO NOT use propose_plan for revisions - use this instead to update just the step being revised.

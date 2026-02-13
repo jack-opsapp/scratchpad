@@ -16,7 +16,8 @@ export default function MobileNoteCard({
   onToggle,
   onEdit,
   onDelete,
-  isNew = false
+  isNew = false,
+  onTagClick,
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
@@ -282,6 +283,10 @@ export default function MobileNoteCard({
                 {note.tags?.map(tag => (
                   <span
                     key={tag}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTagClick?.(tag);
+                    }}
                     style={{
                       display: 'inline-flex',
                       padding: '3px 8px',
@@ -290,7 +295,8 @@ export default function MobileNoteCard({
                       fontSize: 11,
                       fontWeight: 500,
                       textTransform: 'uppercase',
-                      letterSpacing: 0.5
+                      letterSpacing: 0.5,
+                      cursor: onTagClick ? 'pointer' : 'default',
                     }}
                   >
                     {tag}

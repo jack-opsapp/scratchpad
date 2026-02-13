@@ -69,6 +69,10 @@ export async function executeFunction(name, args, userId) {
       case 'move_note':
         return await moveNote(supabase, userId, args);
 
+      // Sort
+      case 'sort_notes':
+        return await sortNotes(supabase, userId, args);
+
       // Bulk Operations
       case 'bulk_update_notes':
         return await bulkUpdateNotes(supabase, userId, args);
@@ -708,4 +712,41 @@ async function bulkDeleteNotes(supabase, userId, args) {
 
   if (error) throw error;
   return { deleted_count: noteIds.length };
+}
+
+// ============ SORT OPERATIONS ============
+
+async function sortNotes(supabase, userId, args) {
+  // Fetch notes matching the criteria - the AI will receive these and return ordered IDs
+  const fetchArgs = {};
+  if (args.section_id) fetchArgs.section_id = args.section_id;
+  if (args.section_name) fetchArgs.section_name = args.section_name;
+  if (args.page_name) fetchArgs.page_name = args.page_name;
+  fetchArgs.limit = 200;
+
+  const notes = await getNotes(supabase, userId, fetchArgs);
+
+  // Filter to specific note IDs if provided
+  let targetNotes = notes;
+  if (args.note_ids?.length) {
+    targetNotes = notes.filter(n => args.note_ids.includes(n.id));
+  }
+
+  if (!targetNotes.length) {
+    return { error: 'No notes found to sort', notes: [] };
+  }
+
+  // Return notes with content so the AI can analyze and return sorted IDs
+  return {
+    criteria: args.criteria,
+    notes: targetNotes.map(n => ({
+      id: n.id,
+      content: n.content,
+      tags: n.tags || [],
+      date: n.date,
+      completed: n.completed,
+      created_at: n.created_at
+    })),
+    instruction: `Sort these ${targetNotes.length} notes by "${args.criteria}". Return the note IDs in the desired order as a sorted_ids array.`
+  };
 }
