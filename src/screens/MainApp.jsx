@@ -3556,10 +3556,11 @@ export function MainApp({ user, onSignOut }) {
                   action: async () => {
                     if (confirm(`Delete "${page.name}"?`)) {
                       console.log('[DELETE] Starting page delete:', page.id, page.name);
-                      // Diagnostic: check page ownership vs auth
+                      // Diagnostic: check page data and all columns
                       const { data: { user: authUser } } = await supabase.auth.getUser();
-                      const { data: dbPage } = await supabase.from('pages').select('id, user_id').eq('id', page.id).single();
-                      console.log('[DELETE] Auth UID:', authUser?.id, '| Page user_id:', dbPage?.user_id, '| Match:', authUser?.id === dbPage?.user_id);
+                      const { data: dbPage } = await supabase.from('pages').select('*').eq('id', page.id).single();
+                      console.log('[DELETE] Auth UID:', authUser?.id);
+                      console.log('[DELETE] Full page row:', JSON.stringify(dbPage, null, 2));
                       // Delete from Supabase FIRST, before touching local state
                       try {
                         const { data: deleted, error: delErr } = await supabase
