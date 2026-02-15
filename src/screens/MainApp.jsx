@@ -1294,6 +1294,8 @@ export function MainApp({ user, onSignOut }) {
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
+        maxWidth: '100vw',
+        overflow: 'hidden',
         background: colors.bg,
         fontFamily: "'Inter', sans-serif",
       }}
@@ -2717,7 +2719,8 @@ export function MainApp({ user, onSignOut }) {
           <div
             style={{
               flex: 1,
-              overflow: 'auto',
+              overflowY: 'auto',
+              overflowX: 'hidden',
               padding: isMobile ? '0 16px calc(240px + env(safe-area-inset-bottom))' : '0 40px 200px',
               opacity: contentVisible ? 1 : 0,
               transition: 'opacity 0.25s',
@@ -3553,18 +3556,23 @@ export function MainApp({ user, onSignOut }) {
                   action: async () => {
                     if (confirm(`Delete "${page.name}"?`)) {
                       const sids = page.sections.map(s => s.id);
+                      const newPages = pages.filter(p => p.id !== page.id);
+                      const newNotes = notes.filter(n => !sids.includes(n.sectionId));
                       // Update local state immediately
-                      setNotes(prev => prev.filter(n => !sids.includes(n.sectionId)));
-                      setPages(prev => prev.filter(p => p.id !== page.id));
+                      setNotes(newNotes);
+                      setPages(newPages);
                       setOwnedPages(prev => prev.filter(p => p.id !== page.id));
                       if (currentPage === page.id && allPages.length > 1) {
                         const rem = allPages.filter(p => p.id !== page.id);
                         setCurrentPage(rem[0].id);
                         setViewingPageLevel(true);
                       }
-                      // Delete from Supabase (CASCADE handles sections, notes, permissions)
-                      const { error } = await supabase.from('pages').delete().eq('id', page.id);
-                      if (error) console.error('Delete page error:', error);
+                      // Persist immediately via full reconciliation (compares DB vs local, deletes diff)
+                      try {
+                        await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs });
+                      } catch (err) {
+                        console.error('Delete page persist error:', err);
+                      }
                     }
                   },
                   visible: pageRoles[page.id] === 'owner',
@@ -3630,27 +3638,23 @@ export function MainApp({ user, onSignOut }) {
                           `Delete "${section.name}"${nc ? ` and ${nc} note(s)` : ''}?`
                         )
                       ) {
+                        const newNotes = notes.filter(n => n.sectionId !== section.id);
+                        const newPages = pages.map(p =>
+                          p.id === page.id
+                            ? { ...p, sections: p.sections.filter(s => s.id !== section.id) }
+                            : p
+                        );
                         // Update local state immediately
-                        setNotes(prev =>
-                          prev.filter(n => n.sectionId !== section.id)
-                        );
-                        setPages(prev =>
-                          prev.map(p =>
-                            p.id === page.id
-                              ? {
-                                  ...p,
-                                  sections: p.sections.filter(
-                                    s => s.id !== section.id
-                                  ),
-                                }
-                              : p
-                          )
-                        );
+                        setNotes(newNotes);
+                        setPages(newPages);
                         if (currentSection === section.id)
                           setViewingPageLevel(true);
-                        // Delete from Supabase (CASCADE handles notes)
-                        const { error } = await supabase.from('sections').delete().eq('id', section.id);
-                        if (error) console.error('Delete section error:', error);
+                        // Persist immediately via full reconciliation
+                        try {
+                          await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs });
+                        } catch (err) {
+                          console.error('Delete section persist error:', err);
+                        }
                       }
                     },
                     visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
