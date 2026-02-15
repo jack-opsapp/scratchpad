@@ -58,9 +58,9 @@ export function ContextMenu({ items, onClose, position }) {
         ) : (
           <button
             key={i}
-            onClick={() => {
-              item.action();
+            onClick={async () => {
               onClose();
+              await item.action();
             }}
             style={{
               display: 'flex',

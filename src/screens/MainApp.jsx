@@ -3567,12 +3567,11 @@ export function MainApp({ user, onSignOut }) {
                         setCurrentPage(rem[0].id);
                         setViewingPageLevel(true);
                       }
-                      // Persist immediately via full reconciliation (compares DB vs local, deletes diff)
-                      try {
-                        await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs });
-                      } catch (err) {
-                        console.error('Delete page persist error:', err);
-                      }
+                      // Direct delete from Supabase (CASCADE handles children)
+                      const { error: delErr } = await supabase.from('pages').delete().eq('id', page.id).select();
+                      if (delErr) console.error('Direct page delete error:', delErr);
+                      // Also run full reconciliation as backup
+                      await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs }).catch(() => {});
                     }
                   },
                   visible: pageRoles[page.id] === 'owner',
@@ -3649,12 +3648,11 @@ export function MainApp({ user, onSignOut }) {
                         setPages(newPages);
                         if (currentSection === section.id)
                           setViewingPageLevel(true);
-                        // Persist immediately via full reconciliation
-                        try {
-                          await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs });
-                        } catch (err) {
-                          console.error('Delete section persist error:', err);
-                        }
+                        // Direct delete from Supabase (CASCADE handles notes)
+                        const { error: delErr } = await supabase.from('sections').delete().eq('id', section.id).select();
+                        if (delErr) console.error('Direct section delete error:', delErr);
+                        // Also run full reconciliation as backup
+                        await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs }).catch(() => {});
                       }
                     },
                     visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
