@@ -70,6 +70,7 @@ function transformPagesToAppFormat(supabasePages) {
     name: page.name,
     starred: page.starred || false,
     sections: (page.sections || [])
+      .filter(s => !s.deleted_at)
       .sort((a, b) => (a.position || 0) - (b.position || 0))
       .map(section => ({
         id: section.id,
@@ -216,6 +217,7 @@ export const dataStore = {
       .from('pages')
       .select('*, sections(*)')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .order('position');
 
     return transformPagesToAppFormat(data) || [];
@@ -244,7 +246,8 @@ export const dataStore = {
     const { data: ownedPages } = await supabase
       .from('pages')
       .select('id')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .is('deleted_at', null);
 
     const ownedIds = new Set((ownedPages || []).map(p => p.id));
 
@@ -268,6 +271,7 @@ export const dataStore = {
       .from('pages')
       .select('*, sections(*), users:user_id(email)')
       .in('id', sharedPageIds)
+      .is('deleted_at', null)
       .order('name');
 
     if (pagesError || !pages) {
@@ -331,11 +335,12 @@ export const dataStore = {
         return false;
       }
 
-      // Get existing pages OWNED by this user (not shared pages)
+      // Get existing non-deleted pages OWNED by this user (not shared pages)
       const { data: existingPages } = await supabase
         .from('pages')
         .select('id')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .is('deleted_at', null);
 
       const existingPageIds = new Set((existingPages || []).map(p => p.id));
 
@@ -344,10 +349,10 @@ export const dataStore = {
       const ownedPages = pages.filter(p => existingPageIds.has(p.id) || !p.myRole || p.myRole === 'owner');
       const ownedPageIds = new Set(ownedPages.map(p => p.id));
 
-      // Delete pages that no longer exist (only from owned pages)
+      // Soft-delete pages that no longer exist (only from owned pages)
       const pagesToDelete = [...existingPageIds].filter(id => !ownedPageIds.has(id));
       if (pagesToDelete.length > 0) {
-        await supabase.from('pages').delete().in('id', pagesToDelete);
+        await supabase.from('pages').update({ deleted_at: new Date().toISOString() }).in('id', pagesToDelete);
       }
 
       // Upsert only owned pages
@@ -372,19 +377,20 @@ export const dataStore = {
 
         // Handle sections for this page
         if (page.sections && Array.isArray(page.sections)) {
-          // Get existing sections for this page
+          // Get existing non-deleted sections for this page
           const { data: existingSections } = await supabase
             .from('sections')
             .select('id')
-            .eq('page_id', page.id);
+            .eq('page_id', page.id)
+            .is('deleted_at', null);
 
           const existingSectionIds = new Set((existingSections || []).map(s => s.id));
           const newSectionIds = new Set(page.sections.map(s => s.id));
 
-          // Delete sections that no longer exist
+          // Soft-delete sections that no longer exist
           const sectionsToDelete = [...existingSectionIds].filter(id => !newSectionIds.has(id));
           if (sectionsToDelete.length > 0) {
-            await supabase.from('sections').delete().in('id', sectionsToDelete);
+            await supabase.from('sections').update({ deleted_at: new Date().toISOString() }).in('id', sectionsToDelete);
           }
 
           // Upsert sections
@@ -464,24 +470,27 @@ export const dataStore = {
         return null;
       }
 
-      // Get all section IDs from owned pages
+      // Get all section IDs from owned non-deleted pages (filter deleted sections)
       const { data: ownedPages } = await supabase
         .from('pages')
-        .select('id, sections(id)')
-        .eq('user_id', userId);
+        .select('id, sections(id, deleted_at)')
+        .eq('user_id', userId)
+        .is('deleted_at', null);
 
-      const ownedSectionIds = (ownedPages || []).flatMap(p => (p.sections || []).map(s => s.id));
+      const ownedSectionIds = (ownedPages || []).flatMap(p =>
+        (p.sections || []).filter(s => !s.deleted_at).map(s => s.id)
+      );
 
       // Get all section IDs from shared pages
       const { data: sharedPerms } = await supabase
         .from('page_permissions')
-        .select('page_id, pages:page_id(sections(id))')
+        .select('page_id, pages:page_id(sections(id, deleted_at))')
         .eq('user_id', userId);
 
       const ownedPageIds = new Set((ownedPages || []).map(p => p.id));
       const sharedSectionIds = (sharedPerms || [])
         .filter(p => !ownedPageIds.has(p.page_id))
-        .flatMap(p => p.pages?.sections?.map(s => s.id) || []);
+        .flatMap(p => (p.pages?.sections || []).filter(s => !s.deleted_at).map(s => s.id));
 
       const allSectionIds = [...ownedSectionIds, ...sharedSectionIds];
       if (allSectionIds.length === 0) return [];
@@ -524,20 +533,25 @@ export const dataStore = {
         return false;
       }
 
-      // Get all section IDs user has access to (owned + shared)
+      // Get all section IDs user has access to (owned + shared, non-deleted)
       const { data: userPages } = await supabase
         .from('pages')
-        .select('id, sections(id)')
-        .or(`user_id.eq.${userId}`);
+        .select('id, sections(id, deleted_at)')
+        .eq('user_id', userId)
+        .is('deleted_at', null);
 
       // Also get shared pages
       const { data: sharedPages } = await supabase
         .from('page_permissions')
-        .select('page_id, pages:page_id(sections(id))')
+        .select('page_id, pages:page_id(sections(id, deleted_at))')
         .eq('user_id', userId);
 
-      const ownedSectionIds = (userPages || []).flatMap(p => (p.sections || []).map(s => s.id));
-      const sharedSectionIds = (sharedPages || []).flatMap(p => p.pages?.sections?.map(s => s.id) || []);
+      const ownedSectionIds = (userPages || []).flatMap(p =>
+        (p.sections || []).filter(s => !s.deleted_at).map(s => s.id)
+      );
+      const sharedSectionIds = (sharedPages || []).flatMap(p =>
+        (p.pages?.sections || []).filter(s => !s.deleted_at).map(s => s.id)
+      );
       const allSectionIds = [...new Set([...ownedSectionIds, ...sharedSectionIds])];
 
       if (allSectionIds.length === 0) return true;

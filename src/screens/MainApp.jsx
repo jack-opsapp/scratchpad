@@ -3555,24 +3555,11 @@ export function MainApp({ user, onSignOut }) {
                   danger: true,
                   action: async () => {
                     if (confirm(`Delete "${page.name}"?`)) {
-                      console.log('[DELETE] Starting page delete:', page.id, page.name);
-                      // Diagnostic: check page data and all columns
-                      const { data: { user: authUser } } = await supabase.auth.getUser();
-                      const { data: dbPage } = await supabase.from('pages').select('*').eq('id', page.id).single();
-                      console.log('[DELETE] Auth UID:', authUser?.id);
-                      console.log('[DELETE] Full page row:', JSON.stringify(dbPage, null, 2));
-                      // Delete from Supabase FIRST, before touching local state
-                      try {
-                        const { data: deleted, error: delErr } = await supabase
-                          .from('pages').delete().eq('id', page.id).select();
-                        console.log('[DELETE] Supabase result:', { deleted, error: delErr, pageId: page.id });
-                        if (delErr) {
-                          console.error('[DELETE] Supabase error:', delErr);
-                        }
-                      } catch (e) {
-                        console.error('[DELETE] Exception:', e);
-                      }
-                      // Now update local state
+                      // Soft-delete from Supabase first
+                      const { error: delErr } = await supabase
+                        .from('pages').update({ deleted_at: new Date().toISOString() }).eq('id', page.id);
+                      if (delErr) console.error('Soft-delete page error:', delErr);
+                      // Update local state
                       const sids = page.sections.map(s => s.id);
                       setNotes(prev => prev.filter(n => !sids.includes(n.sectionId)));
                       setPages(prev => prev.filter(p => p.id !== page.id));
@@ -3653,16 +3640,13 @@ export function MainApp({ user, onSignOut }) {
                             ? { ...p, sections: p.sections.filter(s => s.id !== section.id) }
                             : p
                         );
-                        // Update local state immediately
+                        // Soft-delete section from Supabase
+                        await supabase.from('sections').update({ deleted_at: new Date().toISOString() }).eq('id', section.id);
+                        // Update local state
                         setNotes(newNotes);
                         setPages(newPages);
                         if (currentSection === section.id)
                           setViewingPageLevel(true);
-                        // Direct delete from Supabase (CASCADE handles notes)
-                        const { error: delErr } = await supabase.from('sections').delete().eq('id', section.id).select();
-                        if (delErr) console.error('Direct section delete error:', delErr);
-                        // Also run full reconciliation as backup
-                        await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs }).catch(() => {});
                       }
                     },
                     visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
