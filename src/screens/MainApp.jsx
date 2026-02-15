@@ -3555,23 +3555,28 @@ export function MainApp({ user, onSignOut }) {
                   danger: true,
                   action: async () => {
                     if (confirm(`Delete "${page.name}"?`)) {
+                      console.log('[DELETE] Starting page delete:', page.id, page.name);
+                      // Delete from Supabase FIRST, before touching local state
+                      try {
+                        const { data: deleted, error: delErr } = await supabase
+                          .from('pages').delete().eq('id', page.id).select();
+                        console.log('[DELETE] Supabase result:', { deleted, error: delErr, pageId: page.id });
+                        if (delErr) {
+                          console.error('[DELETE] Supabase error:', delErr);
+                        }
+                      } catch (e) {
+                        console.error('[DELETE] Exception:', e);
+                      }
+                      // Now update local state
                       const sids = page.sections.map(s => s.id);
-                      const newPages = pages.filter(p => p.id !== page.id);
-                      const newNotes = notes.filter(n => !sids.includes(n.sectionId));
-                      // Update local state immediately
-                      setNotes(newNotes);
-                      setPages(newPages);
+                      setNotes(prev => prev.filter(n => !sids.includes(n.sectionId)));
+                      setPages(prev => prev.filter(p => p.id !== page.id));
                       setOwnedPages(prev => prev.filter(p => p.id !== page.id));
                       if (currentPage === page.id && allPages.length > 1) {
                         const rem = allPages.filter(p => p.id !== page.id);
                         setCurrentPage(rem[0].id);
                         setViewingPageLevel(true);
                       }
-                      // Direct delete from Supabase (CASCADE handles children)
-                      const { error: delErr } = await supabase.from('pages').delete().eq('id', page.id).select();
-                      if (delErr) console.error('Direct page delete error:', delErr);
-                      // Also run full reconciliation as backup
-                      await dataStore.saveAll({ pages: newPages, notes: newNotes, tags, boxConfigs }).catch(() => {});
                     }
                   },
                   visible: pageRoles[page.id] === 'owner',
