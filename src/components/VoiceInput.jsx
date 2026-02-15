@@ -18,24 +18,79 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
   const [error, setError] = useState(null);
   const [supported, setSupported] = useState(true);
 
+  // Refs to avoid stale closures in recognition callbacks
+  const isRecordingRef = useRef(false);
+  const transcriptRef = useRef('');
   const recognitionRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
   const streamRef = useRef(null);
+  const onTranscriptRef = useRef(onTranscript);
+
+  // Keep refs in sync
+  useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
+  useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
 
   // Notify parent of recording state changes
   useEffect(() => {
     onRecordingChange?.(isRecording);
   }, [isRecording, onRecordingChange]);
 
-  // Initialize speech recognition
+  // Auto-dismiss errors after 3 seconds
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (error) {
+      const timer = setTimeout(() => setError(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
+  const stopAudioVisualization = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioLevel(0);
+  }, []);
+
+  const doStop = useCallback(() => {
+    if (!isRecordingRef.current) return;
+    isRecordingRef.current = false;
+    setIsRecording(false);
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Ignore - may already be stopped
+      }
+    }
+
+    stopAudioVisualization();
+
+    // Send transcript to parent using ref for current value
+    const currentTranscript = transcriptRef.current;
+    if (currentTranscript.trim()) {
+      onTranscriptRef.current(currentTranscript.trim());
+      setTranscript('');
+    }
+  }, [stopAudioVisualization]);
+
+  // Create/re-create speech recognition instance
+  const initRecognition = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setSupported(false);
-      return;
+      return null;
     }
 
     const recognition = new SpeechRecognition();
@@ -60,24 +115,35 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
     };
 
     recognition.onerror = (event) => {
+      // "aborted" fires when we call .stop() - this is normal, not an error
+      if (event.error === 'aborted' || event.error === 'no-speech') return;
+
       console.error('Speech recognition error:', event.error);
       if (event.error === 'not-allowed') {
         setError('Microphone permission denied');
       } else {
         setError(event.error);
       }
-      stopRecording();
+      // Stop recording on real errors
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      stopAudioVisualization();
     };
 
     recognition.onend = () => {
-      // Recognition ended naturally
-      if (isRecording) {
-        stopRecording();
+      // Recognition ended - if we were still recording, clean up
+      if (isRecordingRef.current) {
+        doStop();
       }
     };
 
     recognitionRef.current = recognition;
+    return recognition;
+  }, [doStop, stopAudioVisualization]);
 
+  // Initialize speech recognition on mount
+  useEffect(() => {
+    initRecognition();
     return () => {
       if (recognitionRef.current) {
         try {
@@ -88,7 +154,7 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
       }
       stopAudioVisualization();
     };
-  }, []);
+  }, [initRecognition, stopAudioVisualization]);
 
   // Audio level visualization
   const startAudioVisualization = async () => {
@@ -117,8 +183,6 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
         setAudioLevel(Math.min(100, average / 2.55));
 
-        // Send waveform data to parent for visualization
-        // Sample down to ~32 bars for the waveform
         const barCount = 32;
         const step = Math.floor(dataArray.length / barCount);
         const waveformData = [];
@@ -128,7 +192,7 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
           for (let j = start; j < start + step && j < dataArray.length; j++) {
             sum += dataArray[j];
           }
-          waveformData.push(sum / step / 255); // Normalize to 0-1
+          waveformData.push(sum / step / 255);
         }
         onAudioData?.(waveformData);
 
@@ -138,73 +202,43 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
       updateLevel();
     } catch (err) {
       console.error('Audio visualization error:', err);
-      // Continue without visualization
     }
-  };
-
-  const stopAudioVisualization = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    analyserRef.current = null;
-    setAudioLevel(0);
   };
 
   const startRecording = async () => {
-    if (!recognitionRef.current || disabled) return;
+    if (disabled) return;
 
     setTranscript('');
     setError(null);
     setIsRecording(true);
+    isRecordingRef.current = true;
+
+    // Re-create recognition if it doesn't exist or is in a bad state
+    if (!recognitionRef.current) {
+      initRecognition();
+    }
 
     try {
       recognitionRef.current.start();
       await startAudioVisualization();
     } catch (err) {
       console.error('Start recording error:', err);
+      // Re-create recognition for next attempt
+      initRecognition();
       setError('Could not start recording');
       setIsRecording(false);
-    }
-  };
-
-  const stopRecording = () => {
-    setIsRecording(false);
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        // Ignore
-      }
-    }
-
-    stopAudioVisualization();
-
-    // Send transcript to parent
-    if (transcript.trim()) {
-      onTranscript(transcript.trim());
-      setTranscript('');
+      isRecordingRef.current = false;
     }
   };
 
   const handleClick = () => {
     if (isRecording) {
-      stopRecording();
+      doStop();
     } else {
       startRecording();
     }
   };
 
-  // Don't render if not supported
   if (!supported) {
     return null;
   }
@@ -286,9 +320,10 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
         </div>
       )}
 
-      {/* Error message */}
+      {/* Error message - click to dismiss */}
       {error && (
         <div
+          onClick={() => setError(null)}
           style={{
             position: 'absolute',
             bottom: '100%',
@@ -301,7 +336,8 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
             fontSize: 11,
             color: '#fff',
             whiteSpace: 'nowrap',
-            zIndex: 100
+            zIndex: 100,
+            cursor: 'pointer'
           }}
         >
           {error}

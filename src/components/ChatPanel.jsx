@@ -17,7 +17,7 @@ const MOBILE_HEIGHTS = {
   collapsed: 110,  // Input + expand bar when there are messages
   small: 250,      // Input + some messages
   medium: 400,
-  large: typeof window !== 'undefined' ? window.innerHeight - 56 : 600 // top just below mobile header
+  large: typeof window !== 'undefined' ? window.innerHeight - 80 : 600 // top just below mobile header + 12px top/bottom padding
 };
 
 // Pixel grid configuration for dissolve effect
@@ -523,7 +523,7 @@ const ChatPanel = forwardRef(function ChatPanel({
     <div
       style={{
         position: 'fixed',
-        bottom: isMobile ? 0 : 20,
+        bottom: isMobile ? 12 : 20,
         left: isMobile ? 12 : sidebarWidth + 20,
         right: isMobile ? 12 : 20,
         height: isMinimized ? INPUT_ONLY_HEIGHT : height,
@@ -531,7 +531,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         backdropFilter: 'blur(24px) saturate(150%)',
         WebkitBackdropFilter: 'blur(24px) saturate(150%)',
         border: `1px solid rgba(255,255,255,0.08)`,
-        borderRadius: isMobile ? '12px 12px 0 0' : 12,
+        borderRadius: 12,
         display: 'flex',
         flexDirection: 'column',
         transition: isDragging ? 'none' : 'all 0.3s ease',

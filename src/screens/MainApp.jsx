@@ -3550,17 +3550,10 @@ export function MainApp({ user, onSignOut }) {
                   label: 'Delete page',
                   icon: Trash2,
                   danger: true,
-                  action: () => {
+                  action: async () => {
                     if (confirm(`Delete "${page.name}"?`)) {
                       const sids = page.sections.map(s => s.id);
-                      // Direct Supabase deletes (notes → sections → page)
-                      if (sids.length > 0) {
-                        supabase.from('notes').delete().in('section_id', sids)
-                          .then(() => supabase.from('sections').delete().in('id', sids))
-                          .then(() => supabase.from('pages').delete().eq('id', page.id));
-                      } else {
-                        supabase.from('pages').delete().eq('id', page.id);
-                      }
+                      // Update local state immediately
                       setNotes(prev => prev.filter(n => !sids.includes(n.sectionId)));
                       setPages(prev => prev.filter(p => p.id !== page.id));
                       setOwnedPages(prev => prev.filter(p => p.id !== page.id));
@@ -3569,6 +3562,9 @@ export function MainApp({ user, onSignOut }) {
                         setCurrentPage(rem[0].id);
                         setViewingPageLevel(true);
                       }
+                      // Delete from Supabase (CASCADE handles sections, notes, permissions)
+                      const { error } = await supabase.from('pages').delete().eq('id', page.id);
+                      if (error) console.error('Delete page error:', error);
                     }
                   },
                   visible: pageRoles[page.id] === 'owner',
@@ -3625,7 +3621,7 @@ export function MainApp({ user, onSignOut }) {
                     label: 'Delete section',
                     icon: Trash2,
                     danger: true,
-                    action: () => {
+                    action: async () => {
                       const nc = notes.filter(
                         n => n.sectionId === section.id
                       ).length;
@@ -3634,9 +3630,7 @@ export function MainApp({ user, onSignOut }) {
                           `Delete "${section.name}"${nc ? ` and ${nc} note(s)` : ''}?`
                         )
                       ) {
-                        // Direct Supabase deletes (notes first, then section)
-                        supabase.from('notes').delete().eq('section_id', section.id)
-                          .then(() => supabase.from('sections').delete().eq('id', section.id));
+                        // Update local state immediately
                         setNotes(prev =>
                           prev.filter(n => n.sectionId !== section.id)
                         );
@@ -3654,6 +3648,9 @@ export function MainApp({ user, onSignOut }) {
                         );
                         if (currentSection === section.id)
                           setViewingPageLevel(true);
+                        // Delete from Supabase (CASCADE handles notes)
+                        const { error } = await supabase.from('sections').delete().eq('id', section.id);
+                        if (error) console.error('Delete section error:', error);
                       }
                     },
                     visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
