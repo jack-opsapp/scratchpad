@@ -217,8 +217,8 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
         aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
         title={isOnline ? 'Voice input' : 'Voice input (offline - basic parsing only)'}
         style={{
-          width: 52,
-          height: 52,
+          width: 40,
+          height: 40,
           borderRadius: '50%',
           background: isRecording ? colors.recording : colors.primary,
           border: 'none',
@@ -234,9 +234,9 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
         }}
       >
         {isRecording ? (
-          <Square size={20} color="#fff" fill="#fff" />
+          <Square size={16} color="#fff" fill="#fff" />
         ) : (
-          <Mic size={24} color={colors.bg} />
+          <Mic size={20} color={colors.bg} />
         )}
       </button>
 
@@ -245,10 +245,10 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
         <div
           style={{
             position: 'absolute',
-            top: -6,
-            left: -6,
-            right: -6,
-            bottom: -6,
+            top: -4,
+            left: -4,
+            right: -4,
+            bottom: -4,
             borderRadius: '50%',
             border: `3px solid ${colors.recording}`,
             opacity: audioLevel / 100,

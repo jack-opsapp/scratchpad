@@ -17,7 +17,7 @@ const MOBILE_HEIGHTS = {
   collapsed: 110,  // Input + expand bar when there are messages
   small: 250,      // Input + some messages
   medium: 400,
-  large: typeof window !== 'undefined' ? Math.floor(window.innerHeight * 0.8) : 600
+  large: typeof window !== 'undefined' ? window.innerHeight - 56 : 600 // top just below mobile header
 };
 
 // Pixel grid configuration for dissolve effect
@@ -440,28 +440,24 @@ const ChatPanel = forwardRef(function ChatPanel({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-    } else if (e.key === 'ArrowUp') {
-      // Navigate to previous input in history
+    } else if (e.key === 'ArrowUp' && inputHistory.length > 0) {
+      // Navigate to previous input in history (only when history exists)
       e.preventDefault();
-      if (inputHistory.length > 0) {
-        const newIndex = historyIndex === -1
-          ? inputHistory.length - 1
-          : Math.max(0, historyIndex - 1);
+      const newIndex = historyIndex === -1
+        ? inputHistory.length - 1
+        : Math.max(0, historyIndex - 1);
+      setHistoryIndex(newIndex);
+      setInputValue(inputHistory[newIndex]);
+    } else if (e.key === 'ArrowDown' && historyIndex >= 0) {
+      // Navigate to next input in history (only when navigating history)
+      e.preventDefault();
+      const newIndex = historyIndex + 1;
+      if (newIndex >= inputHistory.length) {
+        setHistoryIndex(-1);
+        setInputValue('');
+      } else {
         setHistoryIndex(newIndex);
         setInputValue(inputHistory[newIndex]);
-      }
-    } else if (e.key === 'ArrowDown') {
-      // Navigate to next input in history
-      e.preventDefault();
-      if (historyIndex >= 0) {
-        const newIndex = historyIndex + 1;
-        if (newIndex >= inputHistory.length) {
-          setHistoryIndex(-1);
-          setInputValue('');
-        } else {
-          setHistoryIndex(newIndex);
-          setInputValue(inputHistory[newIndex]);
-        }
       }
     }
   };
@@ -527,7 +523,7 @@ const ChatPanel = forwardRef(function ChatPanel({
     <div
       style={{
         position: 'fixed',
-        bottom: isMobile ? 12 : 20,
+        bottom: isMobile ? 0 : 20,
         left: isMobile ? 12 : sidebarWidth + 20,
         right: isMobile ? 12 : 20,
         height: isMinimized ? INPUT_ONLY_HEIGHT : height,
@@ -535,7 +531,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         backdropFilter: 'blur(24px) saturate(150%)',
         WebkitBackdropFilter: 'blur(24px) saturate(150%)',
         border: `1px solid rgba(255,255,255,0.08)`,
-        borderRadius: 12,
+        borderRadius: isMobile ? '12px 12px 0 0' : 12,
         display: 'flex',
         flexDirection: 'column',
         transition: isDragging ? 'none' : 'all 0.3s ease',
@@ -1108,7 +1104,7 @@ const ChatPanel = forwardRef(function ChatPanel({
             </button>
           </div>
         ) : actionButtons.length > 0 ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', flexWrap: 'nowrap', WebkitOverflowScrolling: 'touch' }}>
             {actionButtons.map((btn, idx) => (
               <button
                 key={idx}
@@ -1185,15 +1181,16 @@ const ChatPanel = forwardRef(function ChatPanel({
               /* Audio Waveform Visualization */
               <div style={{
                 flex: 1,
-                height: 36,
+                height: 40,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 2,
                 padding: '0 12px',
                 background: 'rgba(255,68,68,0.1)',
-                borderRadius: 6,
-                border: '1px solid rgba(255,68,68,0.2)'
+                borderRadius: 20,
+                border: '1px solid rgba(255,68,68,0.2)',
+                overflow: 'hidden'
               }}>
                 {audioWaveform.length > 0 ? (
                   audioWaveform.map((level, i) => (

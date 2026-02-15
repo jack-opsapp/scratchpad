@@ -340,10 +340,13 @@ export function MainApp({ user, onSignOut }) {
     }
   }, [settings]);
 
-  // Save data on changes
+  // Save data on changes (debounced to prevent stale saves from overwriting direct operations)
   useEffect(() => {
     if (!loading) {
-      dataStore.saveAll({ pages, tags, notes, boxConfigs });
+      const timer = setTimeout(() => {
+        dataStore.saveAll({ pages, tags, notes, boxConfigs });
+      }, 1500);
+      return () => clearTimeout(timer);
     }
   }, [pages, tags, notes, boxConfigs, loading]);
 
@@ -412,6 +415,10 @@ export function MainApp({ user, onSignOut }) {
           const name = prompt('New section name:');
           if (name) {
             const ns = { id: generateId(), name };
+            // Direct Supabase insert
+            supabase.from('sections').insert({
+              id: ns.id, page_id: currentPage, name: ns.name, position: currentPageData?.sections?.length || 0
+            });
             setPages(pg =>
               pg.map(p =>
                 p.id === currentPage
@@ -961,27 +968,8 @@ export function MainApp({ user, onSignOut }) {
     for (const action of actions) {
       switch (action.function) {
         case 'navigate':
-          // Clear agent view when navigating to a page/section
-          setAgentView(null);
-          if (action.page_name) {
-            const page = allPages.find(p =>
-              p.name.toLowerCase() === action.page_name.toLowerCase()
-            );
-            if (page) {
-              setCurrentPage(page.id);
-              if (action.section_name) {
-                const section = page.sections?.find(s =>
-                  s.name.toLowerCase() === action.section_name.toLowerCase()
-                );
-                if (section) {
-                  setCurrentSection(section.id);
-                  setViewingPageLevel(false);
-                }
-              } else {
-                setViewingPageLevel(true);
-              }
-            }
-          }
+          // Navigation is now handled via clickable "Go to..." links in chat messages.
+          // View only changes when user explicitly clicks the navigation link.
           break;
 
         case 'apply_filter':
@@ -1056,28 +1044,29 @@ export function MainApp({ user, onSignOut }) {
 
   // Toggle note completion with direct Supabase persistence
   const handleNoteToggle = (id) => {
-    const note = notes.find(n => n.id === id);
-    if (!note) return;
-    const newCompleted = !note.completed;
-    const completed_by_user_id = newCompleted ? user.id : null;
-    const completed_at = newCompleted ? new Date().toISOString() : null;
+    setNotes(prev => {
+      const note = prev.find(n => n.id === id);
+      if (!note) return prev;
+      const newCompleted = !note.completed;
+      const completed_by_user_id = newCompleted ? user.id : null;
+      const completed_at = newCompleted ? new Date().toISOString() : null;
 
-    // Optimistic UI update
-    setNotes(notes.map(n =>
-      n.id === id
-        ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
-        : n
-    ));
+      // Direct Supabase persist
+      supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id)
+        .then(({ error }) => { if (error) console.error('Toggle persist failed:', error); });
 
-    // Direct Supabase persist
-    supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id)
-      .then(({ error }) => { if (error) console.error('Toggle persist failed:', error); });
+      return prev.map(n =>
+        n.id === id
+          ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
+          : n
+      );
+    });
   };
 
   // Edit note content with direct Supabase persistence
   const handleNoteEdit = (id, content) => {
     // Optimistic UI update
-    setNotes(notes.map(n =>
+    setNotes(prev => prev.map(n =>
       n.id === id ? { ...n, content } : n
     ));
 
@@ -1088,7 +1077,7 @@ export function MainApp({ user, onSignOut }) {
 
   // Delete note with direct Supabase persistence
   const handleNoteDelete = (id) => {
-    setNotes(notes.filter(n => n.id !== id));
+    setNotes(prev => prev.filter(n => n.id !== id));
     supabase.from('notes').delete().eq('id', id)
       .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
   };
@@ -2729,7 +2718,7 @@ export function MainApp({ user, onSignOut }) {
             style={{
               flex: 1,
               overflow: 'auto',
-              padding: isMobile ? '0 16px calc(180px + env(safe-area-inset-bottom))' : '0 40px 140px',
+              padding: isMobile ? '0 16px calc(240px + env(safe-area-inset-bottom))' : '0 40px 200px',
               opacity: contentVisible ? 1 : 0,
               transition: 'opacity 0.25s',
             }}
@@ -3040,14 +3029,8 @@ export function MainApp({ user, onSignOut }) {
                         )
                     : null
                 }
-                onNoteToggle={id =>
-                  setNotes(
-                    notes.map(n =>
-                      n.id === id ? { ...n, completed: !n.completed } : n
-                    )
-                  )
-                }
-                onNoteDelete={id => setNotes(notes.filter(n => n.id !== id))}
+                onNoteToggle={handleNoteToggle}
+                onNoteDelete={handleNoteDelete}
                 contextId={getBoxContextId()}
                 boxConfigs={boxConfigs}
                 onSaveBoxConfigs={handleSaveBoxConfigs}
@@ -3466,8 +3449,12 @@ export function MainApp({ user, onSignOut }) {
                 const name = prompt('Section name:');
                 if (name && currentPage) {
                   const ns = { id: generateId(), name };
-                  setPages(
-                    pages.map(p =>
+                  // Direct Supabase insert
+                  supabase.from('sections').insert({
+                    id: ns.id, page_id: currentPage, name: ns.name, position: currentPageData?.sections?.length || 0
+                  });
+                  setPages(prev =>
+                    prev.map(p =>
                       p.id === currentPage
                         ? { ...p, sections: [...p.sections, ns] }
                         : p
@@ -3520,20 +3507,26 @@ export function MainApp({ user, onSignOut }) {
                   icon: FolderPlus,
                   action: () => {
                     const name = prompt('Section name:');
-                    if (name)
-                      setPages(
-                        pages.map(p =>
+                    if (name) {
+                      const newSectionId = generateId();
+                      // Direct Supabase insert
+                      supabase.from('sections').insert({
+                        id: newSectionId, page_id: page.id, name, position: page.sections?.length || 0
+                      });
+                      setPages(prev =>
+                        prev.map(p =>
                           p.id === page.id
                             ? {
                                 ...p,
                                 sections: [
                                   ...p.sections,
-                                  { id: generateId(), name },
+                                  { id: newSectionId, name },
                                 ],
                               }
                             : p
                         )
                       );
+                    }
                   },
                   visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
                 },
@@ -3560,9 +3553,17 @@ export function MainApp({ user, onSignOut }) {
                   action: () => {
                     if (confirm(`Delete "${page.name}"?`)) {
                       const sids = page.sections.map(s => s.id);
-                      setNotes(notes.filter(n => !sids.includes(n.sectionId)));
-                      setPages(pages.filter(p => p.id !== page.id));
-                      setOwnedPages(ownedPages.filter(p => p.id !== page.id));
+                      // Direct Supabase deletes (notes → sections → page)
+                      if (sids.length > 0) {
+                        supabase.from('notes').delete().in('section_id', sids)
+                          .then(() => supabase.from('sections').delete().in('id', sids))
+                          .then(() => supabase.from('pages').delete().eq('id', page.id));
+                      } else {
+                        supabase.from('pages').delete().eq('id', page.id);
+                      }
+                      setNotes(prev => prev.filter(n => !sids.includes(n.sectionId)));
+                      setPages(prev => prev.filter(p => p.id !== page.id));
+                      setOwnedPages(prev => prev.filter(p => p.id !== page.id));
                       if (currentPage === page.id && allPages.length > 1) {
                         const rem = allPages.filter(p => p.id !== page.id);
                         setCurrentPage(rem[0].id);
@@ -3633,11 +3634,14 @@ export function MainApp({ user, onSignOut }) {
                           `Delete "${section.name}"${nc ? ` and ${nc} note(s)` : ''}?`
                         )
                       ) {
-                        setNotes(
-                          notes.filter(n => n.sectionId !== section.id)
+                        // Direct Supabase deletes (notes first, then section)
+                        supabase.from('notes').delete().eq('section_id', section.id)
+                          .then(() => supabase.from('sections').delete().eq('id', section.id));
+                        setNotes(prev =>
+                          prev.filter(n => n.sectionId !== section.id)
                         );
-                        setPages(
-                          pages.map(p =>
+                        setPages(prev =>
+                          prev.map(p =>
                             p.id === page.id
                               ? {
                                   ...p,
@@ -3667,9 +3671,21 @@ export function MainApp({ user, onSignOut }) {
           pageName={allPages.find(p => p.id === shareModalPageId)?.name || ''}
           currentUserId={user.id}
           myRole={pageRoles[shareModalPageId] || 'owner'}
-          onClose={() => {
+          onClose={async () => {
             setShowShareModal(false);
             setShareModalPageId(null);
+            // Refresh collab counts after sharing changes
+            refreshData();
+            try {
+              const counts = {};
+              for (const page of allPages) {
+                const collabs = await getPageCollaborators(page.id);
+                counts[page.id] = collabs.length - 1;
+              }
+              setCollabCounts(counts);
+            } catch (e) {
+              console.error('Failed to refresh collab counts:', e);
+            }
           }}
         />
       )}
