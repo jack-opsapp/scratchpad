@@ -342,6 +342,14 @@ export const dataStore = {
         .eq('user_id', userId)
         .is('deleted_at', null);
 
+      // Get soft-deleted page IDs so we skip them in upsert (RLS blocks upsert on deleted rows)
+      const { data: softDeletedPages } = await supabase
+        .from('pages')
+        .select('id')
+        .eq('user_id', userId)
+        .not('deleted_at', 'is', null);
+      const softDeletedPageIds = new Set((softDeletedPages || []).map(p => p.id));
+
       const existingPageIds = new Set((existingPages || []).map(p => p.id));
 
       // Filter to only pages the user owns (pages in existingPageIds or new pages)
@@ -358,6 +366,10 @@ export const dataStore = {
       // Upsert only owned pages
       for (let i = 0; i < ownedPages.length; i++) {
         const page = ownedPages[i];
+
+        // Skip pages that exist as soft-deleted rows (RLS blocks upsert on them)
+        if (softDeletedPageIds.has(page.id)) continue;
+
         const pageData = {
           id: page.id,
           user_id: userId,
@@ -371,7 +383,9 @@ export const dataStore = {
           .upsert(pageData, { onConflict: 'id' });
 
         if (pageError) {
-          console.error('setPages upsert error:', pageError);
+          if (pageError.code !== '42501') {
+            console.error('setPages upsert error:', pageError);
+          }
           continue;
         }
 
@@ -383,6 +397,14 @@ export const dataStore = {
             .select('id')
             .eq('page_id', page.id)
             .is('deleted_at', null);
+
+          // Get soft-deleted section IDs (RLS blocks upsert on them)
+          const { data: softDeletedSections } = await supabase
+            .from('sections')
+            .select('id')
+            .eq('page_id', page.id)
+            .not('deleted_at', 'is', null);
+          const softDeletedSectionIds = new Set((softDeletedSections || []).map(s => s.id));
 
           const existingSectionIds = new Set((existingSections || []).map(s => s.id));
           const newSectionIds = new Set(page.sections.map(s => s.id));
@@ -396,6 +418,10 @@ export const dataStore = {
           // Upsert sections
           for (let j = 0; j < page.sections.length; j++) {
             const section = page.sections[j];
+
+            // Skip sections that exist as soft-deleted rows
+            if (softDeletedSectionIds.has(section.id)) continue;
+
             const sectionData = {
               id: section.id,
               page_id: page.id,
@@ -408,7 +434,9 @@ export const dataStore = {
               .upsert(sectionData, { onConflict: 'id' });
 
             if (sectionError) {
-              console.error('setPages section upsert error:', sectionError);
+              if (sectionError.code !== '42501') {
+                console.error('setPages section upsert error:', sectionError);
+              }
             }
           }
         }
@@ -564,6 +592,14 @@ export const dataStore = {
         .in('section_id', allSectionIds)
         .is('deleted_at', null);
 
+      // Also get IDs of soft-deleted notes so we skip them in upsert (RLS blocks upsert on deleted rows)
+      const { data: softDeletedNotes } = await supabase
+        .from('notes')
+        .select('id')
+        .in('section_id', allSectionIds)
+        .not('deleted_at', 'is', null);
+      const softDeletedNoteIds = new Set((softDeletedNotes || []).map(n => n.id));
+
       const existingNoteMap = new Map((existingNotes || []).map(n => [n.id, n.content]));
       const existingNoteIds = new Set((existingNotes || []).map(n => n.id));
       const newNoteIds = new Set(notes.map(n => n.id));
@@ -582,6 +618,11 @@ export const dataStore = {
         // Only save notes that belong to accessible sections
         if (!allSectionIds.includes(note.sectionId)) {
           console.warn(`setNotes: Skipping note ${note.id} - section ${note.sectionId} not accessible`);
+          continue;
+        }
+
+        // Skip notes that exist as soft-deleted rows (RLS blocks upsert on them)
+        if (softDeletedNoteIds.has(note.id)) {
           continue;
         }
 
@@ -606,7 +647,10 @@ export const dataStore = {
           .upsert(noteData, { onConflict: 'id' });
 
         if (error) {
-          console.error('setNotes upsert error:', error);
+          // Silently skip RLS violations (soft-deleted rows that RLS blocks)
+          if (error.code !== '42501') {
+            console.error('setNotes upsert error:', error);
+          }
         } else if (needsEmbedding) {
           notesNeedingEmbedding.push({ id: note.id, content: note.content });
         }
