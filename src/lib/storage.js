@@ -355,13 +355,9 @@ export const dataStore = {
       // Filter to only pages the user owns (pages in existingPageIds or new pages)
       // This prevents trying to save shared pages
       const ownedPages = pages.filter(p => existingPageIds.has(p.id) || !p.myRole || p.myRole === 'owner');
-      const ownedPageIds = new Set(ownedPages.map(p => p.id));
 
-      // Soft-delete pages that no longer exist (only from owned pages)
-      const pagesToDelete = [...existingPageIds].filter(id => !ownedPageIds.has(id));
-      if (pagesToDelete.length > 0) {
-        await supabase.from('pages').update({ deleted_at: new Date().toISOString() }).in('id', pagesToDelete);
-      }
+      // NOTE: Page deletion is handled explicitly in the UI (direct soft-delete + state removal).
+      // We do NOT reconciliation-delete pages here to avoid race conditions with trash restore.
 
       // Upsert only owned pages
       for (let i = 0; i < ownedPages.length; i++) {
@@ -406,14 +402,8 @@ export const dataStore = {
             .not('deleted_at', 'is', null);
           const softDeletedSectionIds = new Set((softDeletedSections || []).map(s => s.id));
 
-          const existingSectionIds = new Set((existingSections || []).map(s => s.id));
-          const newSectionIds = new Set(page.sections.map(s => s.id));
-
-          // Soft-delete sections that no longer exist
-          const sectionsToDelete = [...existingSectionIds].filter(id => !newSectionIds.has(id));
-          if (sectionsToDelete.length > 0) {
-            await supabase.from('sections').update({ deleted_at: new Date().toISOString() }).in('id', sectionsToDelete);
-          }
+          // NOTE: Section deletion is handled explicitly in the UI (direct soft-delete + state removal).
+          // We do NOT reconciliation-delete sections here to avoid race conditions with trash restore.
 
           // Upsert sections
           for (let j = 0; j < page.sections.length; j++) {
@@ -607,11 +597,8 @@ export const dataStore = {
       // Track notes that need embedding (new or content changed)
       const notesNeedingEmbedding = [];
 
-      // Soft-delete notes that no longer exist
-      const notesToDelete = [...existingNoteIds].filter(id => !newNoteIds.has(id));
-      if (notesToDelete.length > 0) {
-        await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).in('id', notesToDelete);
-      }
+      // NOTE: Note deletion is handled explicitly (handleNoteDelete, agent deleteNote).
+      // We do NOT reconciliation-delete notes here to avoid race conditions with trash restore.
 
       // Upsert notes
       for (const note of notes) {
