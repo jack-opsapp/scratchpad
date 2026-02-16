@@ -1003,7 +1003,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
             transition: 'all 0.2s'
           }}
         >
-          <Trash2 size={16} color={colors.textMuted} />
+          <Trash2 size={16} color="#ff6b6b" />
           <span>View Trash</span>
           <RotateCcw size={14} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
         </button>

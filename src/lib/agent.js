@@ -14,12 +14,15 @@
 function interpretError(error, statusCode) {
   const msg = error.toLowerCase();
 
-  // OpenAI API errors
+  // OpenAI API errors - specific status codes first
+  if (msg.includes('403') || msg.includes('forbidden') || msg.includes("doesn't have access")) {
+    return 'Your API key doesn\'t have access to this model. Go to Settings > Developer to update your key or model.';
+  }
   if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid api key')) {
-    return 'AI service not configured. Please check the API key.';
+    return 'Invalid API key. Check your key in Settings > Developer.';
   }
   if (msg.includes('429') || msg.includes('rate limit')) {
-    return 'Too many requests. Please wait a moment and try again.';
+    return 'Rate limited. Try again shortly.';
   }
   if (msg.includes('503') || msg.includes('overloaded')) {
     return 'AI service is busy. Please try again shortly.';
@@ -40,7 +43,7 @@ function interpretError(error, statusCode) {
 
   // OpenAI not configured
   if (msg.includes('openai not configured')) {
-    return 'AI service not configured. Contact support.';
+    return 'No API key configured. Add your OpenAI API key in Settings > Developer to use the assistant.';
   }
 
   // Generic AI service error - include status if available

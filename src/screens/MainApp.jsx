@@ -248,6 +248,7 @@ export function MainApp({ user, onSignOut }) {
   const [newTagName, setNewTagName] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [tagManageMode, setTagManageMode] = useState(null);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   const [selectedTagsForManage, setSelectedTagsForManage] = useState([]);
   const [mergeTargetName, setMergeTargetName] = useState('');
 
@@ -309,7 +310,7 @@ export function MainApp({ user, onSignOut }) {
       }
       setCollabCounts(counts);
 
-      setExpandedPages(allPages.map(p => p.id));
+      setExpandedPages([]);
 
       // Check for default page/section from settings
       if (settings?.defaultPageId) {
@@ -1045,24 +1046,23 @@ export function MainApp({ user, onSignOut }) {
   };
 
   // Toggle note completion with direct Supabase persistence
-  const handleNoteToggle = (id) => {
-    setNotes(prev => {
-      const note = prev.find(n => n.id === id);
-      if (!note) return prev;
-      const newCompleted = !note.completed;
-      const completed_by_user_id = newCompleted ? user.id : null;
-      const completed_at = newCompleted ? new Date().toISOString() : null;
+  const handleNoteToggle = async (id) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    const newCompleted = !note.completed;
+    const completed_by_user_id = newCompleted ? user.id : null;
+    const completed_at = newCompleted ? new Date().toISOString() : null;
 
-      // Direct Supabase persist
-      supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id)
-        .then(({ error }) => { if (error) console.error('Toggle persist failed:', error); });
+    // Optimistic UI update
+    setNotes(prev => prev.map(n =>
+      n.id === id
+        ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
+        : n
+    ));
 
-      return prev.map(n =>
-        n.id === id
-          ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
-          : n
-      );
-    });
+    // Persist to Supabase
+    const { error } = await supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id);
+    if (error) console.error('Toggle persist failed:', error);
   };
 
   // Edit note content with direct Supabase persistence
@@ -1923,7 +1923,7 @@ export function MainApp({ user, onSignOut }) {
                     TAGS
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {tags.map(tag => (
+                    {(tagsExpanded ? tags : tags.slice(0, 4)).map(tag => (
                       <TagPill
                         key={tag}
                         tag={tag}
@@ -1947,6 +1947,21 @@ export function MainApp({ user, onSignOut }) {
                         }
                       />
                     ))}
+                    {!tagsExpanded && tags.length > 4 && (
+                      <button
+                        onClick={() => setTagsExpanded(true)}
+                        style={{
+                          padding: '3px 8px',
+                          background: 'transparent',
+                          border: `1px solid ${colors.border}`,
+                          color: colors.primary,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        MORE...
+                      </button>
+                    )}
                     {addingTag ? (
                       <input
                         autoFocus

@@ -112,7 +112,7 @@ QUICK NOTE SHORTCUT:
 - If user's message starts with a hyphen (-), treat the text after it as a note to create
 - Example: "- call mom tomorrow" → create a note with content "call mom tomorrow"
 - Example: "- fix the login bug on staging" → create note "fix the login bug on staging"
-- Still apply auto-tagging and navigate to the section
+- Still apply auto-tagging but do NOT navigate — keep the user's current view
 - Use CURRENT VIEW page/section as default location (provided at end of system prompt)
 
 PATH SHORTHAND (IMPORTANT):
@@ -135,8 +135,8 @@ NOTE CREATION:
 - If no location specified AND no CURRENT VIEW, ask "Which page/section?"
 - NEVER read back the full note content in your response
 - After creating a note, respond briefly: "Recorded to PAGE/SECTION." or "Got it. See PAGE/SECTION."
-- Always call navigate(page_name, section_name) so user can click to go there
-- Example: create_note(...) → navigate(page_name: "Work", section_name: "Tasks") → respond_to_user("Got it. See Work/Tasks.")
+- Do NOT call navigate() after creating notes — the view should stay where the user is
+- Example: create_note(...) → respond_to_user("Got it. See Work/Tasks.")
 
 AUTO-TAGGING (IMPORTANT):
 - ALWAYS auto-tag notes when creating them - never leave notes untagged
@@ -390,8 +390,24 @@ export default async function handler(req, res) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('OpenAI API error:', response.status, errorText);
+
+        let errorMessage;
+        switch (response.status) {
+          case 401:
+            errorMessage = 'Invalid API key. Check your key in Settings > Developer.';
+            break;
+          case 403:
+            errorMessage = `Your API key doesn't have access to model \`${ACTIVE_MODEL}\`. Check your OpenAI plan or change the model in Settings > Developer.`;
+            break;
+          case 429:
+            errorMessage = 'Rate limited. Try again shortly.';
+            break;
+          default:
+            errorMessage = 'AI service error';
+        }
+
         return res.status(500).json({
-          error: 'AI service error',
+          error: errorMessage,
           status: response.status,
           details: errorText.substring(0, 200)
         });
