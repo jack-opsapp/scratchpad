@@ -133,7 +133,7 @@ export default function TrashModal({ isOpen, onClose, onRestore, userId }) {
           border: `1px solid ${colors.border}`,
           width: '100%',
           maxWidth: 600,
-          maxHeight: '80vh',
+          maxHeight: '95vh',
           display: 'flex',
           flexDirection: 'column'
         }}
