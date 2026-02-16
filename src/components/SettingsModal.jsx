@@ -61,7 +61,7 @@ const TABS = [
 // Main Component
 // =============================================================================
 
-export default function SettingsModal({ isOpen, onClose, pages = [], user }) {
+export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpenTrash }) {
   const { settings, saving, updateSettings, resetSettings } = useSettings();
   const [activeTab, setActiveTab] = useState('appearance');
   const [localSettings, setLocalSettings] = useState(settings);
@@ -231,7 +231,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user }) {
               <ContentTab settings={localSettings} pages={pages} onChange={handleChange} />
             )}
             {activeTab === 'data' && (
-              <DataPrivacyTab settings={localSettings} onChange={handleChange} user={user} />
+              <DataPrivacyTab settings={localSettings} onChange={handleChange} user={user} onOpenTrash={onOpenTrash} />
             )}
             {activeTab === 'account' && (
               <AccountTab user={user} />
@@ -915,7 +915,7 @@ function ContentTab({ settings, pages, onChange }) {
 // Data & Privacy Tab
 // =============================================================================
 
-function DataPrivacyTab({ settings, onChange, user }) {
+function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
   const [exporting, setExporting] = useState(null);
   const [clearingMemory, setClearingMemory] = useState(false);
   const [memoryCleared, setMemoryCleared] = useState(false);
@@ -981,6 +981,33 @@ function DataPrivacyTab({ settings, onChange, user }) {
       <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         Data & Privacy
       </h3>
+
+      {/* Recently Deleted */}
+      <SettingGroup label="RECENTLY DELETED" description="View and restore deleted pages, sections, and notes">
+        <button
+          onClick={() => {
+            if (onOpenTrash) onOpenTrash();
+          }}
+          style={{
+            padding: '12px 16px',
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+            color: colors.textPrimary,
+            fontSize: 14,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            width: '100%',
+            maxWidth: 300,
+            transition: 'all 0.2s'
+          }}
+        >
+          <Trash2 size={16} color={colors.textMuted} />
+          <span>View Trash</span>
+          <RotateCcw size={14} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
+        </button>
+      </SettingGroup>
 
       {/* Chat History Retention */}
       <SettingGroup label="CHAT HISTORY RETENTION" description="How long to keep chat messages">

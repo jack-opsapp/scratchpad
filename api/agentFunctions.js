@@ -79,6 +79,12 @@ export async function executeFunction(name, args, userId) {
       case 'bulk_delete_notes':
         return await bulkDeleteNotes(supabase, userId, args);
 
+      // Trash / Recovery
+      case 'get_deleted_items':
+        return await getDeletedItems(supabase, userId);
+      case 'restore_items':
+        return await restoreItems(supabase, userId, args);
+
       default:
         return { error: `Unknown function: ${name}` };
     }
@@ -98,10 +104,13 @@ async function resolvePageId(supabase, userId, { page_id, page_name }) {
   if (page_id) return page_id;
   if (!page_name) return null;
 
+  const pageIds = await getUserPageIds(supabase, userId);
+  if (!pageIds.length) return null;
+
   const { data } = await supabase
     .from('pages')
     .select('id')
-    .eq('user_id', userId)
+    .in('id', pageIds)
     .ilike('name', page_name)
     .single();
 
@@ -112,18 +121,14 @@ async function resolveSectionId(supabase, userId, { section_id, section_name, pa
   if (section_id) return section_id;
   if (!section_name) return null;
 
-  // Get user's page IDs first
-  const { data: pages } = await supabase
-    .from('pages')
-    .select('id')
-    .eq('user_id', userId);
-
-  if (!pages?.length) return null;
+  // Get user's page IDs (owned + shared)
+  const pageIds = await getUserPageIds(supabase, userId);
+  if (!pageIds.length) return null;
 
   let query = supabase
     .from('sections')
     .select('id, page_id')
-    .in('page_id', pages.map(p => p.id))
+    .in('page_id', pageIds)
     .ilike('name', section_name);
 
   // If page_name provided, filter further
@@ -140,13 +145,26 @@ async function resolveSectionId(supabase, userId, { section_id, section_name, pa
 
 async function getUserPageIds(supabase, userId) {
   console.log('getUserPageIds called with userId:', userId);
-  const { data: pages, error } = await supabase
+
+  // Get owned pages
+  const { data: ownedPages, error: ownedErr } = await supabase
     .from('pages')
     .select('id')
     .eq('user_id', userId);
 
-  console.log('getUserPageIds result:', { pages, error, count: pages?.length });
-  return pages?.map(p => p.id) || [];
+  // Get shared pages (via page_permissions)
+  const { data: sharedPerms, error: sharedErr } = await supabase
+    .from('page_permissions')
+    .select('page_id')
+    .eq('user_id', userId);
+
+  const ownedIds = (ownedPages || []).map(p => p.id);
+  const sharedIds = (sharedPerms || []).map(p => p.page_id);
+
+  // Deduplicate
+  const allIds = [...new Set([...ownedIds, ...sharedIds])];
+  console.log('getUserPageIds result:', { owned: ownedIds.length, shared: sharedIds.length, total: allIds.length, ownedErr, sharedErr });
+  return allIds;
 }
 
 async function getUserSectionIds(supabase, userId, pageIds = null) {
@@ -170,10 +188,14 @@ async function getUserSectionIds(supabase, userId, pageIds = null) {
 async function getPages(supabase, userId) {
   console.log('getPages called with userId:', userId);
 
+  const pageIds = await getUserPageIds(supabase, userId);
+  if (!pageIds.length) return [];
+
   const { data, error } = await supabase
     .from('pages')
     .select('id, name, starred')
-    .eq('user_id', userId)
+    .in('id', pageIds)
+    .is('deleted_at', null)
     .order('position');
 
   console.log('getPages result:', { data, error, count: data?.length });
@@ -190,6 +212,7 @@ async function getSections(supabase, userId, args) {
     .from('sections')
     .select('id, name, page_id, pages(name)')
     .in('page_id', pageIds)
+    .is('deleted_at', null)
     .order('position');
 
   if (args.page_id) {
@@ -215,18 +238,12 @@ async function getSections(supabase, userId, args) {
 async function getNotes(supabase, userId, args) {
   console.log('getNotes called with userId:', userId, 'args:', JSON.stringify(args));
 
-  // First get user's pages
-  const { data: pages, error: pagesErr } = await supabase
-    .from('pages')
-    .select('id')
-    .eq('user_id', userId);
-
-  console.log('getNotes pages:', pages?.length, 'error:', pagesErr?.message);
-  if (pagesErr) throw pagesErr;
-  if (!pages?.length) return [];
+  // Get user's pages (owned + shared)
+  const pageIds = await getUserPageIds(supabase, userId);
+  console.log('getNotes pageIds:', pageIds.length);
+  if (!pageIds.length) return [];
 
   // Then get sections for those pages
-  const pageIds = pages.map(p => p.id);
   const { data: sections, error: sectionsErr } = await supabase
     .from('sections')
     .select('id')
@@ -238,11 +255,12 @@ async function getNotes(supabase, userId, args) {
 
   const sectionIds = sections.map(s => s.id);
 
-  // Now get notes - simplified query first
+  // Now get notes - simplified query first (exclude soft-deleted)
   let query = supabase
     .from('notes')
     .select('id, content, tags, date, completed, created_at, section_id')
     .in('section_id', sectionIds)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(args.limit || 50);
 
@@ -325,7 +343,8 @@ async function countNotes(supabase, userId, args) {
   let query = supabase
     .from('notes')
     .select('id', { count: 'exact', head: true })
-    .in('section_id', sectionIds);
+    .in('section_id', sectionIds)
+    .is('deleted_at', null);
 
   // Apply same filters as getNotes
   if (args.section_id) {
@@ -403,14 +422,31 @@ async function deletePage(supabase, userId, args) {
   const pageId = await resolvePageId(supabase, userId, args);
   if (!pageId) return { error: 'Page not found' };
 
-  // Delete cascades to sections and notes via FK
+  const now = new Date().toISOString();
+
+  // Soft-delete the page
   const { error } = await supabase
     .from('pages')
-    .delete()
+    .update({ deleted_at: now })
     .eq('id', pageId)
     .eq('user_id', userId);
 
   if (error) throw error;
+
+  // Soft-delete child sections
+  const { data: sections } = await supabase
+    .from('sections')
+    .select('id')
+    .eq('page_id', pageId)
+    .is('deleted_at', null);
+
+  if (sections?.length) {
+    const sectionIds = sections.map(s => s.id);
+    await supabase.from('sections').update({ deleted_at: now }).in('id', sectionIds);
+    // Soft-delete child notes
+    await supabase.from('notes').update({ deleted_at: now }).in('section_id', sectionIds).is('deleted_at', null);
+  }
+
   return { success: true };
 }
 
@@ -460,13 +496,19 @@ async function deleteSection(supabase, userId, args) {
   const sectionId = await resolveSectionId(supabase, userId, args);
   if (!sectionId) return { error: 'Section not found' };
 
-  // Delete cascades to notes via FK
+  const now = new Date().toISOString();
+
+  // Soft-delete the section
   const { error } = await supabase
     .from('sections')
-    .delete()
+    .update({ deleted_at: now })
     .eq('id', sectionId);
 
   if (error) throw error;
+
+  // Soft-delete child notes
+  await supabase.from('notes').update({ deleted_at: now }).eq('section_id', sectionId).is('deleted_at', null);
+
   return { success: true };
 }
 
@@ -568,7 +610,7 @@ async function deleteNote(supabase, userId, args) {
 
   const { error } = await supabase
     .from('notes')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', args.note_id)
     .in('section_id', sectionIds);
 
@@ -707,7 +749,7 @@ async function bulkDeleteNotes(supabase, userId, args) {
 
   const { error } = await supabase
     .from('notes')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .in('id', noteIds);
 
   if (error) throw error;
@@ -749,4 +791,121 @@ async function sortNotes(supabase, userId, args) {
     })),
     instruction: `Sort these ${targetNotes.length} notes by "${args.criteria}". Return the note IDs in the desired order as a sorted_ids array.`
   };
+}
+
+// ============ TRASH / RECOVERY ============
+
+async function getDeletedItems(supabase, userId) {
+  const pageIds = await getUserPageIds(supabase, userId);
+  if (!pageIds.length) return { pages: [], sections: [], notes: [] };
+
+  // Get deleted pages
+  const { data: deletedPages } = await supabase
+    .from('pages')
+    .select('id, name, deleted_at')
+    .in('id', pageIds)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+
+  // Get sections for all pages (including deleted ones)
+  const { data: allSections } = await supabase
+    .from('sections')
+    .select('id, name, page_id, deleted_at, pages(name)')
+    .in('page_id', pageIds);
+
+  const deletedPageIds = new Set((deletedPages || []).map(p => p.id));
+
+  // Deleted sections whose parent page is NOT deleted
+  const deletedSections = (allSections || []).filter(s =>
+    s.deleted_at && !deletedPageIds.has(s.page_id)
+  );
+
+  const deletedSectionIds = new Set((allSections || []).filter(s => s.deleted_at).map(s => s.id));
+  const allSectionIds = (allSections || []).map(s => s.id);
+
+  // Get deleted notes whose parent section/page are NOT deleted
+  let deletedNotes = [];
+  if (allSectionIds.length) {
+    const { data } = await supabase
+      .from('notes')
+      .select('id, content, section_id, deleted_at')
+      .in('section_id', allSectionIds)
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+
+    const sectionLookup = new Map((allSections || []).map(s => [s.id, s]));
+    deletedNotes = (data || []).filter(n => {
+      const sec = sectionLookup.get(n.section_id);
+      return !deletedSectionIds.has(n.section_id) && !deletedPageIds.has(sec?.page_id);
+    }).map(n => {
+      const sec = sectionLookup.get(n.section_id);
+      return {
+        id: n.id,
+        content: (n.content || '').substring(0, 100),
+        section_name: sec?.name || 'Unknown',
+        page_name: sec?.pages?.name || 'Unknown',
+        deleted_at: n.deleted_at
+      };
+    });
+  }
+
+  return {
+    pages: (deletedPages || []).map(p => ({ id: p.id, name: p.name, deleted_at: p.deleted_at })),
+    sections: deletedSections.map(s => ({
+      id: s.id,
+      name: s.name,
+      page_name: s.pages?.name || 'Unknown',
+      deleted_at: s.deleted_at
+    })),
+    notes: deletedNotes
+  };
+}
+
+async function restoreItems(supabase, userId, args) {
+  const results = [];
+
+  for (const item of args.items) {
+    const { type, id } = item;
+    let success = false;
+
+    if (type === 'page') {
+      const { error } = await supabase
+        .from('pages')
+        .update({ deleted_at: null })
+        .eq('id', id);
+      if (!error) {
+        // Restore child sections and notes
+        const { data: sections } = await supabase
+          .from('sections')
+          .select('id')
+          .eq('page_id', id)
+          .not('deleted_at', 'is', null);
+        if (sections?.length) {
+          const sids = sections.map(s => s.id);
+          await supabase.from('sections').update({ deleted_at: null }).in('id', sids);
+          await supabase.from('notes').update({ deleted_at: null }).in('section_id', sids).not('deleted_at', 'is', null);
+        }
+        success = true;
+      }
+    } else if (type === 'section') {
+      const { error } = await supabase
+        .from('sections')
+        .update({ deleted_at: null })
+        .eq('id', id);
+      if (!error) {
+        await supabase.from('notes').update({ deleted_at: null }).eq('section_id', id).not('deleted_at', 'is', null);
+        success = true;
+      }
+    } else if (type === 'note') {
+      const { error } = await supabase
+        .from('notes')
+        .update({ deleted_at: null })
+        .eq('id', id);
+      success = !error;
+    }
+
+    results.push({ type, id, restored: success });
+  }
+
+  return { restored: results.filter(r => r.restored).length, results };
 }

@@ -123,6 +123,7 @@ import {
 } from '../components/index.js';
 import ShareModal from '../components/ShareModal.jsx';
 import SettingsModal from '../components/SettingsModal.jsx';
+import TrashModal from '../components/TrashModal.jsx';
 import CollaboratorBadge from '../components/CollaboratorBadge.jsx';
 import MobileSidebar from '../components/MobileSidebar.jsx';
 import MobileHeader from '../components/MobileHeader.jsx';
@@ -204,6 +205,7 @@ export function MainApp({ user, onSignOut }) {
   // Settings state
   const { settings } = useSettings();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showTrashModal, setShowTrashModal] = useState(false);
 
   // Navigation state
   const [currentPage, setCurrentPage] = useState(null);
@@ -1075,10 +1077,10 @@ export function MainApp({ user, onSignOut }) {
       .then(({ error }) => { if (error) console.error('Edit persist failed:', error); });
   };
 
-  // Delete note with direct Supabase persistence
+  // Delete note with direct Supabase persistence (soft delete)
   const handleNoteDelete = (id) => {
     setNotes(prev => prev.filter(n => n.id !== id));
-    supabase.from('notes').delete().eq('id', id)
+    supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
   };
 
@@ -3690,6 +3692,19 @@ export function MainApp({ user, onSignOut }) {
           onClose={() => setShowSettingsModal(false)}
           pages={allPages}
           user={user}
+          onOpenTrash={() => {
+            setShowSettingsModal(false);
+            setShowTrashModal(true);
+          }}
+        />
+      )}
+
+      {/* Trash Modal */}
+      {showTrashModal && (
+        <TrashModal
+          isOpen={showTrashModal}
+          onClose={() => setShowTrashModal(false)}
+          onRestore={() => refreshData()}
         />
       )}
 

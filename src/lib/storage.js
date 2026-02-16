@@ -499,6 +499,7 @@ export const dataStore = {
         .from('notes')
         .select('*')
         .in('section_id', allSectionIds)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -556,11 +557,12 @@ export const dataStore = {
 
       if (allSectionIds.length === 0) return true;
 
-      // Get existing notes with content (to detect changes)
+      // Get existing notes with content (to detect changes) - only non-deleted
       const { data: existingNotes } = await supabase
         .from('notes')
         .select('id, content')
-        .in('section_id', allSectionIds);
+        .in('section_id', allSectionIds)
+        .is('deleted_at', null);
 
       const existingNoteMap = new Map((existingNotes || []).map(n => [n.id, n.content]));
       const existingNoteIds = new Set((existingNotes || []).map(n => n.id));
@@ -569,10 +571,10 @@ export const dataStore = {
       // Track notes that need embedding (new or content changed)
       const notesNeedingEmbedding = [];
 
-      // Delete notes that no longer exist
+      // Soft-delete notes that no longer exist
       const notesToDelete = [...existingNoteIds].filter(id => !newNoteIds.has(id));
       if (notesToDelete.length > 0) {
-        await supabase.from('notes').delete().in('id', notesToDelete);
+        await supabase.from('notes').update({ deleted_at: new Date().toISOString() }).in('id', notesToDelete);
       }
 
       // Upsert notes
@@ -761,6 +763,221 @@ export const dataStore = {
 
     await Promise.all(promises);
   },
+};
+
+// =============================================================================
+// Trash / Recovery Functions
+// =============================================================================
+
+export const trash = {
+  /**
+   * Get all soft-deleted items for the current user
+   * @returns {Promise<{ pages: Array, sections: Array, notes: Array } | null>}
+   */
+  async getDeletedItems() {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return null;
+
+      // Get deleted pages
+      const { data: deletedPages } = await supabase
+        .from('pages')
+        .select('id, name, deleted_at')
+        .eq('user_id', userId)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+
+      // Get all user page IDs (including deleted) for section lookup
+      const { data: allUserPages } = await supabase
+        .from('pages')
+        .select('id, name')
+        .eq('user_id', userId);
+      const pageMap = new Map((allUserPages || []).map(p => [p.id, p.name]));
+      const pageIds = [...pageMap.keys()];
+
+      // Get deleted sections (whose parent page is NOT deleted)
+      const deletedPageIds = new Set((deletedPages || []).map(p => p.id));
+      const { data: deletedSections } = pageIds.length ? await supabase
+        .from('sections')
+        .select('id, name, page_id, deleted_at')
+        .in('page_id', pageIds)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false }) : { data: [] };
+
+      // Filter out sections whose parent page is also deleted (they'll restore with the page)
+      const orphanedSections = (deletedSections || []).filter(s => !deletedPageIds.has(s.page_id));
+
+      // Get section IDs for note lookup
+      const { data: allSections } = pageIds.length ? await supabase
+        .from('sections')
+        .select('id, name, page_id')
+        .in('page_id', pageIds) : { data: [] };
+      const sectionMap = new Map((allSections || []).map(s => [s.id, { name: s.name, pageName: pageMap.get(s.page_id) }]));
+      const sectionIds = [...sectionMap.keys()];
+
+      // Get deleted notes (whose parent section is NOT deleted)
+      const deletedSectionIds = new Set((deletedSections || []).map(s => s.id));
+      const { data: deletedNotes } = sectionIds.length ? await supabase
+        .from('notes')
+        .select('id, content, section_id, deleted_at')
+        .in('section_id', sectionIds)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false }) : { data: [] };
+
+      // Filter out notes whose parent section or page is also deleted
+      const orphanedNotes = (deletedNotes || []).filter(n =>
+        !deletedSectionIds.has(n.section_id) && !deletedPageIds.has(
+          allSections?.find(s => s.id === n.section_id)?.page_id
+        )
+      );
+
+      return {
+        pages: (deletedPages || []).map(p => ({
+          id: p.id,
+          name: p.name,
+          deleted_at: p.deleted_at,
+          type: 'page'
+        })),
+        sections: orphanedSections.map(s => ({
+          id: s.id,
+          name: s.name,
+          pageName: pageMap.get(s.page_id) || 'Unknown',
+          deleted_at: s.deleted_at,
+          type: 'section'
+        })),
+        notes: orphanedNotes.map(n => {
+          const sec = sectionMap.get(n.section_id);
+          return {
+            id: n.id,
+            content: n.content?.substring(0, 100) || '',
+            sectionName: sec?.name || 'Unknown',
+            pageName: sec?.pageName || 'Unknown',
+            deleted_at: n.deleted_at,
+            type: 'note'
+          };
+        })
+      };
+    } catch (error) {
+      console.error('getDeletedItems error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Restore a soft-deleted item (set deleted_at = null)
+   * For pages, also restores child sections/notes. For sections, also restores child notes.
+   * @param {'page' | 'section' | 'note'} type
+   * @param {string} id
+   * @returns {Promise<boolean>}
+   */
+  async restoreItem(type, id) {
+    try {
+      if (type === 'page') {
+        const { error } = await supabase
+          .from('pages')
+          .update({ deleted_at: null })
+          .eq('id', id);
+        if (error) throw error;
+
+        // Restore child sections
+        const { data: sections } = await supabase
+          .from('sections')
+          .select('id')
+          .eq('page_id', id)
+          .not('deleted_at', 'is', null);
+
+        if (sections?.length) {
+          const sectionIds = sections.map(s => s.id);
+          await supabase.from('sections').update({ deleted_at: null }).in('id', sectionIds);
+          // Restore child notes
+          await supabase.from('notes').update({ deleted_at: null }).in('section_id', sectionIds).not('deleted_at', 'is', null);
+        }
+      } else if (type === 'section') {
+        const { error } = await supabase
+          .from('sections')
+          .update({ deleted_at: null })
+          .eq('id', id);
+        if (error) throw error;
+
+        // Restore child notes
+        await supabase.from('notes').update({ deleted_at: null }).eq('section_id', id).not('deleted_at', 'is', null);
+      } else if (type === 'note') {
+        const { error } = await supabase
+          .from('notes')
+          .update({ deleted_at: null })
+          .eq('id', id);
+        if (error) throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('restoreItem error:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Permanently delete an item (hard delete)
+   * @param {'page' | 'section' | 'note'} type
+   * @param {string} id
+   * @returns {Promise<boolean>}
+   */
+  async permanentlyDeleteItem(type, id) {
+    try {
+      const { error } = await supabase
+        .from(type === 'page' ? 'pages' : type === 'section' ? 'sections' : 'notes')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('permanentlyDeleteItem error:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Permanently delete all soft-deleted items for the current user
+   * @returns {Promise<boolean>}
+   */
+  async emptyTrash() {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return false;
+
+      // Get all user page IDs
+      const { data: userPages } = await supabase
+        .from('pages')
+        .select('id')
+        .eq('user_id', userId);
+      const pageIds = (userPages || []).map(p => p.id);
+
+      if (pageIds.length) {
+        // Get all section IDs
+        const { data: sections } = await supabase
+          .from('sections')
+          .select('id')
+          .in('page_id', pageIds);
+        const sectionIds = (sections || []).map(s => s.id);
+
+        // Hard delete soft-deleted notes
+        if (sectionIds.length) {
+          await supabase.from('notes').delete().in('section_id', sectionIds).not('deleted_at', 'is', null);
+        }
+
+        // Hard delete soft-deleted sections
+        await supabase.from('sections').delete().in('page_id', pageIds).not('deleted_at', 'is', null);
+      }
+
+      // Hard delete soft-deleted pages
+      await supabase.from('pages').delete().eq('user_id', userId).not('deleted_at', 'is', null);
+
+      return true;
+    } catch (error) {
+      console.error('emptyTrash error:', error);
+      return false;
+    }
+  }
 };
 
 // =============================================================================

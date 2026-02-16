@@ -414,6 +414,45 @@ export const functionDefinitions = [
     }
   },
 
+  // ============ TRASH / RECOVERY ============
+  {
+    type: 'function',
+    function: {
+      name: 'get_deleted_items',
+      description: 'List all soft-deleted (trashed) pages, sections, and notes for the user',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'restore_items',
+      description: 'Restore one or more deleted items from trash. Restoring a page also restores its child sections and notes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            description: 'Items to restore',
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['page', 'section', 'note'], description: 'Item type' },
+                id: { type: 'string', description: 'Item ID' }
+              },
+              required: ['type', 'id']
+            }
+          }
+        },
+        required: ['items']
+      }
+    }
+  },
+
   // ============ COMMUNICATION ============
   {
     type: 'function',
