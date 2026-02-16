@@ -1047,22 +1047,25 @@ export function MainApp({ user, onSignOut }) {
 
   // Toggle note completion with direct Supabase persistence
   const handleNoteToggle = async (id) => {
-    const note = notes.find(n => n.id === id);
-    if (!note) return;
-    const newCompleted = !note.completed;
-    const completed_by_user_id = newCompleted ? user.id : null;
-    const completed_at = newCompleted ? new Date().toISOString() : null;
+    let updateData = null;
+    // Use functional updater to read latest state (avoids stale closure)
+    setNotes(prev => {
+      const note = prev.find(n => n.id === id);
+      if (!note) return prev;
+      const newCompleted = !note.completed;
+      const completed_by_user_id = newCompleted ? user.id : null;
+      const completed_at = newCompleted ? new Date().toISOString() : null;
+      updateData = { completed: newCompleted, completed_by_user_id, completed_at };
+      return prev.map(n =>
+        n.id === id ? { ...n, ...updateData } : n
+      );
+    });
 
-    // Optimistic UI update
-    setNotes(prev => prev.map(n =>
-      n.id === id
-        ? { ...n, completed: newCompleted, completed_by_user_id, completed_at }
-        : n
-    ));
-
-    // Persist to Supabase
-    const { error } = await supabase.from('notes').update({ completed: newCompleted, completed_by_user_id, completed_at }).eq('id', id);
-    if (error) console.error('Toggle persist failed:', error);
+    // Persist to Supabase with the exact values set in state
+    if (updateData) {
+      const { error } = await supabase.from('notes').update(updateData).eq('id', id);
+      if (error) console.error('Toggle persist failed:', error);
+    }
   };
 
   // Edit note content with direct Supabase persistence

@@ -456,7 +456,7 @@ export function BoxesView({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: colors.textMuted,
+                          color: '#ff6b6b',
                           cursor: 'pointer',
                           padding: 4,
                           opacity: 0.3,
