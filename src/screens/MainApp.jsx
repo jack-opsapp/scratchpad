@@ -3705,6 +3705,7 @@ export function MainApp({ user, onSignOut }) {
           isOpen={showTrashModal}
           onClose={() => setShowTrashModal(false)}
           onRestore={() => refreshData()}
+          userId={user?.id}
         />
       )}
 

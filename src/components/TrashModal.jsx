@@ -7,7 +7,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, RotateCcw, Trash2, ChevronDown, ChevronRight, FileText, FolderOpen, StickyNote, AlertTriangle } from 'lucide-react';
-import { trash } from '../lib/storage.js';
 
 const colors = {
   bg: '#000000',
@@ -36,7 +35,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-export default function TrashModal({ isOpen, onClose, onRestore }) {
+export default function TrashModal({ isOpen, onClose, onRestore, userId }) {
   const [items, setItems] = useState(null);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(null);
@@ -51,17 +50,32 @@ export default function TrashModal({ isOpen, onClose, onRestore }) {
 
   const loadItems = async () => {
     setLoading(true);
-    const data = await trash.getDeletedItems();
-    setItems(data);
+    try {
+      const res = await fetch(`/api/trash?userId=${encodeURIComponent(userId)}`);
+      const data = await res.json();
+      setItems(data.error ? null : data);
+    } catch (err) {
+      console.error('Failed to load trash:', err);
+      setItems(null);
+    }
     setLoading(false);
   };
 
   const handleRestore = async (type, id) => {
     setRestoring(id);
-    const success = await trash.restoreItem(type, id);
-    if (success) {
-      await loadItems();
-      if (onRestore) onRestore();
+    try {
+      const res = await fetch('/api/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, type, id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadItems();
+        if (onRestore) onRestore();
+      }
+    } catch (err) {
+      console.error('Failed to restore:', err);
     }
     setRestoring(null);
   };
@@ -69,9 +83,18 @@ export default function TrashModal({ isOpen, onClose, onRestore }) {
   const handleEmptyTrash = async () => {
     if (!confirm('Permanently delete all items in trash? This cannot be undone.')) return;
     setEmptying(true);
-    const success = await trash.emptyTrash();
-    if (success) {
-      await loadItems();
+    try {
+      const res = await fetch('/api/trash', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadItems();
+      }
+    } catch (err) {
+      console.error('Failed to empty trash:', err);
     }
     setEmptying(false);
   };
