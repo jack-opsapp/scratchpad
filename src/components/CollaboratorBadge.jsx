@@ -7,7 +7,7 @@
 import React from 'react';
 
 const colors = {
-  primary: '#d1b18f',
+  primary: 'var(--color-primary, #d1b18f)',
   textMuted: '#888888',
   border: '#1a1a1a',
 };

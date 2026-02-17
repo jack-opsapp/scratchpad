@@ -14,7 +14,7 @@ const colors = {
   bg: '#000000',
   surface: '#0a0a0a',
   border: '#1a1a1a',
-  primary: '#d1b18f',
+  primary: 'var(--color-primary, #d1b18f)',
   textPrimary: '#ffffff',
   textMuted: '#888888',
 };

@@ -13,10 +13,10 @@ export const colors = {
   surface: '#0a0a0a',
   border: '#1a1a1a',
 
-  // Brand accent (gold) - use sparingly
-  primary: '#d1b18f',
-  primaryDark: '#BC8E5E',
-  primaryLight: '#E5D4C1',
+  // Brand accent - uses CSS variable set by applyTheme() so user's chosen accent applies everywhere
+  primary: 'var(--color-primary, #d1b18f)',
+  primaryDark: 'var(--color-primary-dark, #BC8E5E)',
+  primaryLight: 'var(--color-primary-light, #E5D4C1)',
 
   // Text
   textPrimary: '#ffffff',

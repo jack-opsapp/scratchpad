@@ -50,7 +50,7 @@ body {
 
 /* Focus styles */
 :focus-visible {
-  outline: 1px solid #d1b18f;
+  outline: 1px solid var(--color-primary, #d1b18f);
   outline-offset: 2px;
 }
 
