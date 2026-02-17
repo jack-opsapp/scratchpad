@@ -23,7 +23,7 @@ export default function PlanModeInterface({
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'approved': return '#4CAF50';
+      case 'approved': return '#2d6b3a';
       case 'skipped': return colors.textMuted;
       default: return colors.border;
     }
@@ -134,8 +134,8 @@ export default function PlanModeInterface({
                   width: 20,
                   height: 20,
                   borderRadius: '50%',
-                  background: wasExecuted && status === 'approved' ? '#4CAF50' : getStatusColor(status),
-                  border: `2px solid ${wasExecuted && status === 'approved' ? '#4CAF50' : getStatusColor(status)}`,
+                  background: wasExecuted && status === 'approved' ? '#2d6b3a' : getStatusColor(status),
+                  border: `2px solid ${wasExecuted && status === 'approved' ? '#2d6b3a' : getStatusColor(status)}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -274,10 +274,10 @@ export default function PlanModeInterface({
                   borderTop: `1px solid ${colors.border}`,
                   background: colors.bg
                 }}>
-                  <p style={{ color: '#4CAF50', fontSize: 11, margin: 0 }}>
+                  <p style={{ color: '#2d6b3a', fontSize: 11, margin: 0 }}>
                     {result.summary?.succeeded || result.results?.filter(r => r.success).length || 0} succeeded
                     {(result.summary?.failed > 0 || result.results?.some(r => !r.success)) && (
-                      <span style={{ color: '#ff6b6b', marginLeft: 8 }}>
+                      <span style={{ color: '#b83c2a', marginLeft: 8 }}>
                         {result.summary?.failed || result.results?.filter(r => !r.success).length || 0} failed
                       </span>
                     )}
@@ -369,7 +369,7 @@ export default function PlanModeInterface({
         {isComplete && (
           <>
             <p style={{
-              color: '#4CAF50',
+              color: '#2d6b3a',
               fontSize: 14,
               fontWeight: 600,
               marginBottom: 8,

@@ -27,7 +27,7 @@ export function ChatResponseBox({ response, onOptionSelect }) {
         style={{
           color: colors.textPrimary,
           fontSize: 13,
-          fontFamily: "'Manrope', sans-serif",
+          fontFamily: "'Inter', sans-serif",
           margin: 0,
           lineHeight: 1.6,
           fontWeight: 500,
@@ -52,7 +52,7 @@ export function ChatResponseBox({ response, onOptionSelect }) {
             style={{
               color: colors.textMuted,
               fontSize: 13,
-              fontFamily: "'Manrope', sans-serif",
+              fontFamily: "'Inter', sans-serif",
             }}
           >
             {note.displayed}
@@ -67,7 +67,7 @@ export function ChatResponseBox({ response, onOptionSelect }) {
           style={{
             color: colors.textMuted,
             fontSize: 11,
-            fontFamily: "'Manrope', sans-serif",
+            fontFamily: "'Inter', sans-serif",
             margin: '8px 0 0 0',
           }}
         >
@@ -88,7 +88,7 @@ export function ChatResponseBox({ response, onOptionSelect }) {
                 border: `1px solid ${colors.border}`,
                 color: colors.textPrimary,
                 fontSize: 12,
-                fontFamily: "'Manrope', sans-serif",
+                fontFamily: "'Inter', sans-serif",
                 cursor: 'pointer',
               }}
             >

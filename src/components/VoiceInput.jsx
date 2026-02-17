@@ -1,15 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Square } from 'lucide-react';
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-  recording: '#ff4444'
-};
+import { colors } from '../styles/theme';
 
 export default function VoiceInput({ onTranscript, onRecordingChange, onAudioData, disabled, isOnline }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -254,7 +245,7 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
           width: 40,
           height: 40,
           borderRadius: '50%',
-          background: isRecording ? colors.recording : colors.primary,
+          background: isRecording ? colors.danger : colors.primary,
           border: 'none',
           display: 'flex',
           alignItems: 'center',
@@ -264,7 +255,7 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
           transition: 'all 0.2s ease',
           position: 'relative',
           flexShrink: 0,
-          boxShadow: isRecording ? '0 0 20px rgba(255,68,68,0.4)' : '0 2px 8px rgba(0,0,0,0.3)'
+          boxShadow: 'none'
         }}
       >
         {isRecording ? (
@@ -284,7 +275,7 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
             right: -4,
             bottom: -4,
             borderRadius: '50%',
-            border: `3px solid ${colors.recording}`,
+            border: `3px solid ${colors.danger}`,
             opacity: audioLevel / 100,
             transform: `scale(${1 + audioLevel / 150})`,
             transition: 'all 0.1s ease',
@@ -305,14 +296,14 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
             padding: '8px 12px',
             background: colors.surface,
             border: `1px solid ${colors.border}`,
-            borderRadius: 8,
+            borderRadius: 2,
             fontSize: 13,
             color: colors.textPrimary,
             maxWidth: 250,
             wordWrap: 'break-word',
             whiteSpace: 'pre-wrap',
             textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            boxShadow: 'none',
             zIndex: 100
           }}
         >
@@ -331,8 +322,8 @@ export default function VoiceInput({ onTranscript, onRecordingChange, onAudioDat
             transform: 'translateX(-50%)',
             marginBottom: 8,
             padding: '6px 10px',
-            background: colors.recording,
-            borderRadius: 4,
+            background: colors.danger,
+            borderRadius: 2,
             fontSize: 11,
             color: '#fff',
             whiteSpace: 'nowrap',

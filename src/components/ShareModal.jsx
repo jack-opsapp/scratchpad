@@ -22,14 +22,7 @@ import {
   regeneratePublicLink,
 } from '../lib/permissions';
 
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-};
+import { colors } from '../styles/theme';
 
 export default function ShareModal({
   pageId,
@@ -288,7 +281,7 @@ export default function ShareModal({
           <div
             style={{
               padding: 16,
-              background: '#ff4444',
+              background: colors.danger,
               color: '#fff',
               fontSize: 13,
             }}

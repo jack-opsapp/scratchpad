@@ -134,7 +134,7 @@ export default function PublicPage() {
               }}
             />
             {error && (
-              <p style={{ color: '#ff4444', fontSize: 12, marginBottom: 12 }}>
+              <p style={{ color: '#b83c2a', fontSize: 12, marginBottom: 12 }}>
                 {error}
               </p>
             )}

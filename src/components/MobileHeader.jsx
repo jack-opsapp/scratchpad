@@ -1,14 +1,6 @@
 import React from 'react';
 import { Menu, MoreVertical, ChevronLeft, X } from 'lucide-react';
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888'
-};
+import { colors } from '../styles/theme';
 
 export default function MobileHeader({
   currentPage,
@@ -85,7 +77,7 @@ export default function MobileHeader({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}>
           {agentViewTitle ? (
             <>

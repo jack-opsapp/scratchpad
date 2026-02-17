@@ -118,13 +118,13 @@ export function TableView({
     <div style={{
       overflowX: 'auto',
       border: `1px solid ${colors.border}`,
-      borderRadius: 4,
+      borderRadius: 2,
     }}>
       <table style={{
         width: '100%',
         borderCollapse: 'collapse',
         fontSize: 13,
-        fontFamily: "'Manrope', sans-serif",
+        fontFamily: "'Inter', sans-serif",
       }}>
         {/* Header */}
         <thead>
@@ -208,7 +208,7 @@ export function TableView({
                       border: `1px solid ${colors.primary}`,
                       color: colors.textPrimary,
                       fontSize: 13,
-                      fontFamily: "'Manrope', sans-serif",
+                      fontFamily: "'Inter', sans-serif",
                       padding: '2px 6px',
                       outline: 'none',
                       borderRadius: 2,

@@ -1,16 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronDown, ChevronRight, Star, Users } from 'lucide-react';
+import { colors } from '../styles/theme';
 
 const SWIPE_THRESHOLD = 50;
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888'
-};
 
 export default function MobileSidebar({
   isOpen,
@@ -260,7 +252,7 @@ export default function MobileSidebar({
                       display: 'flex',
                       alignItems: 'center',
                       gap: 12,
-                      borderRadius: 8
+                      borderRadius: 2
                     }}
                   >
                     {hasSections && (
@@ -293,7 +285,7 @@ export default function MobileSidebar({
                           padding: '12px 16px',
                           fontSize: 14,
                           cursor: 'pointer',
-                          borderRadius: 6
+                          borderRadius: 2
                         }}
                       >
                         All sections
@@ -311,7 +303,7 @@ export default function MobileSidebar({
                             padding: '12px 16px',
                             fontSize: 14,
                             cursor: 'pointer',
-                            borderRadius: 6
+                            borderRadius: 2
                           }}
                         >
                           {section.name}
@@ -368,7 +360,7 @@ export default function MobileSidebar({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 12,
-                        borderRadius: 8
+                        borderRadius: 2
                       }}
                     >
                       {hasSections && (
@@ -398,7 +390,7 @@ export default function MobileSidebar({
                             padding: '12px 16px',
                             fontSize: 14,
                             cursor: 'pointer',
-                            borderRadius: 6
+                            borderRadius: 2
                           }}
                         >
                           All sections
@@ -416,7 +408,7 @@ export default function MobileSidebar({
                               padding: '12px 16px',
                               fontSize: 14,
                               cursor: 'pointer',
-                              borderRadius: 6
+                              borderRadius: 2
                             }}
                           >
                             {section.name}

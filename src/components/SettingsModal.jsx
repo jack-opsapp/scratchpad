@@ -37,16 +37,7 @@ import { supabase } from '../config/supabase.js';
 // Constants
 // =============================================================================
 
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-  danger: '#ff6b6b',
-  success: '#4CAF50'
-};
+import { colors } from '../styles/theme';
 
 const TABS = [
   { id: 'appearance', label: 'Appearance' },
@@ -147,7 +138,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpe
             fontSize: 20,
             fontWeight: 600,
             margin: 0,
-            fontFamily: "'Manrope', sans-serif"
+            fontFamily: "'Inter', sans-serif"
           }}>
             Settings
           </h2>
@@ -292,7 +283,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpe
 function AppearanceTab({ settings, onChange }) {
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
         Appearance
       </h3>
 
@@ -374,7 +365,7 @@ function AppearanceTab({ settings, onChange }) {
 
 function ChatPanelSettings({ settings, onChange }) {
   // Get current accent color for preview
-  const accentColor = ACCENT_COLORS[settings.accentColor]?.primary || ACCENT_COLORS.beige.primary;
+  const accentColor = ACCENT_COLORS[settings.accentColor]?.primary || ACCENT_COLORS.khaki.primary;
 
   // Calculate preview colors
   const agentTextColor = calculateChatColor(
@@ -406,7 +397,7 @@ function ChatPanelSettings({ settings, onChange }) {
         fontWeight: 600,
         marginBottom: 20,
         letterSpacing: 0.5,
-        fontFamily: "'Manrope', sans-serif"
+        fontFamily: "'Inter', sans-serif"
       }}>
         CHAT PANEL
       </h4>
@@ -470,7 +461,7 @@ function ChatPanelSettings({ settings, onChange }) {
           backdropFilter: 'blur(24px) saturate(150%)',
           WebkitBackdropFilter: 'blur(24px) saturate(150%)',
           border: `1px solid rgba(255,255,255,0.08)`,
-          borderRadius: 12,
+          borderRadius: 4,
           overflow: 'hidden'
         }}>
           {/* Messages area */}
@@ -483,7 +474,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Manrope', sans-serif"
+                fontFamily: "'Inter', sans-serif"
               }}>
                 Found 3 notes tagged "marketing". Opening view.
               </p>
@@ -497,7 +488,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Manrope', sans-serif"
+                fontFamily: "'Inter', sans-serif"
               }}>
                 create note: launch campaign tomorrow
               </p>
@@ -505,13 +496,13 @@ function ChatPanelSettings({ settings, onChange }) {
 
             {/* Agent message 2 - success */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
-              <span style={{ color: '#4CAF50', fontSize: 11, flexShrink: 0 }}>✓</span>
+              <span style={{ color: colors.success, fontSize: 11, flexShrink: 0 }}>✓</span>
               <p style={{
                 color: agentTextColor,
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Manrope', sans-serif"
+                fontFamily: "'Inter', sans-serif"
               }}>
                 Added to Marketing/Tasks.
               </p>
@@ -525,7 +516,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Manrope', sans-serif"
+                fontFamily: "'Inter', sans-serif"
               }}>
                 show me all urgent notes
               </p>
@@ -549,7 +540,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 border: 'none',
                 color: userTextColor,
                 fontSize: chatFontSize,
-                fontFamily: "'Manrope', sans-serif",
+                fontFamily: "'Inter', sans-serif",
                 outline: 'none',
                 opacity: 0.5
               }}
@@ -699,7 +690,7 @@ function AIBehaviorTab({ settings, onChange }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
         AI Behavior
       </h3>
 
@@ -723,7 +714,7 @@ function AIBehaviorTab({ settings, onChange }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 15, fontFamily: "'Manrope', sans-serif" }}>
+                <span style={{ fontWeight: 600, fontSize: 15, fontFamily: "'Inter', sans-serif" }}>
                   {style.label}
                 </span>
                 {settings.aiResponseStyle === style.id && (
@@ -807,7 +798,7 @@ function ContentTab({ settings, pages, onChange }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
         Content
       </h3>
 
@@ -978,7 +969,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
         Data & Privacy
       </h3>
 
@@ -1003,7 +994,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
             transition: 'all 0.2s'
           }}
         >
-          <Trash2 size={16} color="#ff6b6b" />
+          <Trash2 size={16} color={colors.danger} />
           <span>View Trash</span>
           <RotateCcw size={14} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
         </button>
@@ -1060,7 +1051,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}>
           <Brain size={16} />
           AI MEMORY
@@ -1109,7 +1100,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           fontWeight: 600,
           marginBottom: 20,
           letterSpacing: 0.5,
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}>
           EXPORT DATA
         </h4>
@@ -1147,7 +1138,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           fontWeight: 600,
           marginBottom: 12,
           letterSpacing: 0.5,
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}>
           FULL BACKUP
         </h4>
@@ -1179,7 +1170,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}>
           <AlertTriangle size={16} />
           DANGER ZONE
@@ -1225,7 +1216,7 @@ function AccountTab({ user }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
         Account
       </h3>
 
@@ -1317,7 +1308,7 @@ function DeveloperTab({ settings, onChange }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 8, fontFamily: "'Manrope', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
         Developer Settings
       </h3>
       <p style={{ color: colors.textMuted, fontSize: 12, marginBottom: 24, lineHeight: 1.5 }}>

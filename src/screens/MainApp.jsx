@@ -81,7 +81,7 @@ function ApiErrorBadge({ error, onDismiss }) {
         onClick={onDismiss}
         style={{
           padding: '6px 12px',
-          borderRadius: 20,
+          borderRadius: 2,
           border: '1px solid #8B0000',
           background: 'rgba(139, 0, 0, 0.15)',
           color: '#CD5C5C',
@@ -1364,7 +1364,7 @@ export function MainApp({ user, onSignOut }) {
       {/* Offline Banner */}
       {!isOnline && (
         <div style={{
-          background: '#ff9800',
+          background: '#7a5c1a',
           color: '#000',
           padding: '8px 16px',
           fontSize: 12,
@@ -2132,9 +2132,9 @@ export function MainApp({ user, onSignOut }) {
                           style={{
                             padding: '4px 10px',
                             background: selectedTagsForManage.length
-                              ? '#ff4444'
+                              ? '#b83c2a'
                               : 'transparent',
-                            border: `1px solid ${selectedTagsForManage.length ? '#ff4444' : colors.border}`,
+                            border: `1px solid ${selectedTagsForManage.length ? '#b83c2a' : colors.border}`,
                             color: selectedTagsForManage.length
                               ? '#fff'
                               : colors.textMuted,
@@ -2270,7 +2270,7 @@ export function MainApp({ user, onSignOut }) {
                         style={{
                           color: colors.textMuted,
                           fontSize: 12,
-                          fontFamily: "'Manrope', sans-serif",
+                          fontFamily: "'Inter', sans-serif",
                           margin: '6px 0',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -2308,7 +2308,7 @@ export function MainApp({ user, onSignOut }) {
                         style={{
                           color: colors.textMuted,
                           fontSize: 12,
-                          fontFamily: "'Manrope', sans-serif",
+                          fontFamily: "'Inter', sans-serif",
                           margin: '6px 0',
                           display: 'flex',
                           alignItems: 'center',
@@ -2370,7 +2370,7 @@ export function MainApp({ user, onSignOut }) {
                     style={{
                       color: colors.textMuted,
                       fontSize: 12,
-                      fontFamily: "'Manrope', sans-serif",
+                      fontFamily: "'Inter', sans-serif",
                       flex: 1,
                     }}
                   >
@@ -2493,8 +2493,8 @@ export function MainApp({ user, onSignOut }) {
                 gap: 6,
                 padding: '6px 12px',
                 background: 'transparent',
-                border: `1px solid ${copiedNotes ? '#4CAF50' : colors.border}`,
-                color: copiedNotes ? '#4CAF50' : colors.textMuted,
+                border: `1px solid ${copiedNotes ? '#2d6b3a' : colors.border}`,
+                color: copiedNotes ? '#2d6b3a' : colors.textMuted,
                 fontSize: 12,
                 cursor: 'pointer',
                 fontWeight: 500,
@@ -2615,7 +2615,7 @@ export function MainApp({ user, onSignOut }) {
                       height: 20,
                       background: 'transparent',
                       border: `1px solid ${colors.border}`,
-                      borderRadius: 4,
+                      borderRadius: 2,
                       color: colors.textMuted,
                       cursor: 'pointer',
                       marginLeft: 8,
@@ -2910,7 +2910,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textMuted,
                         fontSize: 13,
-                        fontFamily: "'Manrope', sans-serif",
+                        fontFamily: "'Inter', sans-serif",
                       }}
                     >
                       No notes match this view.
@@ -2927,7 +2927,7 @@ export function MainApp({ user, onSignOut }) {
                         style={{
                           background: colors.surface,
                           border: `1px solid ${colors.border}`,
-                          borderRadius: 8,
+                          borderRadius: 2,
                           padding: 16,
                           minWidth: 280,
                           maxWidth: 400,
@@ -3130,7 +3130,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textMuted,
                         fontSize: 13,
-                        fontFamily: "'Manrope', sans-serif",
+                        fontFamily: "'Inter', sans-serif",
                       }}
                     >
                       No notes yet.
@@ -3307,7 +3307,7 @@ export function MainApp({ user, onSignOut }) {
                   border: 'none',
                   color: colors.textPrimary,
                   fontSize: 14,
-                  fontFamily: "'Manrope', sans-serif",
+                  fontFamily: "'Inter', sans-serif",
                   outline: 'none',
                 }}
               />
@@ -3352,7 +3352,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textPrimary,
                         fontSize: 13,
-                        fontFamily: "'Manrope', sans-serif",
+                        fontFamily: "'Inter', sans-serif",
                         margin: 0,
                       }}
                     >
@@ -3405,7 +3405,7 @@ export function MainApp({ user, onSignOut }) {
               style={{
                 color: colors.textPrimary,
                 fontSize: 14,
-                fontFamily: "'Manrope', sans-serif",
+                fontFamily: "'Inter', sans-serif",
                 marginBottom: 16,
               }}
             >
@@ -3533,7 +3533,7 @@ export function MainApp({ user, onSignOut }) {
                   style={{
                     color: colors.textMuted,
                     fontSize: 13,
-                    fontFamily: "'Manrope', sans-serif",
+                    fontFamily: "'Inter', sans-serif",
                   }}
                 >
                   {desc}

@@ -267,9 +267,7 @@ export function BoxesView({
                 border: `1px solid ${isNoteDropTarget ? colors.primary : colors.border}`,
                 opacity: draggingBoxId === boxId ? 0.5 : 1,
                 transition: 'all 0.15s ease',
-                boxShadow: isBoxDropTarget
-                  ? `${dropPosition.position === 'before' ? '-4px' : '4px'} 0 0 ${colors.primary}`
-                  : 'none',
+                boxShadow: 'none',
               }}
             >
               {/* Box header */}
@@ -401,7 +399,7 @@ export function BoxesView({
                               ? colors.textMuted
                               : colors.textPrimary,
                             fontSize: 13,
-                            fontFamily: "'Manrope', sans-serif",
+                            fontFamily: "'Inter', sans-serif",
                             margin: 0,
                             textDecoration: note.completed ? 'line-through' : 'none',
                           }}
@@ -456,7 +454,7 @@ export function BoxesView({
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#ff4444',
+                          color: '#b83c2a',
                           cursor: 'pointer',
                           padding: 4,
                           opacity: 0.7,
@@ -489,7 +487,7 @@ export function BoxesView({
             fontSize: 12,
             color: dropPosition ? colors.textPrimary : colors.textMuted,
             zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            boxShadow: 'none',
           }}
         >
           <span style={{ color: colors.primary, marginRight: 8 }}>⇄</span>
@@ -510,7 +508,7 @@ export function BoxesView({
             fontSize: 12,
             color: dragOverBox ? colors.textPrimary : colors.textMuted,
             zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            boxShadow: 'none',
           }}
         >
           <span style={{ color: colors.primary, marginRight: 8 }}>↗</span>
@@ -610,7 +608,7 @@ export function BoxesView({
                         ? colors.textMuted
                         : colors.textPrimary,
                       fontSize: 13,
-                      fontFamily: "'Manrope', sans-serif",
+                      fontFamily: "'Inter', sans-serif",
                       cursor: isCurrentSection ? 'default' : 'pointer',
                       textAlign: 'left',
                       opacity: isCurrentSection ? 0.5 : 1,

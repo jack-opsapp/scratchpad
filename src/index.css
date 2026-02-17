@@ -11,8 +11,8 @@ body {
   margin: 0;
   padding: 0;
   background: #000000;
-  color: #ffffff;
-  font-family: 'Inter', system-ui, sans-serif;
+  color: #e8e8e8;
+  font-family: 'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -50,12 +50,12 @@ body {
 
 /* Focus styles */
 :focus-visible {
-  outline: 1px solid var(--color-primary, #d1b18f);
+  outline: 1px solid var(--color-primary, #948b72);
   outline-offset: 2px;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(209, 177, 143, 0.3);
-  color: #ffffff;
+  background: rgba(148, 139, 114, 0.3);
+  color: #e8e8e8;
 }

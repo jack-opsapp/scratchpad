@@ -1,15 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Trash2, Check, Edit3 } from 'lucide-react';
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-  error: '#ff4444'
-};
+import { colors } from '../styles/theme';
 
 export default function MobileNoteCard({
   note,
@@ -142,7 +133,7 @@ export default function MobileNoteCard({
           top: 0,
           bottom: 0,
           width: 80,
-          background: colors.error,
+          background: colors.danger,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -245,10 +236,10 @@ export default function MobileNoteCard({
                     border: `1px solid ${colors.border}`,
                     color: colors.textPrimary,
                     fontSize: 16,
-                    fontFamily: "'Manrope', sans-serif",
+                    fontFamily: "'Inter', sans-serif",
                     outline: 'none',
                     padding: '8px 12px',
-                    borderRadius: 4
+                    borderRadius: 2
                   }}
                 />
               </div>
@@ -258,7 +249,7 @@ export default function MobileNoteCard({
                 style={{
                   color: note.completed ? colors.textMuted : colors.textPrimary,
                   fontSize: 16,
-                  fontFamily: "'Manrope', sans-serif",
+                  fontFamily: "'Inter', sans-serif",
                   textDecoration: note.completed ? 'line-through' : 'none',
                   cursor: 'text',
                   margin: 0,
@@ -335,8 +326,8 @@ export default function MobileNoteCard({
             style={{
               background: colors.surface,
               width: '100%',
-              borderTopLeftRadius: 12,
-              borderTopRightRadius: 12,
+              borderTopLeftRadius: 4,
+              borderTopRightRadius: 4,
               padding: '20px 16px',
               paddingBottom: 'calc(20px + env(safe-area-inset-bottom))'
             }}
@@ -381,7 +372,7 @@ export default function MobileNoteCard({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
-                borderRadius: 4
+                borderRadius: 2
               }}
             >
               <Edit3 size={18} />
@@ -407,7 +398,7 @@ export default function MobileNoteCard({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
-                borderRadius: 4
+                borderRadius: 2
               }}
             >
               <Check size={18} />
@@ -424,15 +415,15 @@ export default function MobileNoteCard({
                 width: '100%',
                 padding: '16px 20px',
                 background: 'transparent',
-                border: `1px solid ${colors.error}`,
-                color: colors.error,
+                border: `1px solid ${colors.danger}`,
+                color: colors.danger,
                 fontSize: 16,
                 textAlign: 'left',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
-                borderRadius: 4
+                borderRadius: 2
               }}
             >
               <Trash2 size={18} />

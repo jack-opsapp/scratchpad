@@ -77,7 +77,7 @@ export function CalendarView({
             color: colors.textPrimary,
             fontSize: 16,
             fontWeight: 600,
-            fontFamily: "'Manrope', sans-serif",
+            fontFamily: "'Inter', sans-serif",
           }}
         >
           {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
@@ -174,7 +174,7 @@ export function CalendarView({
                     fontSize: 10,
                     cursor: 'grab',
                     color: n.completed ? colors.textMuted : colors.textPrimary,
-                    fontFamily: "'Manrope', sans-serif",
+                    fontFamily: "'Inter', sans-serif",
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',

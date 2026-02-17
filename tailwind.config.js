@@ -10,25 +10,25 @@ export default {
         // Core brand colors
         brand: {
           bg: '#000000',
-          surface: '#0a0a0a',
-          border: '#1a1a1a',
-          primary: '#d1b18f',
+          surface: '#0d0d0d',
+          'surface-raised': '#1a1a1a',
+          border: 'rgba(255, 255, 255, 0.1)',
+          primary: '#948b72',
         },
         // Text colors
         text: {
-          primary: '#ffffff',
-          muted: '#888888',
+          primary: '#e8e8e8',
+          secondary: '#a0a0a0',
+          muted: '#525252',
         },
         // Semantic colors
-        success: '#4CAF50',
-        danger: '#ff6b6b',
+        success: '#2d6b3a',
+        danger: '#b83c2a',
+        warning: '#7a5c1a',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Manrope', 'system-ui', 'sans-serif'],
-      },
-      fontSize: {
-        'xxs': '10px',
+        sans: ['Inter', 'Helvetica Now', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        mono: ['JetBrains Mono', 'SF Mono', 'Fira Code', 'monospace'],
       },
       letterSpacing: {
         'widest': '1.5px',

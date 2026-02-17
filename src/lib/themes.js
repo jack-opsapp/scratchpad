@@ -10,6 +10,13 @@
 // =============================================================================
 
 export const ACCENT_COLORS = {
+  // Default — design system accent
+  khaki: {
+    name: 'Khaki',
+    primary: '#948b72',
+    primaryDark: '#766f5b',
+    primaryLight: '#b5ae9a'
+  },
   // Warm tones
   beige: {
     name: 'Beige',
@@ -105,15 +112,15 @@ export const ACCENT_COLORS = {
 export const THEMES = {
   dark: {
     bg: '#000000',
-    surface: '#0a0a0a',
-    border: '#1a1a1a',
-    textPrimary: '#ffffff',
-    textSecondary: '#cccccc',
-    textMuted: '#888888',
-    success: '#4CAF50',
-    error: '#ff4444',
-    warning: '#ff9800',
-    danger: '#ff6b6b'
+    surface: '#0d0d0d',
+    border: 'rgba(255, 255, 255, 0.1)',
+    textPrimary: '#e8e8e8',
+    textSecondary: '#a0a0a0',
+    textMuted: '#525252',
+    success: '#2d6b3a',
+    error: '#b83c2a',
+    warning: '#7a5c1a',
+    danger: '#b83c2a'
   },
   light: {
     bg: '#ffffff',
@@ -122,10 +129,10 @@ export const THEMES = {
     textPrimary: '#000000',
     textSecondary: '#333333',
     textMuted: '#666666',
-    success: '#4CAF50',
-    error: '#d32f2f',
-    warning: '#f57c00',
-    danger: '#d32f2f'
+    success: '#2d6b3a',
+    error: '#b83c2a',
+    warning: '#7a5c1a',
+    danger: '#b83c2a'
   }
 };
 
@@ -152,7 +159,7 @@ export function getTheme(themeName, accentColor, customAccent = null) {
       primaryLight: adjustBrightness(customAccent, 30)
     };
   } else {
-    accent = ACCENT_COLORS[accentColor] || ACCENT_COLORS.beige;
+    accent = ACCENT_COLORS[accentColor] || ACCENT_COLORS.khaki;
   }
 
   return {

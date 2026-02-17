@@ -81,7 +81,7 @@ export default function MarkdownText({ content, baseColor = colors.textSecondary
             <code key={key++} style={{
               background: colors.surface,
               padding: '2px 6px',
-              borderRadius: 4,
+              borderRadius: 2,
               fontFamily: 'monospace',
               fontSize: '0.9em'
             }}>

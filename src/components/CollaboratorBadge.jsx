@@ -5,12 +5,7 @@
  */
 
 import React from 'react';
-
-const colors = {
-  primary: 'var(--color-primary, #d1b18f)',
-  textMuted: '#888888',
-  border: '#1a1a1a',
-};
+import { colors } from '../styles/theme';
 
 export default function CollaboratorBadge({ count, type = 'owned' }) {
   if (!count || count === 0) return null;
@@ -30,7 +25,7 @@ export default function CollaboratorBadge({ count, type = 'owned' }) {
         color: '#000',
         fontSize: 9,
         fontWeight: 600,
-        borderRadius: 8,
+        borderRadius: 2,
         marginLeft: 6,
       }}
     >

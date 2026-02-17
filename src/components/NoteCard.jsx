@@ -94,7 +94,7 @@ export function NoteCard({
                 border: 'none',
                 color: colors.textPrimary,
                 fontSize: 14,
-                fontFamily: "'Manrope', sans-serif",
+                fontFamily: "'Inter', sans-serif",
                 outline: 'none',
               }}
             />
@@ -104,7 +104,7 @@ export function NoteCard({
               style={{
                 color: note.completed ? colors.textMuted : colors.textPrimary,
                 fontSize: 14,
-                fontFamily: "'Manrope', sans-serif",
+                fontFamily: "'Inter', sans-serif",
                 textDecoration: note.completed ? 'line-through' : 'none',
                 cursor: canEdit ? 'text' : 'default',
                 margin: 0,
@@ -137,7 +137,7 @@ export function NoteCard({
                   style={{
                     color: colors.textMuted,
                     fontSize: 11,
-                    fontFamily: "'Manrope', sans-serif",
+                    fontFamily: "'Inter', sans-serif",
                   }}
                 >
                   {note.date}
@@ -181,7 +181,7 @@ export function NoteCard({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#ff4444',
+              color: '#b83c2a',
               cursor: 'pointer',
               padding: 4,
               opacity: 0.7,

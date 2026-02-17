@@ -10,40 +10,43 @@
 export const colors = {
   // Core backgrounds
   bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
+  surface: '#0d0d0d',
+  surfaceRaised: '#1a1a1a',
+  border: 'rgba(255, 255, 255, 0.1)',
 
   // Brand accent - uses CSS variable set by applyTheme() so user's chosen accent applies everywhere
-  primary: 'var(--color-primary, #d1b18f)',
-  primaryDark: 'var(--color-primary-dark, #BC8E5E)',
-  primaryLight: 'var(--color-primary-light, #E5D4C1)',
+  primary: 'var(--color-primary, #948b72)',
+  primaryDark: 'var(--color-primary-dark, #766f5b)',
+  primaryLight: 'var(--color-primary-light, #b5ae9a)',
+  accentForeground: '#0d0d0d',
 
   // Text
-  textPrimary: '#ffffff',
-  textSecondary: '#cccccc',  // Brighter than muted, for agent responses
-  textMuted: '#888888',
+  textPrimary: '#e8e8e8',
+  textSecondary: '#a0a0a0',
+  textMuted: '#525252',
 
   // Semantic
-  success: '#4CAF50',
-  danger: '#ff6b6b',
+  success: '#2d6b3a',
+  danger: '#b83c2a',
+  warning: '#7a5c1a',
+
+  // Overlay
+  overlay: 'rgba(0, 0, 0, 0.72)',
 };
 
 export const fonts = {
-  sans: "'Inter', system-ui, sans-serif",
-  display: "'Manrope', sans-serif",
+  sans: "'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif",
+  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
 };
 
 export const fontSizes = {
-  xxs: '10px',
   xs: '11px',
-  sm: '12px',
-  base: '13px',
-  md: '14px',
-  lg: '16px',
-  xl: '20px',
-  '2xl': '24px',
-  '3xl': '32px',
-  '4xl': '56px',
+  sm: '13px',
+  base: '14px',
+  md: '16px',
+  lg: '18px',
+  xl: '24px',
+  '2xl': '32px',
 };
 
 export const fontWeights = {
@@ -74,7 +77,10 @@ export const transitions = {
 };
 
 export const shadows = {
-  dropdown: '0 4px 20px rgba(0, 0, 0, 0.3)',
+  sm: 'none',
+  md: 'none',
+  lg: 'none',
+  dropdown: 'none',
 };
 
 export const zIndex = {

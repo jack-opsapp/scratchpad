@@ -7,17 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, RotateCcw, Trash2, ChevronDown, ChevronRight, FileText, FolderOpen, StickyNote, AlertTriangle } from 'lucide-react';
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-  danger: '#ff6b6b',
-  success: '#4CAF50'
-};
+import { colors } from '../styles/theme';
 
 function timeAgo(dateStr) {
   const now = Date.now();
@@ -153,7 +143,7 @@ export default function TrashModal({ isOpen, onClose, onRestore, userId }) {
               fontSize: 18,
               fontWeight: 600,
               margin: 0,
-              fontFamily: "'Manrope', sans-serif"
+              fontFamily: "'Inter', sans-serif"
             }}>
               Recently Deleted
             </h2>
@@ -325,7 +315,7 @@ function TrashGroup({ icon: Icon, label, count, expanded, onToggle, children }) 
           cursor: 'pointer',
           fontSize: 13,
           fontWeight: 600,
-          fontFamily: "'Manrope', sans-serif"
+          fontFamily: "'Inter', sans-serif"
         }}
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

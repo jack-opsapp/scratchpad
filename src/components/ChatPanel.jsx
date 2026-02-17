@@ -535,13 +535,13 @@ const ChatPanel = forwardRef(function ChatPanel({
         backdropFilter: 'blur(24px) saturate(150%)',
         WebkitBackdropFilter: 'blur(24px) saturate(150%)',
         border: `1px solid rgba(255,255,255,0.08)`,
-        borderRadius: 12,
+        borderRadius: 4,
         display: 'flex',
         flexDirection: 'column',
         transition: isDragging ? 'none' : 'all 0.3s ease',
         zIndex: 900,
         paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        boxShadow: 'none',
         overflow: 'hidden'
       }}
     >
@@ -571,7 +571,7 @@ const ChatPanel = forwardRef(function ChatPanel({
               width: 48,
               height: 5,
               background: colors.textMuted,
-              borderRadius: 3,
+              borderRadius: 2,
               opacity: 0.5
             }} />
           ) : (
@@ -725,8 +725,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                     minWidth: 140,
                     padding: '10px 12px',
                     background: isCurrent ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    border: `1px solid ${isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.1)'}`,
-                    borderRadius: 6,
+                    border: `1px solid ${isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: 2,
                     opacity: isSkipped ? 0.5 : 1,
                     transition: 'all 0.2s ease',
                     cursor: canClick ? 'pointer' : 'default'
@@ -743,8 +743,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                       width: 16,
                       height: 16,
                       borderRadius: '50%',
-                      background: isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
-                      border: `2px solid ${isApproved ? '#4CAF50' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
+                      background: isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
+                      border: `2px solid ${isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -768,7 +768,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <span style={{
                       fontSize: 10,
                       fontWeight: 600,
-                      color: isSkipped ? colors.textMuted : isApproved ? '#4CAF50' : isCurrent ? colors.primary : colors.textMuted,
+                      color: isSkipped ? colors.textMuted : isApproved ? '#2d6b3a' : isCurrent ? colors.primary : colors.textMuted,
                       textTransform: 'uppercase',
                       letterSpacing: 0.5
                     }}>
@@ -876,7 +876,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: copiedIndex === i ? '#4CAF50' : colors.textMuted,
+                      color: copiedIndex === i ? '#2d6b3a' : colors.textMuted,
                       cursor: 'pointer',
                       padding: 2,
                       opacity: copiedIndex === i ? 1 : 0,
@@ -893,7 +893,7 @@ const ChatPanel = forwardRef(function ChatPanel({
               {msg.role === 'agent' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <span style={{
-                    color: msg.type === 'execution_result' ? '#4CAF50' : 'var(--color-primary, ' + colors.primary + ')',
+                    color: msg.type === 'execution_result' ? '#2d6b3a' : 'var(--color-primary, ' + colors.primary + ')',
                     fontSize: 11,
                     flexShrink: 0
                   }}>
@@ -903,8 +903,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <MarkdownText
                       content={msg.content}
                       baseColor={
-                        msg.type === 'execution_result' ? '#4CAF50' :
-                        msg.type === 'error' ? '#ff6b6b' : 'inherit'
+                        msg.type === 'execution_result' ? '#2d6b3a' :
+                        msg.type === 'error' ? '#b83c2a' : 'inherit'
                       }
                       onPathClick={onNavigate}
                     />
@@ -920,7 +920,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                           padding: '6px 12px',
                           background: 'transparent',
                           border: `1px solid rgba(255,255,255,0.1)`,
-                          borderRadius: 4,
+                          borderRadius: 2,
                           color: colors.primary,
                           fontSize: 11,
                           fontWeight: 500,
@@ -951,7 +951,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: copiedIndex === i ? '#4CAF50' : colors.textMuted,
+                      color: copiedIndex === i ? '#2d6b3a' : colors.textMuted,
                       cursor: 'pointer',
                       padding: 2,
                       opacity: copiedIndex === i ? 1 : 0,
@@ -1053,7 +1053,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                 flex: 1,
                 background: 'transparent',
                 border: `1px solid rgba(255,255,255,0.1)`,
-                borderRadius: 4,
+                borderRadius: 2,
                 padding: '8px 12px',
                 color: colors.textPrimary,
                 fontSize: 13,
@@ -1134,7 +1134,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 4
+                  borderRadius: 2
                 }}
                 title="Expand chat"
               >
@@ -1162,7 +1162,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                 gap: 2,
                 padding: '0 12px',
                 background: 'rgba(255,68,68,0.1)',
-                borderRadius: 20,
+                borderRadius: 2,
                 border: '1px solid rgba(255,68,68,0.2)',
                 overflow: 'hidden'
               }}>
@@ -1180,7 +1180,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     />
                   ))
                 ) : (
-                  <span style={{ color: '#ff4444', fontSize: 12, fontWeight: 500 }}>
+                  <span style={{ color: '#b83c2a', fontSize: 12, fontWeight: 500 }}>
                     Listening...
                   </span>
                 )}
@@ -1325,9 +1325,9 @@ const ChatPanel = forwardRef(function ChatPanel({
           bottom: 0;
           left: 0;
           height: 3px;
-          background: linear-gradient(90deg, #4CAF50, #8BC34A, #4CAF50);
+          background: linear-gradient(90deg, #2d6b3a, #8BC34A, #2d6b3a);
           animation: greenPulse 0.8s ease-out forwards;
-          box-shadow: 0 0 10px #4CAF50, 0 0 20px #4CAF50;
+          box-shadow: none;
         }
 
         .success-overlay {
@@ -1344,7 +1344,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         }
 
         .success-text {
-          color: #4CAF50;
+          color: #2d6b3a;
           font-size: 12px;
           font-weight: 600;
           letter-spacing: 2px;

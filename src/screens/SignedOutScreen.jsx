@@ -99,7 +99,7 @@ export function SignedOutScreen({ onSignIn, error }) {
             color: colors.textPrimary,
             fontSize: 15,
             fontWeight: 500,
-            fontFamily: "'Manrope', sans-serif",
+            fontFamily: "'Inter', sans-serif",
             marginBottom: 8,
             minHeight: 24,
           }}
@@ -123,7 +123,7 @@ export function SignedOutScreen({ onSignIn, error }) {
             style={{
               color: colors.textPrimary,
               fontSize: 13,
-              fontFamily: "'Manrope', sans-serif",
+              fontFamily: "'Inter', sans-serif",
               lineHeight: 1.6,
               marginBottom: 40,
               opacity: 0.7,

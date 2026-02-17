@@ -6,15 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getUserById } from '../lib/permissions';
-
-const colors = {
-  bg: '#000000',
-  surface: '#0a0a0a',
-  border: '#1a1a1a',
-  primary: 'var(--color-primary, #d1b18f)',
-  textPrimary: '#ffffff',
-  textMuted: '#888888',
-};
+import { colors } from '../styles/theme';
 
 export default function UserAvatar({ userId, size = 'sm', showTooltip = true }) {
   const [user, setUser] = useState(null);
