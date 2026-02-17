@@ -23,6 +23,8 @@ import {
   Share2,
   AlignJustify,
   Home,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
@@ -195,6 +197,7 @@ export function MainApp({ user, onSignOut }) {
 
   // API error state - track when fallback parser is used
   const [apiError, setApiError] = useState(null); // { message: string, timestamp: number }
+  const [copiedNotes, setCopiedNotes] = useState(false);
 
   // Collaboration state
   const [pageRoles, setPageRoles] = useState({});
@@ -1162,8 +1165,22 @@ export function MainApp({ user, onSignOut }) {
             viewConfig, // Store view config if one was created
             navConfig   // Store navigation config if agent navigated
           });
+          // Capture current note IDs before refresh to detect new ones
+          let prevNoteIds;
+          setNotes(prev => { prevNoteIds = new Set(prev.map(n => n.id)); return prev; });
           // Refresh data in case agent made changes
           await refreshData();
+          // Trigger typewriter animation on any newly created note
+          if (prevNoteIds) {
+            setNotes(prev => {
+              const newNote = prev.find(n => !prevNoteIds.has(n.id));
+              if (newNote) {
+                setNewNoteId(newNote.id);
+                setTimeout(() => setNewNoteId(null), 3000);
+              }
+              return prev;
+            });
+          }
           break;
 
         case 'clarification':
@@ -2452,6 +2469,32 @@ export function MainApp({ user, onSignOut }) {
               <AlignJustify size={12} />
               {compactMode ? 'COMPACT' : 'COMPACT'}
             </button>
+            <button
+              onClick={() => {
+                const visibleNotes = agentView ? agentFilteredNotes : filteredNotes;
+                const text = visibleNotes.map(n => n.content).join('\n');
+                navigator.clipboard.writeText(text);
+                setCopiedNotes(true);
+                setTimeout(() => setCopiedNotes(false), 1500);
+              }}
+              title="Copy all visible notes"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                background: 'transparent',
+                border: `1px solid ${copiedNotes ? '#4CAF50' : colors.border}`,
+                color: copiedNotes ? '#4CAF50' : colors.textMuted,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.15s',
+              }}
+            >
+              {copiedNotes ? <Check size={12} /> : <Copy size={12} />}
+              {copiedNotes ? 'COPIED' : 'COPY ALL'}
+            </button>
             <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
               {[
                 { m: 'list', I: List },
@@ -2804,7 +2847,7 @@ export function MainApp({ user, onSignOut }) {
                           )}
                           <NoteCard
                             note={note}
-                            isNew={false}
+                            isNew={note.id === newNoteId}
                             currentUserId={user.id}
                             canEdit={true}
                             canDelete={true}
