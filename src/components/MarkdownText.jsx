@@ -5,7 +5,7 @@ import { colors } from '../styles/theme.js';
  * Simple markdown renderer for chat messages
  * Supports: headers, bold, bullets, numbered lists, code
  */
-export default function MarkdownText({ content, baseColor = colors.textSecondary }) {
+export default function MarkdownText({ content, baseColor = colors.textSecondary, onPathClick }) {
   if (!content) return null;
 
   const lines = content.split('\n');
@@ -32,7 +32,7 @@ export default function MarkdownText({ content, baseColor = colors.textSecondary
     }
   };
 
-  // Render inline formatting (bold, code)
+  // Render inline formatting (bold, code, clickable paths)
   const renderInline = (text) => {
     const parts = [];
     let remaining = text;
@@ -43,6 +43,8 @@ export default function MarkdownText({ content, baseColor = colors.textSecondary
       const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
       // Code: `text`
       const codeMatch = remaining.match(/`(.+?)`/);
+      // Clickable path: "to Page/Section" or "See Page/Section" or "in Page/Section"
+      const pathMatch = onPathClick ? remaining.match(/(?:to |See |see |in |→ )([\w][\w\s&-]*\/[\w][\w\s&-]*)\.?/) : null;
 
       // Find earliest match
       let earliestMatch = null;
@@ -55,6 +57,10 @@ export default function MarkdownText({ content, baseColor = colors.textSecondary
       if (codeMatch && (!earliestMatch || codeMatch.index < earliestMatch.index)) {
         earliestMatch = codeMatch;
         matchType = 'code';
+      }
+      if (pathMatch && (!earliestMatch || pathMatch.index < earliestMatch.index)) {
+        earliestMatch = pathMatch;
+        matchType = 'path';
       }
 
       if (earliestMatch) {
@@ -82,6 +88,31 @@ export default function MarkdownText({ content, baseColor = colors.textSecondary
               {earliestMatch[1]}
             </code>
           );
+        } else if (matchType === 'path') {
+          // Render the prefix text ("to ", "See ", etc.) then the clickable path
+          const fullMatch = earliestMatch[0];
+          const pathValue = earliestMatch[1].trim();
+          const prefix = fullMatch.slice(0, fullMatch.indexOf(pathValue));
+          const [pageName, sectionName] = pathValue.split('/').map(s => s.trim());
+          parts.push(prefix);
+          parts.push(
+            <span
+              key={key++}
+              onClick={() => onPathClick(pageName, sectionName)}
+              style={{
+                color: colors.primary,
+                cursor: 'pointer',
+                borderBottom: `1px solid transparent`,
+                transition: 'border-color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderBottomColor = colors.primary}
+              onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+            >
+              {pathValue}
+            </span>
+          );
+          // Skip trailing period if matched
+          const trailingDot = fullMatch.endsWith('.') ? '' : '';
         }
 
         remaining = remaining.slice(earliestMatch.index + earliestMatch[0].length);

@@ -181,13 +181,13 @@ export function NoteCard({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#ff6b6b',
+              color: '#ff4444',
               cursor: 'pointer',
               padding: 4,
-              opacity: 0.3,
+              opacity: 0.7,
             }}
             onMouseOver={e => (e.currentTarget.style.opacity = 1)}
-            onMouseOut={e => (e.currentTarget.style.opacity = 0.3)}
+            onMouseOut={e => (e.currentTarget.style.opacity = 0.7)}
           >
             <Trash2 size={14} />
           </button>

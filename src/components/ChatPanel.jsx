@@ -433,6 +433,10 @@ const ChatPanel = forwardRef(function ChatPanel({
     setHistoryIndex(-1);
     onSendMessage(inputValue.trim());
     setInputValue('');
+    // Reset textarea height back to single row
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     // Don't block on processing - allow typing next message immediately
   };
 
@@ -902,6 +906,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                         msg.type === 'execution_result' ? '#4CAF50' :
                         msg.type === 'error' ? '#ff6b6b' : 'inherit'
                       }
+                      onPathClick={onNavigate}
                     />
                     {/* Clickable view button if message created a view */}
                     {msg.viewConfig && onViewClick && (
@@ -933,37 +938,6 @@ const ChatPanel = forwardRef(function ChatPanel({
                       >
                         <LayoutGrid size={12} />
                         Open "{msg.viewConfig.title}" view
-                      </button>
-                    )}
-                    {/* Clickable navigation link if message has nav config */}
-                    {msg.navConfig && onNavigate && !msg.viewConfig && (
-                      <button
-                        onClick={() => onNavigate(msg.navConfig.pageName, msg.navConfig.sectionName)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          marginTop: 8,
-                          padding: '6px 12px',
-                          background: 'transparent',
-                          border: `1px solid rgba(255,255,255,0.1)`,
-                          borderRadius: 4,
-                          color: colors.primary,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = colors.surface;
-                          e.currentTarget.style.borderColor = colors.primary;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.borderColor = colors.border;
-                        }}
-                      >
-                        → Go to {msg.navConfig.pageName}{msg.navConfig.sectionName ? `/${msg.navConfig.sectionName}` : ''}
                       </button>
                     )}
                   </div>
@@ -1212,19 +1186,30 @@ const ChatPanel = forwardRef(function ChatPanel({
                 )}
               </div>
             ) : (
-              <input
+              <textarea
                 ref={inputRef}
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  // Auto-resize: reset to single row then grow to content
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                }}
                 onKeyDown={handleKeyDown}
+                rows={1}
                 placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
                 style={{
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
                   color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
-                  fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)', // 16px prevents iOS zoom on mobile
-                  outline: 'none'
+                  fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)',
+                  outline: 'none',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  lineHeight: 1.4,
+                  fontFamily: 'inherit',
+                  padding: 0,
                 }}
               />
             )}

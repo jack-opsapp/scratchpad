@@ -1061,10 +1061,36 @@ export function MainApp({ user, onSignOut }) {
       );
     });
 
-    // Persist to Supabase with the exact values set in state
+    // Persist to Supabase - try update first, fall back to upsert
     if (updateData) {
-      const { error } = await supabase.from('notes').update(updateData).eq('id', id);
-      if (error) console.error('Toggle persist failed:', error);
+      const { error, count } = await supabase
+        .from('notes')
+        .update(updateData)
+        .eq('id', id)
+        .select('id');
+      if (error) {
+        console.error('Toggle update failed, retrying with upsert:', error);
+        // Retry: fetch the full note from state and upsert
+        setNotes(prev => {
+          const note = prev.find(n => n.id === id);
+          if (note) {
+            supabase.from('notes').upsert({
+              id: note.id,
+              section_id: note.sectionId,
+              content: note.content,
+              completed: note.completed,
+              completed_by_user_id: note.completed_by_user_id,
+              completed_at: note.completed_at,
+              date: note.date || null,
+              tags: note.tags || [],
+              created_by_user_id: note.created_by_user_id || user.id,
+            }, { onConflict: 'id' }).then(({ error: e2 }) => {
+              if (e2) console.error('Toggle upsert also failed:', e2);
+            });
+          }
+          return prev; // No state change
+        });
+      }
     }
   };
 

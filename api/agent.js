@@ -367,16 +367,28 @@ export default async function handler(req, res) {
     let iterations = 0;
     let noteCreated = false; // Track if create_note was called
 
-    // Detect note creation patterns in user message
-    const isNoteCreationRequest = (msg) => {
-      // Pattern: "page/section: content" or "page/section content" (colon optional)
-      if (/^[\w\s]+\/[\w\s]+:?\s+.+/i.test(msg)) return true;
-      // Pattern: starts with hyphen "- content"
-      if (/^-\s+.+/.test(msg)) return true;
+    // Detect whether message is a COMMAND (not a note)
+    const isCommandRequest = (msg) => {
+      const lower = msg.toLowerCase().trim();
+      // Explicit command patterns
+      if (/^(go to|navigate|show me|show all|list|search|find|delete|remove|move|rename|sort|filter|clear|help|what is|what can|how do|undo|restore|empty trash)\b/i.test(lower)) return true;
+      // Slash commands
+      if (/^\//.test(lower)) return true;
+      // Questions
+      if (/\?$/.test(lower.trim())) return true;
+      // "mark X as complete/done" type commands
+      if (/^mark\b/i.test(lower)) return true;
+      // "tag X with Y" or "untag"
+      if (/^(tag|untag)\b/i.test(lower)) return true;
+      // "create page/section" (but NOT "create note")
+      if (/^create\s+(page|section)\b/i.test(lower)) return true;
+      // "set up" / "organize" / "reorganize"
+      if (/^(set up|setup|organize|reorganize|bulk)\b/i.test(lower)) return true;
       return false;
     };
-    const expectsNoteCreation = isNoteCreationRequest(message);
-    console.log('Note creation detection:', { message: message.substring(0, 50), expectsNoteCreation });
+    // Treat everything as note creation UNLESS it looks like a command
+    const expectsNoteCreation = !isCommandRequest(message);
+    console.log('Note creation detection:', { message: message.substring(0, 50), expectsNoteCreation, isCommand: !expectsNoteCreation });
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
