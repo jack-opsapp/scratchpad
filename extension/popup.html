@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 360px;
+      min-height: 200px;
+      max-height: 520px;
+      background: #000;
+      color: #e5e5e5;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      overflow-y: auto;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #d1b18f;
+    }
+    .header .sign-out {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .header .sign-out:hover { color: #e5e5e5; }
+
+    /* Sign In Form */
+    .sign-in {
+      padding: 24px 16px;
+    }
+    .sign-in p {
+      color: #888;
+      font-size: 12px;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .sign-in input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      color: #e5e5e5;
+      font-size: 13px;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    .sign-in input:focus { border-color: #d1b18f; }
+    .sign-in button {
+      width: 100%;
+      padding: 10px;
+      background: #d1b18f;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .sign-in button:hover { background: #BC8E5E; }
+    .sign-in .error {
+      color: #ff6b6b;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+
+    /* Note Form */
+    .note-form {
+      padding: 16px;
+    }
+    .note-form textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px 12px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      color: #e5e5e5;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      line-height: 1.5;
+    }
+    .note-form textarea:focus { border-color: #d1b18f; }
+    .note-form textarea::placeholder { color: #555; }
+
+    /* Page/Section Picker */
+    .picker {
+      margin-top: 12px;
+    }
+    .picker label {
+      display: block;
+      color: #888;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .picker select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      color: #e5e5e5;
+      font-size: 13px;
+      outline: none;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .picker select:focus { border-color: #d1b18f; }
+
+    /* Tags input */
+    .tags-input {
+      margin-top: 8px;
+    }
+    .tags-input input {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      color: #e5e5e5;
+      font-size: 12px;
+      outline: none;
+    }
+    .tags-input input:focus { border-color: #d1b18f; }
+    .tags-input input::placeholder { color: #555; }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .btn-save {
+      flex: 1;
+      padding: 10px;
+      background: #d1b18f;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-save:hover { background: #BC8E5E; }
+    .btn-save:disabled { opacity: 0.5; cursor: default; }
+
+    /* Status */
+    .status {
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 12px;
+    }
+    .status.success { color: #4CAF50; }
+    .status.error { color: #ff6b6b; }
+
+    /* Source info */
+    .source {
+      padding: 0 16px 8px;
+      font-size: 11px;
+      color: #555;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: #888;
+    }
+
+    /* Open app link */
+    .open-app {
+      display: block;
+      text-align: center;
+      padding: 8px;
+      color: #888;
+      font-size: 11px;
+      text-decoration: none;
+      border-top: 1px solid #1a1a1a;
+    }
+    .open-app:hover { color: #d1b18f; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading">Loading...</div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

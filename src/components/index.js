@@ -11,6 +11,7 @@ export { ChatResponseBox } from './ChatResponseBox.jsx';
 // View Components
 export { CalendarView } from './CalendarView.jsx';
 export { BoxesView } from './BoxesView.jsx';
+export { TableView } from './TableView.jsx';
 
 // Collaboration Components
 export { default as UserAvatar } from './UserAvatar.jsx';

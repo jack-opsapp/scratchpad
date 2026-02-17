@@ -25,9 +25,14 @@ import {
   Home,
   Copy,
   Check,
+  Table2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
+import { usePinchZoom } from '../hooks/usePinchZoom.js';
 import usePlanState from '../hooks/usePlanState.js';
 import { useMediaQuery, useOnlineStatus } from '../hooks/useMediaQuery.js';
 import { useSettings } from '../hooks/useSettings.js';
@@ -123,6 +128,7 @@ import {
   PlanModeInterface,
   ChatPanel,
 } from '../components/index.js';
+import { TableView } from '../components/TableView.jsx';
 import ShareModal from '../components/ShareModal.jsx';
 import SettingsModal from '../components/SettingsModal.jsx';
 import TrashModal from '../components/TrashModal.jsx';
@@ -231,6 +237,9 @@ export function MainApp({ user, onSignOut }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [groupBy] = useState('status');
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
+
+  // Pinch-to-zoom for notes area
+  const { containerRef: zoomRef, scale: zoomScale, resetZoom, setScale: setZoomScale } = usePinchZoom({ minScale: 0.5, maxScale: 2.0 });
 
   // Input state
   const [inputValue, setInputValue] = useState('');
@@ -394,13 +403,13 @@ export function MainApp({ user, onSignOut }) {
         setSearchOpen(false);
         setSearchQuery('');
         setShowShortcuts(false);
-      } else if (e.key === '/' && !isTyping && !searchOpen) {
+      } else if (mod && e.key === '/') {
         e.preventDefault();
         inputRef.current?.focus();
-      } else if (e.key === '?' && !isTyping) {
+      } else if (mod && e.key === '?') {
         e.preventDefault();
         setShowShortcuts(s => !s);
-      } else if (e.key === 'p' && !isTyping && !searchOpen) {
+      } else if (mod && e.key === 'p') {
         e.preventDefault();
         const name = prompt('New page name:');
         if (name) {
@@ -415,7 +424,7 @@ export function MainApp({ user, onSignOut }) {
           setCurrentPage(np.id);
           setViewingPageLevel(true);
         }
-      } else if (e.key === 's' && !isTyping && !searchOpen) {
+      } else if (mod && e.key === 's') {
         e.preventDefault();
         if (currentPage) {
           const name = prompt('New section name:');
@@ -2500,6 +2509,7 @@ export function MainApp({ user, onSignOut }) {
                 { m: 'list', I: List },
                 { m: 'boxes', I: LayoutGrid },
                 { m: 'calendar', I: Calendar },
+                { m: 'table', I: Table2 },
               ].map(({ m, I }) => {
                 const currentMode = agentView ? agentView.viewType : viewMode;
                 return (
@@ -2525,6 +2535,33 @@ export function MainApp({ user, onSignOut }) {
                 );
               })}
             </div>
+            {/* Zoom controls */}
+            {zoomScale !== 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+                <button
+                  onClick={() => setZoomScale(s => Math.max(0.5, s - 0.1))}
+                  style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4 }}
+                >
+                  <ZoomOut size={12} />
+                </button>
+                <span style={{ color: colors.textMuted, fontSize: 11, minWidth: 36, textAlign: 'center' }}>
+                  {Math.round(zoomScale * 100)}%
+                </span>
+                <button
+                  onClick={() => setZoomScale(s => Math.min(2.0, s + 0.1))}
+                  style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4 }}
+                >
+                  <ZoomIn size={12} />
+                </button>
+                <button
+                  onClick={resetZoom}
+                  title="Reset zoom"
+                  style={{ background: 'transparent', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: 4 }}
+                >
+                  <RotateCcw size={10} />
+                </button>
+              </div>
+            )}
           </div>
           )}
 
@@ -2806,6 +2843,7 @@ export function MainApp({ user, onSignOut }) {
 
           {/* Content area */}
           <div
+            ref={zoomRef}
             style={{
               flex: 1,
               overflowY: 'auto',
@@ -2815,6 +2853,12 @@ export function MainApp({ user, onSignOut }) {
               transition: 'opacity 0.25s',
             }}
           >
+          <div style={{
+            transform: zoomScale !== 1 ? `scale(${zoomScale})` : undefined,
+            transformOrigin: 'top left',
+            width: zoomScale !== 1 ? `${100 / zoomScale}%` : '100%',
+            transition: 'transform 0.1s ease',
+          }}>
             {/* Agent View - when active, takes over the content area */}
             {agentView ? (
               <>
@@ -2961,6 +3005,27 @@ export function MainApp({ user, onSignOut }) {
                     onNoteMove={(id, date) =>
                       setNotes(notes.map(n => (n.id === id ? { ...n, date } : n)))
                     }
+                  />
+                )}
+
+                {/* Agent View: Table Mode */}
+                {agentView.viewType === 'table' && (
+                  <TableView
+                    notes={agentFilteredNotes}
+                    allSections={allSections}
+                    pages={allPages}
+                    onToggle={handleNoteToggle}
+                    onEdit={handleNoteEdit}
+                    onDelete={handleNoteDelete}
+                    onTagClick={(tag) => setFilterTag([tag])}
+                    onNavigate={(pageId, sectionId) => {
+                      setCurrentPage(pageId);
+                      setCurrentSection(sectionId);
+                      setAgentView(null);
+                      setViewMode('list');
+                      setViewingPageLevel(false);
+                    }}
+                    currentUserId={user?.id}
                   />
                 )}
               </>
@@ -3128,9 +3193,29 @@ export function MainApp({ user, onSignOut }) {
                 onSaveBoxConfigs={handleSaveBoxConfigs}
               />
             )}
+
+            {viewMode === 'table' && (
+              <TableView
+                notes={filteredNotes}
+                allSections={allSections}
+                pages={allPages}
+                onToggle={handleNoteToggle}
+                onEdit={handleNoteEdit}
+                onDelete={handleNoteDelete}
+                onTagClick={(tag) => setFilterTag([tag])}
+                onNavigate={(pageId, sectionId) => {
+                  setCurrentPage(pageId);
+                  setCurrentSection(sectionId);
+                  setViewMode('list');
+                  setViewingPageLevel(false);
+                }}
+                currentUserId={user?.id}
+              />
+            )}
               </>
             )}
-          </div>
+          </div>{/* close zoom wrapper */}
+          </div>{/* close content area */}
         </div>
       </div>
 
@@ -3426,12 +3511,13 @@ export function MainApp({ user, onSignOut }) {
               </button>
             </div>
             {[
-              { keys: '/', desc: 'Focus input' },
-              { keys: '⌘ K', desc: 'Search' },
-              { keys: 'P', desc: 'New page' },
-              { keys: 'S', desc: 'New section' },
-              { keys: '?', desc: 'Show shortcuts' },
+              { keys: 'Ctrl /', desc: 'Focus input' },
+              { keys: 'Ctrl K', desc: 'Search' },
+              { keys: 'Ctrl P', desc: 'New page' },
+              { keys: 'Ctrl S', desc: 'New section' },
+              { keys: 'Ctrl ?', desc: 'Show shortcuts' },
               { keys: 'Esc', desc: 'Close modal / blur' },
+              { keys: 'Ctrl Scroll', desc: 'Zoom in / out' },
             ].map(({ keys, desc }) => (
               <div
                 key={keys}
