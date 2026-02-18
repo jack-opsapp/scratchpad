@@ -101,98 +101,35 @@ async function refreshToken() {
 }
 
 /**
- * Sign in with Google OAuth via chrome.identity.launchWebAuthFlow
- * Opens a popup window that handles the Google OAuth flow through Supabase
+ * Sign in with Google OAuth via background service worker.
+ * The background script opens a tab for Supabase OAuth (redirecting to the
+ * web app URL which is already whitelisted in Supabase), monitors the tab for
+ * tokens, and stores the session in chrome.storage.local.
+ *
+ * This function asks the background to start the flow, then waits for the
+ * session to appear in storage. This works even if the popup closes while
+ * the user is completing sign-in — the background persists.
  */
 async function signInWithGoogle() {
-  // Build the redirect URL for the Chrome extension
-  // chrome.identity.getRedirectURL() returns https://<id>.chromiumapp.org/
-  // Fallback: construct manually from chrome.runtime.id
-  let redirectUrl;
-  if (chrome.identity?.getRedirectURL) {
-    redirectUrl = chrome.identity.getRedirectURL();
-  } else {
-    redirectUrl = `https://${chrome.runtime.id}.chromiumapp.org/`;
-  }
+  // Tell the background service worker to start the OAuth flow
+  chrome.runtime.sendMessage({ action: 'googleAuth' });
 
-  const authUrl = `${SUPABASE_URL}/auth/v1/authorize?` + new URLSearchParams({
-    provider: 'google',
-    redirect_to: redirectUrl,
-  }).toString();
+  // Wait for session to appear in storage (background sets it after auth)
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      chrome.storage.onChanged.removeListener(listener);
+      reject(new Error('Sign-in timed out. Please try again.'));
+    }, 120000);
 
-  // Launch the OAuth flow in a popup
-  // Use chrome.identity if available, otherwise fall back to window.open
-  let responseUrl;
-  if (chrome.identity?.launchWebAuthFlow) {
-    responseUrl = await new Promise((resolve, reject) => {
-      chrome.identity.launchWebAuthFlow(
-        { url: authUrl, interactive: true },
-        (callbackUrl) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(callbackUrl);
-          }
-        }
-      );
-    });
-  } else {
-    // Fallback: open in a new tab and listen for the redirect
-    responseUrl = await new Promise((resolve, reject) => {
-      // Open auth URL in new tab
-      chrome.tabs.create({ url: authUrl }, (tab) => {
-        const tabId = tab.id;
-        // Listen for the tab to navigate to our redirect URL
-        const listener = (updatedTabId, changeInfo) => {
-          if (updatedTabId === tabId && changeInfo.url?.startsWith(redirectUrl)) {
-            chrome.tabs.onUpdated.removeListener(listener);
-            chrome.tabs.remove(tabId);
-            resolve(changeInfo.url);
-          }
-        };
-        chrome.tabs.onUpdated.addListener(listener);
-        // Clean up if tab is closed manually
-        chrome.tabs.onRemoved.addListener(function onRemoved(closedId) {
-          if (closedId === tabId) {
-            chrome.tabs.onUpdated.removeListener(listener);
-            chrome.tabs.onRemoved.removeListener(onRemoved);
-            reject(new Error('Sign-in was canceled'));
-          }
-        });
-      });
-    });
-  }
+    const listener = (changes, area) => {
+      if (area !== 'local' || !changes.slate_session?.newValue) return;
+      clearTimeout(timeout);
+      chrome.storage.onChanged.removeListener(listener);
+      resolve(changes.slate_session.newValue.user);
+    };
 
-  // Parse tokens from the callback URL hash fragment
-  // Supabase returns: #access_token=...&refresh_token=...&...
-  const hashIndex = responseUrl.indexOf('#');
-  if (hashIndex === -1) throw new Error('No auth tokens received');
-
-  const hashParams = new URLSearchParams(responseUrl.substring(hashIndex + 1));
-  const accessToken = hashParams.get('access_token');
-  const refreshToken = hashParams.get('refresh_token');
-
-  if (!accessToken) throw new Error('No access token received');
-
-  // Fetch user info from Supabase using the access token
-  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    chrome.storage.onChanged.addListener(listener);
   });
-
-  if (!userResponse.ok) throw new Error('Failed to get user info');
-  const user = await userResponse.json();
-
-  // Store the session
-  await setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    user,
-  });
-
-  return user;
 }
 
 /**
