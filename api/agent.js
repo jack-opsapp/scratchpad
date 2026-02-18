@@ -237,6 +237,51 @@ You learn patterns over time (tag usage, navigation habits, note length preferen
 
 Execute. Report. Done.`;
 
+// Stripped-down prompt for Chrome extension — note creation and basic retrieval only
+const EXTENSION_SYSTEM_PROMPT = `You are Slate's quick-capture agent for the Chrome extension. Limited scope: create notes and retrieve notes.
+
+TONE: Tactical. 2-5 words. No fluff.
+
+CAPABILITIES (extension only):
+- Create notes (with auto-tagging)
+- Retrieve/search notes (brief inline responses)
+- Query pages and sections (to find where to put notes)
+
+WHAT YOU CANNOT DO FROM THE EXTENSION:
+- No navigation, no bulk operations, no deleting, no creating pages/sections, no custom views
+- If asked to do something outside scope, say: "Open Slate for that."
+
+DEFAULT BEHAVIOR — ALWAYS CREATE A NOTE:
+- Plain text without an explicit query keyword → create a note
+- "pick up groceries" → create_note
+- "fix the login bug" → create_note
+- Only treat as a query if it clearly starts with: "show", "find", "search", "list", "what", "how many"
+
+FINDING THE RIGHT SECTION:
+- ALWAYS call get_pages() first to see available pages, then get_sections() to find sections
+- If user specifies "page/section: content" shorthand, parse and use it
+- If user does NOT specify a location, use the FIRST page's FIRST section as default
+- NEVER ask for clarification about location — just pick the best match or use the default
+
+AUTO-TAGGING:
+- Always auto-tag notes (1-3 tags based on content)
+- Call get_notes(limit: 50) first to see existing tags for consistency
+- Prefer reusing existing tags
+
+RETRIEVAL:
+- For "show me" / "find" / "search" queries, call get_notes with filters
+- List up to 5 results inline with brief content snippets
+- For more than 5, say "Found N notes. Open Slate to browse."
+
+CRITICAL: You MUST call create_note() to actually create notes. Do NOT just respond without calling the function.
+Always end with respond_to_user.`;
+
+// Only these functions are available from the Chrome extension
+const EXTENSION_FUNCTION_NAMES = [
+  'get_pages', 'get_sections', 'get_notes', 'count_notes',
+  'create_note', 'respond_to_user'
+];
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -255,7 +300,8 @@ export default async function handler(req, res) {
 
   try {
     const startTime = Date.now();
-    const { message, userId, conversationHistory = [], confirmed, context } = req.body;
+    const { message, userId, conversationHistory = [], confirmed, context, source } = req.body;
+    const isExtension = source === 'extension';
 
     if (!message || !userId) {
       return res.status(400).json({ error: 'Missing message or userId' });
@@ -324,9 +370,14 @@ export default async function handler(req, res) {
     console.log('Using model:', ACTIVE_MODEL, customOpenAIKey ? '(custom key)' : '(default key)');
 
     // Build personality-aware system prompt with mem0 context
-    const personalityPrompt = PERSONALITY_PROMPTS[responseStyle] || PERSONALITY_PROMPTS.tactical;
-    const mem0Context = buildMem0Context(mem0Profile);
-    const fullSystemPrompt = `${personalityPrompt}\n\n${SYSTEM_PROMPT}${mem0Context}`;
+    let fullSystemPrompt;
+    if (isExtension) {
+      fullSystemPrompt = EXTENSION_SYSTEM_PROMPT;
+    } else {
+      const personalityPrompt = PERSONALITY_PROMPTS[responseStyle] || PERSONALITY_PROMPTS.tactical;
+      const mem0Context = buildMem0Context(mem0Profile);
+      fullSystemPrompt = `${personalityPrompt}\n\n${SYSTEM_PROMPT}${mem0Context}`;
+    }
 
     // Build context string for the agent
     let contextInfo = '';
@@ -395,6 +446,11 @@ export default async function handler(req, res) {
       const iterStartTime = Date.now();
 
       // Call OpenAI
+      // Use limited tools for extension requests
+      const tools = isExtension
+        ? functionDefinitions.filter(fd => EXTENSION_FUNCTION_NAMES.includes(fd.function.name))
+        : functionDefinitions;
+
       const response = await fetch(OPENAI_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -404,7 +460,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: ACTIVE_MODEL,
           messages,
-          tools: functionDefinitions,
+          tools,
           tool_choice: 'auto'
         }),
       });

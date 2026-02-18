@@ -216,6 +216,7 @@ async function handleSend() {
         userId: session.user.id,
         conversationHistory: [],
         context: null,
+        source: 'extension',
       }),
     });
 
@@ -228,6 +229,9 @@ async function handleSend() {
     if (data.type === 'error') {
       responseDiv.className = 'response error';
       responseDiv.textContent = data.message;
+    } else if (data.type === 'clarification') {
+      responseDiv.className = 'response';
+      responseDiv.textContent = data.question || 'Could you clarify?';
     } else {
       responseDiv.className = 'response success';
       responseDiv.textContent = data.message || 'Done.';
