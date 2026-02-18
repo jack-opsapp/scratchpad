@@ -5,6 +5,7 @@
   "description": "Save notes to Slate from any webpage. Select text or type a quick note.",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "contextMenus",
     "identity"

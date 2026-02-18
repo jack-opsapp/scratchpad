@@ -105,27 +105,63 @@ async function refreshToken() {
  * Opens a popup window that handles the Google OAuth flow through Supabase
  */
 async function signInWithGoogle() {
-  // Build the Supabase OAuth URL
-  // The redirect goes to the Chrome extension's identity redirect URL
-  const redirectUrl = chrome.identity.getRedirectURL();
+  // Build the redirect URL for the Chrome extension
+  // chrome.identity.getRedirectURL() returns https://<id>.chromiumapp.org/
+  // Fallback: construct manually from chrome.runtime.id
+  let redirectUrl;
+  if (chrome.identity?.getRedirectURL) {
+    redirectUrl = chrome.identity.getRedirectURL();
+  } else {
+    redirectUrl = `https://${chrome.runtime.id}.chromiumapp.org/`;
+  }
+
   const authUrl = `${SUPABASE_URL}/auth/v1/authorize?` + new URLSearchParams({
     provider: 'google',
     redirect_to: redirectUrl,
   }).toString();
 
   // Launch the OAuth flow in a popup
-  const responseUrl = await new Promise((resolve, reject) => {
-    chrome.identity.launchWebAuthFlow(
-      { url: authUrl, interactive: true },
-      (callbackUrl) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(callbackUrl);
+  // Use chrome.identity if available, otherwise fall back to window.open
+  let responseUrl;
+  if (chrome.identity?.launchWebAuthFlow) {
+    responseUrl = await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        { url: authUrl, interactive: true },
+        (callbackUrl) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(callbackUrl);
+          }
         }
-      }
-    );
-  });
+      );
+    });
+  } else {
+    // Fallback: open in a new tab and listen for the redirect
+    responseUrl = await new Promise((resolve, reject) => {
+      // Open auth URL in new tab
+      chrome.tabs.create({ url: authUrl }, (tab) => {
+        const tabId = tab.id;
+        // Listen for the tab to navigate to our redirect URL
+        const listener = (updatedTabId, changeInfo) => {
+          if (updatedTabId === tabId && changeInfo.url?.startsWith(redirectUrl)) {
+            chrome.tabs.onUpdated.removeListener(listener);
+            chrome.tabs.remove(tabId);
+            resolve(changeInfo.url);
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+        // Clean up if tab is closed manually
+        chrome.tabs.onRemoved.addListener(function onRemoved(closedId) {
+          if (closedId === tabId) {
+            chrome.tabs.onUpdated.removeListener(listener);
+            chrome.tabs.onRemoved.removeListener(onRemoved);
+            reject(new Error('Sign-in was canceled'));
+          }
+        });
+      });
+    });
+  }
 
   // Parse tokens from the callback URL hash fragment
   // Supabase returns: #access_token=...&refresh_token=...&...
