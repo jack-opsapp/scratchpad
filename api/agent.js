@@ -274,7 +274,13 @@ RETRIEVAL:
 - For more than 5, say "Found N notes. Open Slate to browse."
 
 CRITICAL: You MUST call create_note() to actually create notes. Do NOT just respond without calling the function.
-Always end with respond_to_user.`;
+
+EFFICIENCY:
+- Minimize tool calls. Don't fetch data you don't need.
+- For note creation: call get_pages + get_sections in one round, then create_note + respond_to_user in the next.
+- For queries: call the relevant query function, then respond_to_user with the answer.
+- ALWAYS call respond_to_user() as your final action. Never leave the conversation hanging.
+- Maximum 3-4 tool call rounds. Do not loop.`;
 
 // Only these functions are available from the Chrome extension
 const EXTENSION_FUNCTION_NAMES = [
@@ -674,10 +680,20 @@ export default async function handler(req, res) {
     }
 
     if (!finalResponse) {
-      finalResponse = {
-        type: 'error',
-        message: 'Agent did not complete properly. Please try again.'
-      };
+      // Try to salvage: check if the last assistant message had content
+      const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.content);
+      if (lastAssistant?.content) {
+        finalResponse = {
+          type: 'response',
+          message: lastAssistant.content,
+          actions: frontendActions
+        };
+      } else {
+        finalResponse = {
+          type: 'error',
+          message: 'Agent did not complete properly. Please try again.'
+        };
+      }
     }
 
     // Safeguard: If message looked like note creation but no note was created, warn user
