@@ -2,7 +2,7 @@
 
 const BG_SUPABASE_URL = 'https://lepksnpkrnkokiwxfcsj.supabase.co';
 const BG_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcGtzbnBrcm5rb2tpd3hmY3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDA4NzAsImV4cCI6MjA4NTExNjg3MH0.iuvLg9Pmc8mPIGqrb20MyiRHuTANb-FKcU65vpArPX0';
-const WEB_APP_URL = 'https://scratchpad.jackwillis.io';
+const WEB_APP_URL = 'https://slate.opsapp.co';
 
 // Create context menu on install
 chrome.runtime.onInstalled.addListener(() => {

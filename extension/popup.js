@@ -139,7 +139,7 @@ async function showNoteForm() {
 
   const statusDiv = el('div', { id: 'status', className: 'status' });
 
-  const openApp = el('a', { href: 'https://scratchpad.jackwillis.io', target: '_blank', className: 'open-app' });
+  const openApp = el('a', { href: 'https://slate.opsapp.co', target: '_blank', className: 'open-app' });
   setTrustedHTML(openApp, 'Open Slate &rarr;');
 
   app.appendChild(header);
