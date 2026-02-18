@@ -59,3 +59,22 @@ body {
   background: rgba(148, 139, 114, 0.3);
   color: #e8e8e8;
 }
+
+/* Shimmer text animation for prefix recall and note references */
+@keyframes shimmerSweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.shimmer-text {
+  background-image: linear-gradient(90deg, #948b72 0%, #c4b896 50%, #948b72 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmerSweep 600ms ease-out forwards;
+}

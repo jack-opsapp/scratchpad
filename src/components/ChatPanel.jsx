@@ -57,6 +57,10 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [audioWaveform, setAudioWaveform] = useState([]);
+  const [lastPrefix, setLastPrefix] = useState('');
+  const [shimmerActive, setShimmerActive] = useState(false);
+  const [isNoteDragOver, setIsNoteDragOver] = useState(false);
+  const [referencedNote, setReferencedNote] = useState(null);
   const planContainerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -428,11 +432,25 @@ const ChatPanel = forwardRef(function ChatPanel({
   const handleSubmit = (e) => {
     e?.preventDefault();
     if (!inputValue.trim()) return;
+
+    // Extract prefix (e.g. "scratchpad/bugs: ") before clearing
+    const prefixMatch = inputValue.match(/^([\w/.-]+:\s*)/);
+    if (prefixMatch) {
+      setLastPrefix(prefixMatch[1]);
+    }
+
     // Add to history
     setInputHistory(prev => [...prev, inputValue.trim()]);
     setHistoryIndex(-1);
-    onSendMessage(inputValue.trim());
+
+    // Prepend note reference if one is attached
+    const message = referencedNote
+      ? `[ref:${referencedNote.id}] ${inputValue.trim()}`
+      : inputValue.trim();
+    onSendMessage(message);
     setInputValue('');
+    setReferencedNote(null);
+
     // Reset textarea height back to single row
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -444,6 +462,12 @@ const ChatPanel = forwardRef(function ChatPanel({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+    } else if (e.shiftKey && e.key === 'ArrowUp' && lastPrefix && !inputValue.trim()) {
+      // Shift+Up: recall last prefix
+      e.preventDefault();
+      setInputValue(lastPrefix);
+      setShimmerActive(true);
+      setTimeout(() => setShimmerActive(false), 600);
     } else if (e.key === 'ArrowUp' && inputHistory.length > 0) {
       // Navigate to previous input in history (only when history exists)
       e.preventDefault();
@@ -1021,12 +1045,36 @@ const ChatPanel = forwardRef(function ChatPanel({
       )}
 
       {/* Input Area */}
-      <div style={{
-        padding: '14px 16px',
-        background: 'transparent',
-        flexShrink: 0,
-        marginTop: 'auto'
-      }}>
+      <div
+        style={{
+          padding: '14px 16px',
+          background: 'transparent',
+          flexShrink: 0,
+          marginTop: 'auto',
+          border: isNoteDragOver ? `1px dashed ${colors.primary}` : '1px dashed transparent',
+          transition: 'border-color 0.15s ease',
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('text/plain')) {
+            e.preventDefault();
+            setIsNoteDragOver(true);
+          }
+        }}
+        onDragLeave={() => setIsNoteDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsNoteDragOver(false);
+          const plain = e.dataTransfer.getData('text/plain');
+          const noteContent = e.dataTransfer.getData('application/x-note-content');
+          if (plain?.startsWith('note:') && noteContent) {
+            const noteId = plain.replace('note:', '');
+            const preview = noteContent.substring(0, 12) + (noteContent.length > 12 ? '...' : '');
+            setReferencedNote({ id: noteId, preview });
+            setShimmerActive(true);
+            setTimeout(() => setShimmerActive(false), 600);
+          }
+        }}
+      >
         {reviseMode ? (
           /* Revise mode - show text input for revision notes */
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1120,7 +1168,47 @@ const ChatPanel = forwardRef(function ChatPanel({
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: isMobile ? 10 : 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Referenced note chip */}
+            {referencedNote && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                background: 'rgba(148, 139, 114, 0.1)',
+                border: `1px solid rgba(148, 139, 114, 0.2)`,
+                borderRadius: 2,
+                alignSelf: 'flex-start',
+              }}>
+                <span
+                  className={shimmerActive ? 'shimmer-text' : ''}
+                  style={{
+                    fontSize: 11,
+                    color: colors.primary,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                >
+                  {referencedNote.preview}
+                </span>
+                <button
+                  onClick={() => setReferencedNote(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: colors.textMuted,
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    lineHeight: 1,
+                  }}
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: isMobile ? 10 : 10, alignItems: 'center' }}>
             {/* Maximize button when minimized (desktop only) */}
             {isMinimized && !isMobile && (
               <button
@@ -1186,32 +1274,52 @@ const ChatPanel = forwardRef(function ChatPanel({
                 )}
               </div>
             ) : (
-              <textarea
-                ref={inputRef}
-                value={inputValue}
-                onChange={(e) => {
-                  setInputValue(e.target.value);
-                  // Auto-resize: reset to single row then grow to content
-                  e.target.style.height = 'auto';
-                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-                }}
-                onKeyDown={handleKeyDown}
-                rows={1}
-                placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
-                  fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)',
-                  outline: 'none',
-                  resize: 'none',
-                  overflow: 'hidden',
-                  lineHeight: 1.4,
-                  fontFamily: 'inherit',
-                  padding: 0,
-                }}
-              />
+              <div style={{ flex: 1, position: 'relative' }}>
+                <textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => {
+                    setInputValue(e.target.value);
+                    // Auto-resize: reset to single row then grow to content
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                  }}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--chat-user-text-color, ' + colors.textPrimary + ')',
+                    fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)',
+                    outline: 'none',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    lineHeight: 1.4,
+                    fontFamily: 'inherit',
+                    padding: 0,
+                  }}
+                />
+                {/* Shimmer overlay for prefix recall */}
+                {shimmerActive && !referencedNote && inputValue && (
+                  <span
+                    className="shimmer-text"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)',
+                      lineHeight: 1.4,
+                      fontFamily: 'inherit',
+                      pointerEvents: 'none',
+                      whiteSpace: 'pre',
+                    }}
+                  >
+                    {inputValue}
+                  </span>
+                )}
+              </div>
             )}
             <button
               onClick={handleSubmit}
@@ -1231,6 +1339,7 @@ const ChatPanel = forwardRef(function ChatPanel({
             >
               <Send size={isMobile ? 18 : 12} color={colors.textPrimary} />
             </button>
+          </div>
           </div>
         )}
       </div>

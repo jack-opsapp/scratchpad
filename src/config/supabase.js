@@ -11,25 +11,13 @@ import { createClient } from '@supabase/supabase-js';
 // Environment Variables
 // =============================================================================
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Default keys for Apple App Store review builds
+// These are the Supabase anon key (safe for client-side, RLS protects data)
+const DEFAULT_SUPABASE_URL = 'https://lepksnpkrnkokiwxfcsj.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlcGtzbnBrcm5rb2tpd3hmY3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDA4NzAsImV4cCI6MjA4NTExNjg3MH0.iuvLg9Pmc8mPIGqrb20MyiRHuTANb-FKcU65vpArPX0';
 
-// Validate required environment variables
-if (!supabaseUrl) {
-  throw new Error(
-    'Missing VITE_SUPABASE_URL environment variable.\n' +
-    'Please create a .env.local file with your Supabase project URL.\n' +
-    'See .env.example for reference.'
-  );
-}
-
-if (!supabaseAnonKey) {
-  throw new Error(
-    'Missing VITE_SUPABASE_ANON_KEY environment variable.\n' +
-    'Please create a .env.local file with your Supabase anon key.\n' +
-    'See .env.example for reference.'
-  );
-}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
 // =============================================================================
 // Supabase Client

@@ -32,17 +32,61 @@ export function NoteCard({
   canToggle = true,
   compact = false,
   onTagClick,
+  draggable = false,
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
+  const [dragHover, setDragHover] = useState(false);
   const typewriter = useTypewriter(note.content, 20, 0, isNew);
+
+  const handleDragStart = (e) => {
+    e.dataTransfer.setData('text/plain', `note:${note.id}`);
+    e.dataTransfer.setData('application/x-note-content', note.content);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
 
   const isOwnNote = note.created_by_user_id === currentUserId;
   const showCreatorAvatar = note.created_by_user_id && !isOwnNote;
 
   return (
-    <div style={{ padding: '16px 0', borderBottom: `1px solid ${colors.border}` }}>
+    <div
+      style={{ padding: '16px 0', borderBottom: `1px solid ${colors.border}` }}
+      onMouseEnter={() => setDragHover(true)}
+      onMouseLeave={() => setDragHover(false)}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        {/* Drag handle */}
+        {draggable && (
+          <div
+            draggable
+            onDragStart={handleDragStart}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '4px 4px',
+              gap: 3,
+              cursor: 'grab',
+              padding: '4px 2px',
+              marginTop: 2,
+              flexShrink: 0,
+              opacity: dragHover ? 0.6 : 0,
+              transition: 'opacity 0.15s ease',
+            }}
+            title="Drag to chat"
+          >
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: '50%',
+                  background: colors.textMuted,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Checkbox */}
         <button
           onClick={() => canToggle && onToggle(note.id)}

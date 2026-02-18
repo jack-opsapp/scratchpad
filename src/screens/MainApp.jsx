@@ -237,9 +237,38 @@ export function MainApp({ user, onSignOut }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [groupBy] = useState('status');
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
+  const [showCompleted, setShowCompleted] = useState(false); // Collapsible completed notes section
 
   // Pinch-to-zoom for notes area
   const { containerRef: zoomRef, scale: zoomScale, resetZoom, setScale: setZoomScale } = usePinchZoom({ minScale: 0.5, maxScale: 2.0 });
+
+  // Swipe-right to cycle view modes
+  const viewModes = ['list', 'boxes', 'calendar', 'table'];
+  const swipeStartRef = useRef(null);
+  const handleContentTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      swipeStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+  const handleContentTouchEnd = (e) => {
+    if (!swipeStartRef.current) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - swipeStartRef.current.x;
+    const dy = touch.clientY - swipeStartRef.current.y;
+    swipeStartRef.current = null;
+    // Require horizontal swipe > 80px, mostly horizontal (not vertical scrolling)
+    if (dx < -80 && Math.abs(dy) < Math.abs(dx) * 0.6) {
+      // Swipe left (from right) → next view mode
+      const currentMode = agentView ? agentView.viewType : viewMode;
+      const idx = viewModes.indexOf(currentMode);
+      const next = viewModes[(idx + 1) % viewModes.length];
+      if (agentView) {
+        setAgentView({ ...agentView, viewType: next });
+      } else {
+        setViewMode(next);
+      }
+    }
+  };
 
   // Input state
   const [inputValue, setInputValue] = useState('');
@@ -324,8 +353,24 @@ export function MainApp({ user, onSignOut }) {
 
       setExpandedPages([]);
 
-      // Check for default page/section from settings
-      if (settings?.defaultPageId) {
+      // Check URL for page/section first, then fall back to settings default
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlPageId = urlParams.get('page');
+      const urlSectionId = urlParams.get('section');
+
+      if (urlPageId) {
+        const urlPage = allPages.find(p => p.id === urlPageId);
+        if (urlPage) {
+          setCurrentPage(urlPage.id);
+          if (urlSectionId) {
+            const urlSection = urlPage.sections?.find(s => s.id === urlSectionId);
+            setCurrentSection(urlSection?.id || urlPage.sections?.[0]?.id || null);
+          } else {
+            setViewingPageLevel(true);
+            setCurrentSection(urlPage.sections?.[0]?.id || null);
+          }
+        }
+      } else if (settings?.defaultPageId) {
         const defaultPage = allPages.find(p => p.id === settings.defaultPageId);
         if (defaultPage) {
           setCurrentPage(defaultPage.id);
@@ -344,6 +389,21 @@ export function MainApp({ user, onSignOut }) {
     };
     load();
   }, []);
+
+  // Sync navigation state to URL for reload persistence
+  useEffect(() => {
+    if (loading) return;
+    const params = new URLSearchParams();
+    if (currentPage) {
+      params.set('page', currentPage);
+      if (currentSection && !viewingPageLevel) {
+        params.set('section', currentSection);
+      }
+    }
+    const qs = params.toString();
+    const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, '', newUrl);
+  }, [currentPage, currentSection, viewingPageLevel, loading]);
 
   // Apply theme settings when they change
   useEffect(() => {
@@ -1104,6 +1164,30 @@ export function MainApp({ user, onSignOut }) {
         });
       }
     }
+  };
+
+  // Complete all visible notes
+  const handleCompleteAll = async () => {
+    const visibleNotes = agentView ? agentFilteredNotes : filteredNotes;
+    const incompleteNotes = visibleNotes.filter(n => !n.completed);
+    if (!incompleteNotes.length) return;
+
+    const now = new Date().toISOString();
+    const ids = incompleteNotes.map(n => n.id);
+
+    // Optimistic UI update
+    setNotes(prev => prev.map(n =>
+      ids.includes(n.id)
+        ? { ...n, completed: true, completed_by_user_id: user.id, completed_at: now }
+        : n
+    ));
+
+    // Persist to Supabase
+    const { error } = await supabase
+      .from('notes')
+      .update({ completed: true, completed_by_user_id: user.id, completed_at: now })
+      .in('id', ids);
+    if (error) console.error('Complete all failed:', error);
   };
 
   // Edit note content with direct Supabase persistence
@@ -2386,6 +2470,8 @@ export function MainApp({ user, onSignOut }) {
 
         {/* Main content */}
         <div
+          onTouchStart={handleContentTouchStart}
+          onTouchEnd={handleContentTouchEnd}
           style={{
             flex: 1,
             display: 'flex',
@@ -2503,6 +2589,25 @@ export function MainApp({ user, onSignOut }) {
             >
               {copiedNotes ? <Check size={12} /> : <Copy size={12} />}
               {copiedNotes ? 'COPIED' : 'COPY ALL'}
+            </button>
+            <button
+              onClick={handleCompleteAll}
+              title="Mark all visible notes as complete"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                background: 'transparent',
+                border: `1px solid ${colors.border}`,
+                color: colors.textMuted,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              <Check size={12} />
+              COMPLETE ALL
             </button>
             <div style={{ display: 'flex', border: `1px solid ${colors.border}` }}>
               {[
@@ -2897,6 +3002,7 @@ export function MainApp({ user, onSignOut }) {
                             canDelete={true}
                             canToggle={true}
                             compact={compactMode}
+                            draggable={true}
                             onToggle={handleNoteToggle}
                             onEdit={handleNoteEdit}
                             onDelete={handleNoteDelete}
@@ -3057,6 +3163,33 @@ export function MainApp({ user, onSignOut }) {
                       n => n.sectionId === section.id
                     );
                     if (!sn.length) return null;
+                    const snIncomplete = sn.filter(n => !n.completed);
+                    const snCompleted = sn.filter(n => n.completed);
+
+                    const renderSectionNote = (note) => {
+                      const isOwnNote = note.created_by_user_id === user.id;
+                      const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                      const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
+                      const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
+                      return (
+                        <NoteCard
+                          key={note.id}
+                          note={note}
+                          isNew={note.id === newNoteId}
+                          currentUserId={user.id}
+                          canEdit={canEditNote}
+                          canDelete={canDeleteNote}
+                          canToggle={canToggleNote}
+                          compact={compactMode}
+                          draggable={true}
+                          onToggle={handleNoteToggle}
+                          onEdit={handleNoteEdit}
+                          onDelete={handleNoteDelete}
+                          onTagClick={(tag) => setFilterTag([tag])}
+                        />
+                      );
+                    };
+
                     return (
                       <div key={section.id} style={{ marginBottom: 32 }}>
                         <p
@@ -3075,39 +3208,51 @@ export function MainApp({ user, onSignOut }) {
                         >
                           {section.name.toUpperCase()}
                         </p>
-                        {sn.map(note => {
-                          const isOwnNote = note.created_by_user_id === user.id;
-                          const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
-                          const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
-                          const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
-
-                          return (
-                            <NoteCard
-                              key={note.id}
-                              note={note}
-                              isNew={note.id === newNoteId}
-                              currentUserId={user.id}
-                              canEdit={canEditNote}
-                              canDelete={canDeleteNote}
-                              canToggle={canToggleNote}
-                              compact={compactMode}
-                              onToggle={handleNoteToggle}
-                              onEdit={handleNoteEdit}
-                              onDelete={handleNoteDelete}
-                              onTagClick={(tag) => setFilterTag([tag])}
-                            />
-                          );
-                        })}
+                        {snIncomplete.map(renderSectionNote)}
+                        {snCompleted.length > 0 && (
+                          <>
+                            <button
+                              onClick={() => setShowCompleted(!showCompleted)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                width: '100%',
+                                padding: '12px 0',
+                                background: 'transparent',
+                                border: 'none',
+                                borderTop: `1px solid ${colors.border}`,
+                                color: colors.textMuted,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                letterSpacing: 1,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <ChevronRight
+                                size={12}
+                                style={{
+                                  transform: showCompleted ? 'rotate(90deg)' : 'none',
+                                  transition: 'transform 0.15s ease',
+                                }}
+                              />
+                              COMPLETED ({snCompleted.length})
+                            </button>
+                            {showCompleted && snCompleted.map(renderSectionNote)}
+                          </>
+                        )}
                       </div>
                     );
                   })
-                : filteredNotes.length ? (
-                    filteredNotes.map(note => {
+                : filteredNotes.length ? (() => {
+                    const incompleteNotes = filteredNotes.filter(n => !n.completed);
+                    const completedNotes = filteredNotes.filter(n => n.completed);
+
+                    const renderNote = (note) => {
                       const isOwnNote = note.created_by_user_id === user.id;
                       const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
-
                       return (
                         <NoteCard
                           key={note.id}
@@ -3118,13 +3263,53 @@ export function MainApp({ user, onSignOut }) {
                           canDelete={canDeleteNote}
                           canToggle={canToggleNote}
                           compact={compactMode}
+                          draggable={true}
                           onToggle={handleNoteToggle}
                           onEdit={handleNoteEdit}
                           onDelete={handleNoteDelete}
                           onTagClick={(tag) => setFilterTag([tag])}
                         />
                       );
-                    })
+                    };
+
+                    return (
+                      <>
+                        {incompleteNotes.map(renderNote)}
+                        {completedNotes.length > 0 && (
+                          <>
+                            <button
+                              onClick={() => setShowCompleted(!showCompleted)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                width: '100%',
+                                padding: '12px 0',
+                                background: 'transparent',
+                                border: 'none',
+                                borderTop: `1px solid ${colors.border}`,
+                                color: colors.textMuted,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                letterSpacing: 1,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <ChevronRight
+                                size={12}
+                                style={{
+                                  transform: showCompleted ? 'rotate(90deg)' : 'none',
+                                  transition: 'transform 0.15s ease',
+                                }}
+                              />
+                              COMPLETED ({completedNotes.length})
+                            </button>
+                            {showCompleted && completedNotes.map(renderNote)}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()
                   ) : (
                     <p
                       style={{
