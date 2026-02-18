@@ -7,13 +7,10 @@
 
     body {
       width: 360px;
-      min-height: 200px;
-      max-height: 520px;
       background: #000000;
       color: #e8e8e8;
       font-family: 'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif;
       font-size: 13px;
-      overflow-y: auto;
     }
 
     /* Header */
@@ -82,112 +79,61 @@
     .btn-google:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-google svg { flex-shrink: 0; }
 
-    /* Note Form */
-    .note-form {
-      padding: 16px;
-    }
-    .note-form textarea {
-      width: 100%;
-      min-height: 80px;
-      padding: 10px 12px;
-      background: #0d0d0d;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #e8e8e8;
-      font-size: 13px;
-      font-family: inherit;
-      resize: vertical;
-      outline: none;
-      line-height: 1.5;
-    }
-    .note-form textarea:focus { border-color: #948b72; }
-    .note-form textarea::placeholder { color: #525252; }
-
-    /* Page/Section Picker */
-    .picker {
-      margin-top: 12px;
-    }
-    .picker label {
-      display: block;
-      color: #525252;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-    .picker select {
-      width: 100%;
-      padding: 8px 10px;
-      background: #0d0d0d;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #e8e8e8;
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      margin-bottom: 8px;
-      cursor: pointer;
-    }
-    .picker select:focus { border-color: #948b72; }
-
-    /* Tags input */
-    .tags-input {
-      margin-top: 8px;
-    }
-    .tags-input input {
-      width: 100%;
-      padding: 8px 10px;
-      background: #0d0d0d;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #e8e8e8;
-      font-size: 12px;
-      font-family: inherit;
-      outline: none;
-    }
-    .tags-input input:focus { border-color: #948b72; }
-    .tags-input input::placeholder { color: #525252; }
-
-    /* Actions */
-    .actions {
+    /* Chat input area */
+    .chat-input {
+      padding: 14px 16px;
       display: flex;
-      gap: 8px;
-      margin-top: 12px;
+      align-items: center;
+      gap: 10px;
     }
-    .btn-save {
+    .chat-input textarea {
       flex: 1;
-      padding: 10px;
       background: transparent;
-      color: #948b72;
-      border: 1px solid #948b72;
+      border: none;
+      color: #e8e8e8;
       font-size: 13px;
-      font-weight: 600;
       font-family: inherit;
+      outline: none;
+      resize: none;
+      overflow: hidden;
+      line-height: 1.4;
+      padding: 0;
+    }
+    .chat-input textarea::placeholder { color: #525252; }
+    .chat-input .send-btn {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px;
       cursor: pointer;
-      letter-spacing: 0.5px;
-      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.15s ease;
     }
-    .btn-save:hover {
-      background: rgba(148, 139, 114, 0.1);
-    }
-    .btn-save:disabled { opacity: 0.5; cursor: default; }
-
-    /* Status */
-    .status {
-      padding: 12px 16px;
-      text-align: center;
-      font-size: 12px;
-    }
-    .status.success { color: #2d6b3a; }
-    .status.error { color: #b83c2a; }
+    .chat-input .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .chat-input .send-btn svg { display: block; }
 
     /* Source info */
     .source {
-      padding: 0 16px 8px;
+      padding: 0 16px 4px;
       font-size: 11px;
       color: #525252;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    /* Agent response */
+    .response {
+      padding: 10px 16px;
+      font-size: 12px;
+      color: #a0a0a0;
+      line-height: 1.5;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .response.error { color: #b83c2a; }
+    .response.success { color: #948b72; }
 
     /* Loading */
     .loading {
@@ -196,6 +142,16 @@
       justify-content: center;
       padding: 40px;
       color: #525252;
+    }
+
+    /* Processing indicator */
+    .processing {
+      padding: 10px 16px;
+      font-size: 11px;
+      color: #525252;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     /* Open app link */
@@ -217,6 +173,15 @@
       100% { transform: rotate(360deg); }
     }
     .spinner {
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid #525252;
+      border-top-color: #948b72;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      flex-shrink: 0;
+    }
+    .spinner-lg {
       width: 16px;
       height: 16px;
       border: 2px solid #525252;

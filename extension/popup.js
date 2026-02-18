@@ -1,9 +1,10 @@
 // Slate Chrome Extension - Popup UI Logic
 
 const app = document.getElementById('app');
-let pages = [];
-let selectedPageId = null;
-let selectedSectionId = null;
+const WEB_APP_URL = 'https://slate.opsapp.co';
+
+// Send arrow SVG (matches web app)
+const SEND_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
 
 // Google icon SVG markup (static, safe)
 const GOOGLE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#e8e8e8" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#e8e8e8" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#e8e8e8" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#e8e8e8" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
@@ -24,9 +25,8 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
-// Helper: set innerHTML for static trusted markup only (extension-controlled templates)
+// Helper: set innerHTML for static trusted markup only
 function setTrustedHTML(element, html) {
-  // All HTML set here is hardcoded in this extension file - no user input is interpolated unsanitized
   element.innerHTML = html;
 }
 
@@ -34,22 +34,20 @@ function setTrustedHTML(element, html) {
 async function init() {
   const session = await getSession();
   if (session?.access_token) {
-    await showNoteForm();
+    showChat();
   } else {
     showSignIn();
   }
 }
 
-// Sign in view - Google OAuth
+// Sign in view
 function showSignIn() {
   app.replaceChildren();
 
-  // Header
   const header = el('div', { className: 'header' }, [
     el('h1', { textContent: 'Slate' }),
   ]);
 
-  // Sign-in section
   const signInDiv = el('div', { className: 'sign-in' });
   signInDiv.appendChild(el('p', { textContent: 'Sign in to your Slate account to save notes from any webpage.' }));
 
@@ -71,14 +69,13 @@ async function handleGoogleSignIn() {
   const btn = document.getElementById('google-btn');
 
   btn.disabled = true;
-  setTrustedHTML(btn, '<div class="spinner"></div> Signing in...');
+  setTrustedHTML(btn, '<div class="spinner-lg"></div> Signing in...');
   errorEl.textContent = '';
 
   try {
     await signInWithGoogle();
-    await showNoteForm();
+    showChat();
   } catch (err) {
-    // User closing the popup is not an error worth showing
     if (err.message?.includes('canceled') || err.message?.includes('closed')) {
       btn.disabled = false;
       setTrustedHTML(btn, GOOGLE_ICON + ' Sign in with Google');
@@ -90,8 +87,8 @@ async function handleGoogleSignIn() {
   }
 }
 
-// Note form view
-async function showNoteForm() {
+// Chat view — simple input like the web app
+async function showChat() {
   const session = await getSession();
   const userName = session?.user?.user_metadata?.full_name
     || session?.user?.user_metadata?.name
@@ -107,65 +104,57 @@ async function showNoteForm() {
     signOutBtn,
   ]);
 
-  // Note form
-  const noteForm = el('div', { className: 'note-form' });
-
-  const textarea = el('textarea', { id: 'note-content', placeholder: 'Type a note or select text on any page...', rows: '3' });
-  noteForm.appendChild(textarea);
-
+  // Source info (shown if text was selected)
   const sourceInfo = el('div', { id: 'source-info', className: 'source' });
-  noteForm.appendChild(sourceInfo);
 
-  // Picker
-  const picker = el('div', { className: 'picker' });
-  picker.appendChild(el('label', { textContent: 'Save to' }));
-  const pageSelect = el('select', { id: 'page-select' });
-  pageSelect.appendChild(el('option', { textContent: 'Loading pages...' }));
-  picker.appendChild(pageSelect);
-  const sectionSelect = el('select', { id: 'section-select' });
-  sectionSelect.appendChild(el('option', { textContent: 'Select a page first' }));
-  picker.appendChild(sectionSelect);
-  noteForm.appendChild(picker);
+  // Chat input row
+  const inputRow = el('div', { className: 'chat-input' });
+  const textarea = el('textarea', { id: 'chat-input', placeholder: 'Type a command...', rows: '1' });
+  const sendBtn = el('button', { className: 'send-btn', id: 'send-btn', disabled: 'true' });
+  setTrustedHTML(sendBtn, SEND_ICON);
+  inputRow.appendChild(textarea);
+  inputRow.appendChild(sendBtn);
 
-  // Tags
-  const tagsDiv = el('div', { className: 'tags-input' });
-  tagsDiv.appendChild(el('input', { type: 'text', id: 'tags-input', placeholder: 'Tags (comma separated)' }));
-  noteForm.appendChild(tagsDiv);
+  // Response area
+  const responseDiv = el('div', { id: 'response' });
 
-  // Actions
-  const actions = el('div', { className: 'actions' });
-  actions.appendChild(el('button', { className: 'btn-save', id: 'save-btn', textContent: 'Save Note' }));
-  noteForm.appendChild(actions);
-
-  const statusDiv = el('div', { id: 'status', className: 'status' });
-
-  const openApp = el('a', { href: 'https://slate.opsapp.co', target: '_blank', className: 'open-app' });
+  // Open app link
+  const openApp = el('a', { href: WEB_APP_URL, target: '_blank', className: 'open-app' });
   setTrustedHTML(openApp, 'Open Slate &rarr;');
 
   app.appendChild(header);
-  app.appendChild(noteForm);
-  app.appendChild(statusDiv);
+  app.appendChild(sourceInfo);
+  app.appendChild(inputRow);
+  app.appendChild(responseDiv);
   app.appendChild(openApp);
 
   // Event listeners
   signOutBtn.addEventListener('click', handleSignOut);
-  document.getElementById('save-btn').addEventListener('click', handleSave);
-  pageSelect.addEventListener('change', handlePageChange);
-  textarea.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSave();
+  sendBtn.addEventListener('click', handleSend);
+
+  textarea.addEventListener('input', () => {
+    // Auto-resize
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    // Toggle send button
+    sendBtn.disabled = !textarea.value.trim();
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (textarea.value.trim()) handleSend();
+    }
   });
 
   // Load selected text or pending note
   await loadInitialContent();
 
-  // Load pages
-  await loadPages();
-
   textarea.focus();
 }
 
 async function loadInitialContent() {
-  const textarea = document.getElementById('note-content');
+  const textarea = document.getElementById('chat-input');
   const sourceEl = document.getElementById('source-info');
 
   // Check for pending note from context menu
@@ -176,6 +165,8 @@ async function loadInitialContent() {
       sourceEl.textContent = 'From: ' + stored.pendingNote.sourceTitle;
     }
     await chrome.storage.local.remove('pendingNote');
+    // Trigger input event to resize and enable send
+    textarea.dispatchEvent(new Event('input'));
     return;
   }
 
@@ -187,121 +178,73 @@ async function loadInitialContent() {
       if (response?.text) {
         textarea.value = response.text;
         sourceEl.textContent = 'From: ' + (response.title || response.url);
+        textarea.dispatchEvent(new Event('input'));
       }
     }
   } catch {
-    // Content script may not be injected on some pages - that's ok
+    // Content script may not be injected on some pages
   }
 }
 
-async function loadPages() {
-  const pageSelect = document.getElementById('page-select');
+async function handleSend() {
+  const textarea = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('send-btn');
+  const responseDiv = document.getElementById('response');
+  const message = textarea.value.trim();
+
+  if (!message) return;
+
+  const session = await getSession();
+  if (!session?.user?.id) {
+    responseDiv.className = 'response error';
+    responseDiv.textContent = 'Session expired. Please sign in again.';
+    return;
+  }
+
+  // Show processing state
+  sendBtn.disabled = true;
+  textarea.disabled = true;
+  responseDiv.className = 'processing';
+  setTrustedHTML(responseDiv, '<div class="spinner"></div> Processing...');
 
   try {
-    pages = await getPages();
+    const result = await fetch(`${WEB_APP_URL}/api/agent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        userId: session.user.id,
+        conversationHistory: [],
+        context: null,
+      }),
+    });
 
-    if (pages.length === 0) {
-      pageSelect.replaceChildren(el('option', { value: '', textContent: 'No pages found' }));
-      return;
+    if (!result.ok) {
+      throw new Error(`API error: ${result.status}`);
     }
 
-    pageSelect.replaceChildren();
-    for (const p of pages) {
-      pageSelect.appendChild(el('option', { value: p.id, textContent: p.name }));
-    }
+    const data = await result.json();
 
-    // Load saved default
-    const saved = await chrome.storage.local.get('slate_default_page');
-    if (saved.slate_default_page) {
-      const exists = pages.find(p => p.id === saved.slate_default_page);
-      if (exists) pageSelect.value = saved.slate_default_page;
-    }
+    if (data.type === 'error') {
+      responseDiv.className = 'response error';
+      responseDiv.textContent = data.message;
+    } else {
+      responseDiv.className = 'response success';
+      responseDiv.textContent = data.message || 'Done.';
+      textarea.value = '';
+      textarea.style.height = 'auto';
 
-    handlePageChange();
+      // Auto-close after short delay
+      setTimeout(() => window.close(), 1500);
+    }
   } catch (err) {
-    pageSelect.replaceChildren(el('option', { value: '', textContent: 'Error loading pages' }));
-  }
-}
-
-function handlePageChange() {
-  const pageSelect = document.getElementById('page-select');
-  const sectionSelect = document.getElementById('section-select');
-  selectedPageId = pageSelect.value;
-
-  // Save as default
-  chrome.storage.local.set({ slate_default_page: selectedPageId });
-
-  const page = pages.find(p => p.id === selectedPageId);
-  if (!page?.sections?.length) {
-    sectionSelect.replaceChildren(el('option', { value: '', textContent: 'No sections' }));
-    selectedSectionId = null;
-    return;
+    responseDiv.className = 'response error';
+    responseDiv.textContent = err.message;
   }
 
-  // Sort sections by position
-  const sections = [...page.sections].sort((a, b) => (a.position || 0) - (b.position || 0));
-  sectionSelect.replaceChildren();
-  for (const s of sections) {
-    sectionSelect.appendChild(el('option', { value: s.id, textContent: s.name }));
-  }
-
-  // Load saved default section
-  chrome.storage.local.get('slate_default_section').then(saved => {
-    if (saved.slate_default_section) {
-      const exists = sections.find(s => s.id === saved.slate_default_section);
-      if (exists) sectionSelect.value = saved.slate_default_section;
-    }
-    selectedSectionId = sectionSelect.value;
-  });
-
-  sectionSelect.addEventListener('change', () => {
-    selectedSectionId = sectionSelect.value;
-    chrome.storage.local.set({ slate_default_section: selectedSectionId });
-  });
-}
-
-async function handleSave() {
-  const content = document.getElementById('note-content').value.trim();
-  const tagsRaw = document.getElementById('tags-input').value.trim();
-  const statusEl = document.getElementById('status');
-  const btn = document.getElementById('save-btn');
-  const sectionId = document.getElementById('section-select').value;
-
-  if (!content) {
-    statusEl.textContent = 'Please enter some text';
-    statusEl.className = 'status error';
-    return;
-  }
-
-  if (!sectionId) {
-    statusEl.textContent = 'Please select a page and section';
-    statusEl.className = 'status error';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-  statusEl.textContent = '';
-
-  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
-
-  try {
-    await createNote(sectionId, content, tags);
-    statusEl.textContent = 'Saved!';
-    statusEl.className = 'status success';
-    document.getElementById('note-content').value = '';
-    document.getElementById('tags-input').value = '';
-    btn.textContent = 'Save Note';
-    btn.disabled = false;
-
-    // Auto-close after short delay
-    setTimeout(() => window.close(), 1200);
-  } catch (err) {
-    statusEl.textContent = err.message;
-    statusEl.className = 'status error';
-    btn.textContent = 'Save Note';
-    btn.disabled = false;
-  }
+  textarea.disabled = false;
+  sendBtn.disabled = !textarea.value.trim();
+  textarea.focus();
 }
 
 async function handleSignOut() {
