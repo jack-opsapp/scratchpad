@@ -87,7 +87,7 @@ async function handleGoogleSignIn() {
   }
 }
 
-// Chat view — simple input like the web app
+// Chat view — messages + input, styled like the web app ChatPanel
 async function showChat() {
   const session = await getSession();
   const userName = session?.user?.user_metadata?.full_name
@@ -107,6 +107,9 @@ async function showChat() {
   // Source info (shown if text was selected)
   const sourceInfo = el('div', { id: 'source-info', className: 'source' });
 
+  // Messages area — scrollable
+  const messagesDiv = el('div', { id: 'messages', className: 'messages' });
+
   // Chat input row
   const inputRow = el('div', { className: 'chat-input' });
   const textarea = el('textarea', { id: 'chat-input', placeholder: 'Type a command...', rows: '1' });
@@ -115,17 +118,14 @@ async function showChat() {
   inputRow.appendChild(textarea);
   inputRow.appendChild(sendBtn);
 
-  // Response area
-  const responseDiv = el('div', { id: 'response' });
-
   // Open app link
   const openApp = el('a', { href: WEB_APP_URL, target: '_blank', className: 'open-app' });
   setTrustedHTML(openApp, 'Open Slate &rarr;');
 
   app.appendChild(header);
   app.appendChild(sourceInfo);
+  app.appendChild(messagesDiv);
   app.appendChild(inputRow);
-  app.appendChild(responseDiv);
   app.appendChild(openApp);
 
   // Event listeners
@@ -133,10 +133,8 @@ async function showChat() {
   sendBtn.addEventListener('click', handleSend);
 
   textarea.addEventListener('input', () => {
-    // Auto-resize
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    // Toggle send button
     sendBtn.disabled = !textarea.value.trim();
   });
 
@@ -153,6 +151,61 @@ async function showChat() {
   textarea.focus();
 }
 
+// Add a message to the messages area
+function addMessage(role, text, type) {
+  const messagesDiv = document.getElementById('messages');
+
+  const row = el('div', { className: 'msg' });
+
+  const arrow = el('span', { className: 'arrow' });
+  const textEl = el('span', { className: 'text' });
+
+  if (role === 'user') {
+    arrow.className = 'arrow user';
+    arrow.textContent = '\u2192'; // →
+    textEl.className = 'text user';
+    textEl.textContent = text;
+  } else {
+    // Agent response
+    if (type === 'error') {
+      arrow.className = 'arrow error';
+      arrow.textContent = '\u2717'; // ✗
+      textEl.className = 'text error';
+    } else if (type === 'success') {
+      arrow.className = 'arrow success';
+      arrow.textContent = '\u2713'; // ✓
+      textEl.className = 'text success';
+    } else {
+      arrow.className = 'arrow agent';
+      arrow.textContent = '\u2190'; // ←
+      textEl.className = 'text agent';
+    }
+    textEl.textContent = text;
+  }
+
+  row.appendChild(arrow);
+  row.appendChild(textEl);
+  messagesDiv.appendChild(row);
+
+  // Scroll to bottom
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+// Show/remove processing indicator
+function showProcessing() {
+  const messagesDiv = document.getElementById('messages');
+  const proc = el('div', { className: 'msg-processing', id: 'processing-indicator' });
+  const spinner = el('div', { className: 'spinner' });
+  proc.appendChild(spinner);
+  proc.appendChild(document.createTextNode('Processing...'));
+  messagesDiv.appendChild(proc);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function hideProcessing() {
+  document.getElementById('processing-indicator')?.remove();
+}
+
 async function loadInitialContent() {
   const textarea = document.getElementById('chat-input');
   const sourceEl = document.getElementById('source-info');
@@ -165,7 +218,6 @@ async function loadInitialContent() {
       sourceEl.textContent = 'From: ' + stored.pendingNote.sourceTitle;
     }
     await chrome.storage.local.remove('pendingNote');
-    // Trigger input event to resize and enable send
     textarea.dispatchEvent(new Event('input'));
     return;
   }
@@ -189,23 +241,25 @@ async function loadInitialContent() {
 async function handleSend() {
   const textarea = document.getElementById('chat-input');
   const sendBtn = document.getElementById('send-btn');
-  const responseDiv = document.getElementById('response');
   const message = textarea.value.trim();
 
   if (!message) return;
 
   const session = await getSession();
   if (!session?.user?.id) {
-    responseDiv.className = 'response error';
-    responseDiv.textContent = 'Session expired. Please sign in again.';
+    addMessage('agent', 'Session expired. Please sign in again.', 'error');
     return;
   }
 
-  // Show processing state
+  // Show user message and clear input
+  addMessage('user', message);
+  textarea.value = '';
+  textarea.style.height = 'auto';
   sendBtn.disabled = true;
   textarea.disabled = true;
-  responseDiv.className = 'processing';
-  setTrustedHTML(responseDiv, '<div class="spinner"></div> Processing...');
+
+  // Show processing
+  showProcessing();
 
   try {
     const result = await fetch(`${WEB_APP_URL}/api/agent`, {
@@ -220,6 +274,8 @@ async function handleSend() {
       }),
     });
 
+    hideProcessing();
+
     if (!result.ok) {
       throw new Error(`API error: ${result.status}`);
     }
@@ -227,27 +283,22 @@ async function handleSend() {
     const data = await result.json();
 
     if (data.type === 'error') {
-      responseDiv.className = 'response error';
-      responseDiv.textContent = data.message;
+      addMessage('agent', data.message, 'error');
     } else if (data.type === 'clarification') {
-      responseDiv.className = 'response';
-      responseDiv.textContent = data.question || 'Could you clarify?';
+      addMessage('agent', data.question || 'Could you clarify?');
     } else {
-      responseDiv.className = 'response success';
-      responseDiv.textContent = data.message || 'Done.';
-      textarea.value = '';
-      textarea.style.height = 'auto';
-
-      // Auto-close after short delay
-      setTimeout(() => window.close(), 1500);
+      // Determine if this was a note creation (contains ✓ or "Added" or "Recorded" etc.)
+      const msg = data.message || 'Done.';
+      const isNoteCreation = /^(\u2713|✓|Done|Added|Recorded|Got it|Logged|Created)/i.test(msg);
+      addMessage('agent', msg, isNoteCreation ? 'success' : undefined);
     }
   } catch (err) {
-    responseDiv.className = 'response error';
-    responseDiv.textContent = err.message;
+    hideProcessing();
+    addMessage('agent', err.message, 'error');
   }
 
   textarea.disabled = false;
-  sendBtn.disabled = !textarea.value.trim();
+  sendBtn.disabled = true; // Input is now empty
   textarea.focus();
 }
 

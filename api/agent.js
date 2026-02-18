@@ -422,7 +422,7 @@ export default async function handler(req, res) {
     const isCommandRequest = (msg) => {
       const lower = msg.toLowerCase().trim();
       // Explicit command patterns
-      if (/^(go to|navigate|show me|show all|list|search|find|delete|remove|move|rename|sort|filter|clear|help|what is|what can|how do|undo|restore|empty trash)\b/i.test(lower)) return true;
+      if (/^(go to|navigate|show me|show all|list|search|find|delete|remove|move|rename|sort|filter|clear|help|what is|what can|how do|how many|undo|restore|empty trash)\b/i.test(lower)) return true;
       // Slash commands
       if (/^\//.test(lower)) return true;
       // Questions
@@ -438,7 +438,8 @@ export default async function handler(req, res) {
       return false;
     };
     // Treat everything as note creation UNLESS it looks like a command
-    const expectsNoteCreation = !isCommandRequest(message);
+    // Extension requests skip this safeguard — the extension prompt handles it
+    const expectsNoteCreation = !isExtension && !isCommandRequest(message);
     console.log('Note creation detection:', { message: message.substring(0, 50), expectsNoteCreation, isCommand: !expectsNoteCreation });
 
     while (iterations < MAX_ITERATIONS) {
