@@ -5,6 +5,31 @@ let pages = [];
 let selectedPageId = null;
 let selectedSectionId = null;
 
+// Google icon SVG markup (static, safe)
+const GOOGLE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#e8e8e8" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#e8e8e8" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#e8e8e8" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#e8e8e8" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
+
+// Helper: build DOM elements safely
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'className') node.className = v;
+    else if (k === 'textContent') node.textContent = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
+    else node.setAttribute(k, v);
+  }
+  for (const child of children) {
+    if (typeof child === 'string') node.appendChild(document.createTextNode(child));
+    else if (child) node.appendChild(child);
+  }
+  return node;
+}
+
+// Helper: set innerHTML for static trusted markup only (extension-controlled templates)
+function setTrustedHTML(element, html) {
+  // All HTML set here is hardcoded in this extension file - no user input is interpolated unsanitized
+  element.innerHTML = html;
+}
+
 // Initialize popup
 async function init() {
   const session = await getSession();
@@ -15,85 +40,118 @@ async function init() {
   }
 }
 
-// Sign in view
+// Sign in view - Google OAuth
 function showSignIn() {
-  app.innerHTML = `
-    <div class="header">
-      <h1>Slate</h1>
-    </div>
-    <div class="sign-in">
-      <p>Sign in to your Slate account to save notes from any webpage.</p>
-      <input type="email" id="email" placeholder="Email" autocomplete="email" />
-      <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
-      <button id="sign-in-btn">Sign In</button>
-      <div id="error" class="error"></div>
-    </div>
-  `;
+  app.replaceChildren();
 
-  document.getElementById('sign-in-btn').addEventListener('click', handleSignIn);
-  document.getElementById('password').addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleSignIn();
-  });
-  document.getElementById('email').focus();
+  // Header
+  const header = el('div', { className: 'header' }, [
+    el('h1', { textContent: 'Slate' }),
+  ]);
+
+  // Sign-in section
+  const signInDiv = el('div', { className: 'sign-in' });
+  signInDiv.appendChild(el('p', { textContent: 'Sign in to your Slate account to save notes from any webpage.' }));
+
+  const googleBtn = el('button', { className: 'btn-google', id: 'google-btn' });
+  setTrustedHTML(googleBtn, GOOGLE_ICON + ' Sign in with Google');
+  signInDiv.appendChild(googleBtn);
+
+  const errorDiv = el('div', { id: 'error', className: 'error' });
+  signInDiv.appendChild(errorDiv);
+
+  app.appendChild(header);
+  app.appendChild(signInDiv);
+
+  googleBtn.addEventListener('click', handleGoogleSignIn);
 }
 
-async function handleSignIn() {
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
+async function handleGoogleSignIn() {
   const errorEl = document.getElementById('error');
-  const btn = document.getElementById('sign-in-btn');
-
-  if (!email || !password) {
-    errorEl.textContent = 'Please enter email and password';
-    return;
-  }
+  const btn = document.getElementById('google-btn');
 
   btn.disabled = true;
-  btn.textContent = 'Signing in...';
+  setTrustedHTML(btn, '<div class="spinner"></div> Signing in...');
   errorEl.textContent = '';
 
   try {
-    await signIn(email, password);
+    await signInWithGoogle();
     await showNoteForm();
   } catch (err) {
+    // User closing the popup is not an error worth showing
+    if (err.message?.includes('canceled') || err.message?.includes('closed')) {
+      btn.disabled = false;
+      setTrustedHTML(btn, GOOGLE_ICON + ' Sign in with Google');
+      return;
+    }
     errorEl.textContent = err.message;
     btn.disabled = false;
-    btn.textContent = 'Sign In';
+    setTrustedHTML(btn, GOOGLE_ICON + ' Sign in with Google');
   }
 }
 
 // Note form view
 async function showNoteForm() {
   const session = await getSession();
+  const userName = session?.user?.user_metadata?.full_name
+    || session?.user?.user_metadata?.name
+    || session?.user?.email?.split('@')[0]
+    || 'User';
 
-  app.innerHTML = `
-    <div class="header">
-      <h1>Slate</h1>
-      <button class="sign-out" id="sign-out-btn">Sign Out</button>
-    </div>
-    <div class="note-form">
-      <textarea id="note-content" placeholder="Type a note or select text on any page..." rows="3"></textarea>
-      <div id="source-info" class="source"></div>
-      <div class="picker">
-        <label>Save to</label>
-        <select id="page-select"><option>Loading pages...</option></select>
-        <select id="section-select"><option>Select a page first</option></select>
-      </div>
-      <div class="tags-input">
-        <input type="text" id="tags-input" placeholder="Tags (comma separated)" />
-      </div>
-      <div class="actions">
-        <button class="btn-save" id="save-btn">Save Note</button>
-      </div>
-    </div>
-    <div id="status" class="status"></div>
-    <a href="https://scratchpad.jackwillis.io" target="_blank" class="open-app">Open Slate →</a>
-  `;
+  app.replaceChildren();
 
-  document.getElementById('sign-out-btn').addEventListener('click', handleSignOut);
+  // Header
+  const signOutBtn = el('button', { className: 'sign-out', id: 'sign-out-btn', textContent: userName + ' \u00b7 Sign Out' });
+  const header = el('div', { className: 'header' }, [
+    el('h1', { textContent: 'Slate' }),
+    signOutBtn,
+  ]);
+
+  // Note form
+  const noteForm = el('div', { className: 'note-form' });
+
+  const textarea = el('textarea', { id: 'note-content', placeholder: 'Type a note or select text on any page...', rows: '3' });
+  noteForm.appendChild(textarea);
+
+  const sourceInfo = el('div', { id: 'source-info', className: 'source' });
+  noteForm.appendChild(sourceInfo);
+
+  // Picker
+  const picker = el('div', { className: 'picker' });
+  picker.appendChild(el('label', { textContent: 'Save to' }));
+  const pageSelect = el('select', { id: 'page-select' });
+  pageSelect.appendChild(el('option', { textContent: 'Loading pages...' }));
+  picker.appendChild(pageSelect);
+  const sectionSelect = el('select', { id: 'section-select' });
+  sectionSelect.appendChild(el('option', { textContent: 'Select a page first' }));
+  picker.appendChild(sectionSelect);
+  noteForm.appendChild(picker);
+
+  // Tags
+  const tagsDiv = el('div', { className: 'tags-input' });
+  tagsDiv.appendChild(el('input', { type: 'text', id: 'tags-input', placeholder: 'Tags (comma separated)' }));
+  noteForm.appendChild(tagsDiv);
+
+  // Actions
+  const actions = el('div', { className: 'actions' });
+  actions.appendChild(el('button', { className: 'btn-save', id: 'save-btn', textContent: 'Save Note' }));
+  noteForm.appendChild(actions);
+
+  const statusDiv = el('div', { id: 'status', className: 'status' });
+
+  const openApp = el('a', { href: 'https://scratchpad.jackwillis.io', target: '_blank', className: 'open-app' });
+  setTrustedHTML(openApp, 'Open Slate &rarr;');
+
+  app.appendChild(header);
+  app.appendChild(noteForm);
+  app.appendChild(statusDiv);
+  app.appendChild(openApp);
+
+  // Event listeners
+  signOutBtn.addEventListener('click', handleSignOut);
   document.getElementById('save-btn').addEventListener('click', handleSave);
-  document.getElementById('page-select').addEventListener('change', handlePageChange);
-  document.getElementById('note-content').addEventListener('keydown', e => {
+  pageSelect.addEventListener('change', handlePageChange);
+  textarea.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSave();
   });
 
@@ -103,7 +161,7 @@ async function showNoteForm() {
   // Load pages
   await loadPages();
 
-  document.getElementById('note-content').focus();
+  textarea.focus();
 }
 
 async function loadInitialContent() {
@@ -115,7 +173,7 @@ async function loadInitialContent() {
   if (stored.pendingNote) {
     textarea.value = stored.pendingNote.content;
     if (stored.pendingNote.sourceTitle) {
-      sourceEl.textContent = `From: ${stored.pendingNote.sourceTitle}`;
+      sourceEl.textContent = 'From: ' + stored.pendingNote.sourceTitle;
     }
     await chrome.storage.local.remove('pendingNote');
     return;
@@ -128,7 +186,7 @@ async function loadInitialContent() {
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'getSelection' });
       if (response?.text) {
         textarea.value = response.text;
-        sourceEl.textContent = `From: ${response.title || response.url}`;
+        sourceEl.textContent = 'From: ' + (response.title || response.url);
       }
     }
   } catch {
@@ -143,13 +201,14 @@ async function loadPages() {
     pages = await getPages();
 
     if (pages.length === 0) {
-      pageSelect.innerHTML = '<option value="">No pages found</option>';
+      pageSelect.replaceChildren(el('option', { value: '', textContent: 'No pages found' }));
       return;
     }
 
-    pageSelect.innerHTML = pages.map(p =>
-      `<option value="${p.id}">${p.name}</option>`
-    ).join('');
+    pageSelect.replaceChildren();
+    for (const p of pages) {
+      pageSelect.appendChild(el('option', { value: p.id, textContent: p.name }));
+    }
 
     // Load saved default
     const saved = await chrome.storage.local.get('slate_default_page');
@@ -160,7 +219,7 @@ async function loadPages() {
 
     handlePageChange();
   } catch (err) {
-    pageSelect.innerHTML = `<option value="">Error loading pages</option>`;
+    pageSelect.replaceChildren(el('option', { value: '', textContent: 'Error loading pages' }));
   }
 }
 
@@ -174,16 +233,17 @@ function handlePageChange() {
 
   const page = pages.find(p => p.id === selectedPageId);
   if (!page?.sections?.length) {
-    sectionSelect.innerHTML = '<option value="">No sections</option>';
+    sectionSelect.replaceChildren(el('option', { value: '', textContent: 'No sections' }));
     selectedSectionId = null;
     return;
   }
 
   // Sort sections by position
   const sections = [...page.sections].sort((a, b) => (a.position || 0) - (b.position || 0));
-  sectionSelect.innerHTML = sections.map(s =>
-    `<option value="${s.id}">${s.name}</option>`
-  ).join('');
+  sectionSelect.replaceChildren();
+  for (const s of sections) {
+    sectionSelect.appendChild(el('option', { value: s.id, textContent: s.name }));
+  }
 
   // Load saved default section
   chrome.storage.local.get('slate_default_section').then(saved => {

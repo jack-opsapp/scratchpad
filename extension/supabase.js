@@ -101,30 +101,62 @@ async function refreshToken() {
 }
 
 /**
- * Sign in with email/password
+ * Sign in with Google OAuth via chrome.identity.launchWebAuthFlow
+ * Opens a popup window that handles the Google OAuth flow through Supabase
  */
-async function signIn(email, password) {
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
+async function signInWithGoogle() {
+  // Build the Supabase OAuth URL
+  // The redirect goes to the Chrome extension's identity redirect URL
+  const redirectUrl = chrome.identity.getRedirectURL();
+  const authUrl = `${SUPABASE_URL}/auth/v1/authorize?` + new URLSearchParams({
+    provider: 'google',
+    redirect_to: redirectUrl,
+  }).toString();
+
+  // Launch the OAuth flow in a popup
+  const responseUrl = await new Promise((resolve, reject) => {
+    chrome.identity.launchWebAuthFlow(
+      { url: authUrl, interactive: true },
+      (callbackUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(callbackUrl);
+        }
+      }
+    );
+  });
+
+  // Parse tokens from the callback URL hash fragment
+  // Supabase returns: #access_token=...&refresh_token=...&...
+  const hashIndex = responseUrl.indexOf('#');
+  if (hashIndex === -1) throw new Error('No auth tokens received');
+
+  const hashParams = new URLSearchParams(responseUrl.substring(hashIndex + 1));
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+
+  if (!accessToken) throw new Error('No access token received');
+
+  // Fetch user info from Supabase using the access token
+  const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: {
       'apikey': SUPABASE_ANON_KEY,
-      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ email, password }),
   });
 
-  if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error_description || err.msg || 'Sign in failed');
-  }
+  if (!userResponse.ok) throw new Error('Failed to get user info');
+  const user = await userResponse.json();
 
-  const data = await response.json();
+  // Store the session
   await setSession({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    user: data.user,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user,
   });
-  return data.user;
+
+  return user;
 }
 
 /**
