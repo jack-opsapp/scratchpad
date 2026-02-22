@@ -775,10 +775,13 @@ export const dataStore = {
   },
 
   /**
-   * Save all data at once
+   * Save all data at once. Only saves the data types that are provided.
+   * Notes are intentionally omitted by the debounced caller because each
+   * note mutation persists directly to Supabase; bulk-saving notes from
+   * local state would risk overwriting server-side changes.
    * @param {{pages?, tags?, notes?, boxConfigs?}} data
    */
-  async saveAll({ pages, tags, notes, boxConfigs }) {
+  async saveAll({ pages, tags, notes, boxConfigs } = {}) {
     const promises = [];
 
     if (pages !== undefined) {

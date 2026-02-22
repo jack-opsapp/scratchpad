@@ -415,15 +415,17 @@ export function MainApp({ user, onSignOut }) {
     }
   }, [settings]);
 
-  // Save data on changes (debounced to prevent stale saves from overwriting direct operations)
+  // Save data on changes (debounced). Notes are excluded because each note
+  // mutation (create, toggle, edit, delete) already persists directly to Supabase.
+  // Including notes here would cause stale local state to overwrite server-side changes.
   useEffect(() => {
     if (!loading) {
       const timer = setTimeout(() => {
-        dataStore.saveAll({ pages, tags, notes, boxConfigs });
+        dataStore.saveAll({ pages, tags, boxConfigs });
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [pages, tags, notes, boxConfigs, loading]);
+  }, [pages, tags, boxConfigs, loading]);
 
   // Sync offline queue when back online
   useEffect(() => {
