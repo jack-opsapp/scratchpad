@@ -261,8 +261,13 @@ async function getNotes(supabase, userId, args) {
     .select('id, content, tags, date, completed, created_at, section_id')
     .in('section_id', sectionIds)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(args.limit || 50);
+    .order('created_at', { ascending: false });
+
+  // Apply limit: default 50 for normal queries, skip limit when explicitly set to 0
+  const limit = args.limit === 0 ? 0 : (args.limit || 50);
+  if (limit > 0) {
+    query = query.limit(limit);
+  }
 
   // Apply filters
   if (args.section_id) {
@@ -652,21 +657,21 @@ async function moveNote(supabase, userId, args) {
 async function bulkUpdateNotes(supabase, userId, args) {
   const { filter, updates } = args;
 
-  // Get notes matching filter
-  const notes = await getNotes(supabase, userId, { ...filter, limit: 1000 });
+  // Get ALL notes matching filter (limit: 0 removes the default cap)
+  const notes = await getNotes(supabase, userId, { ...filter, limit: 0 });
 
   if (!notes.length) {
-    return { updated_count: 0, message: 'No notes matched the filter' };
+    return { success: true, updated: 0, failed: 0, total: 0, message: 'No notes matched the filter' };
   }
 
   // If specific note_ids provided, filter to those
-  let noteIds = notes.map(n => n.id);
+  let targetNotes = notes;
   if (filter.note_ids?.length) {
-    noteIds = noteIds.filter(id => filter.note_ids.includes(id));
+    targetNotes = notes.filter(n => filter.note_ids.includes(n.id));
   }
 
-  if (!noteIds.length) {
-    return { updated_count: 0, message: 'No notes matched the filter' };
+  if (!targetNotes.length) {
+    return { success: true, updated: 0, failed: 0, total: 0, message: 'No notes matched the filter' };
   }
 
   // Build update object
@@ -691,13 +696,12 @@ async function bulkUpdateNotes(supabase, userId, args) {
     }
   }
 
-  // For add_tags/remove_tags, we need to update each note individually
+  // For add_tags/remove_tags, we need to update each note individually (sequential)
   if (updates.add_tags || updates.remove_tags) {
-    let updatedCount = 0;
+    let updated = 0;
+    let failed = 0;
 
-    for (const note of notes) {
-      if (!noteIds.includes(note.id)) continue;
-
+    for (const note of targetNotes) {
       let newTags = [...(note.tags || [])];
       if (updates.add_tags) {
         newTags = [...new Set([...newTags, ...updates.add_tags])];
@@ -713,47 +717,78 @@ async function bulkUpdateNotes(supabase, userId, args) {
         .update(noteUpdate)
         .eq('id', note.id);
 
-      if (!error) updatedCount++;
+      if (error) {
+        failed++;
+      } else {
+        updated++;
+      }
     }
 
-    return { updated_count: updatedCount };
+    return { success: failed === 0, updated, failed, total: targetNotes.length };
   }
 
-  // Bulk update if no tag manipulation needed
+  // Bulk update if no tag manipulation needed — process sequentially for reliability
   if (Object.keys(updateObj).length > 0) {
-    const { error } = await supabase
-      .from('notes')
-      .update(updateObj)
-      .in('id', noteIds);
+    let updated = 0;
+    let failed = 0;
 
-    if (error) throw error;
+    for (const note of targetNotes) {
+      const { error } = await supabase
+        .from('notes')
+        .update(updateObj)
+        .eq('id', note.id);
+
+      if (error) {
+        failed++;
+      } else {
+        updated++;
+      }
+    }
+
+    return { success: failed === 0, updated, failed, total: targetNotes.length };
   }
 
-  return { updated_count: noteIds.length };
+  return { success: true, updated: 0, failed: 0, total: targetNotes.length, message: 'No updates to apply' };
 }
 
 async function bulkDeleteNotes(supabase, userId, args) {
   const { filter } = args;
 
-  // Get notes matching filter
-  const notes = await getNotes(supabase, userId, { ...filter, limit: 1000 });
+  // Get ALL notes matching filter (limit: 0 removes the default cap)
+  const notes = await getNotes(supabase, userId, { ...filter, limit: 0 });
 
   if (!notes.length) {
-    return { deleted_count: 0, message: 'No notes matched the filter' };
+    return { success: true, deleted: 0, failed: 0, total: 0, message: 'No notes matched the filter' };
   }
 
-  let noteIds = notes.map(n => n.id);
+  let targetNotes = notes;
   if (filter.note_ids?.length) {
-    noteIds = noteIds.filter(id => filter.note_ids.includes(id));
+    targetNotes = notes.filter(n => filter.note_ids.includes(n.id));
   }
 
-  const { error } = await supabase
-    .from('notes')
-    .update({ deleted_at: new Date().toISOString() })
-    .in('id', noteIds);
+  if (!targetNotes.length) {
+    return { success: true, deleted: 0, failed: 0, total: 0, message: 'No notes matched the filter' };
+  }
 
-  if (error) throw error;
-  return { deleted_count: noteIds.length };
+  // Delete sequentially for reliability and accurate counting
+  const now = new Date().toISOString();
+  let deleted = 0;
+  let failed = 0;
+
+  for (const note of targetNotes) {
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: now })
+      .eq('id', note.id);
+
+    if (error) {
+      failed++;
+    } else {
+      deleted++;
+    }
+  }
+
+  return { success: failed === 0, deleted, failed, total: targetNotes.length };
 }
 
 // ============ SORT OPERATIONS ============

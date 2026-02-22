@@ -634,23 +634,35 @@ async function executeBulkMoveOperation(action, context, allPages, setNotes) {
     };
   }
 
-  // Update notes in Supabase
-  const noteIds = targetNotes.map(n => n.id);
-  await supabase
-    .from('notes')
-    .update({ section_id: sectionId })
-    .in('id', noteIds);
+  // Update notes in Supabase sequentially for reliability
+  const noteIds = [];
+  let failCount = 0;
 
-  // Update local state
+  for (const note of targetNotes) {
+    const { error: updateError } = await supabase
+      .from('notes')
+      .update({ section_id: sectionId })
+      .eq('id', note.id);
+
+    if (updateError) {
+      console.error('Failed to move note:', note.id, updateError);
+      failCount++;
+    } else {
+      noteIds.push(note.id);
+    }
+  }
+
+  // Update local state only for successfully moved notes
   setNotes(prev => prev.map(n =>
     noteIds.includes(n.id) ? { ...n, sectionId: sectionId } : n
   ));
 
   return {
     action: 'move_to_section',
-    name: `${targetNotes.length} notes to ${action.sectionName || 'section'}`,
-    success: true,
-    count: targetNotes.length
+    name: `${noteIds.length} notes to ${action.sectionName || 'section'}`,
+    success: failCount === 0,
+    count: noteIds.length,
+    errors: failCount
   };
 }
 
@@ -683,20 +695,31 @@ async function executeBulkStatusOperation(action, operation, context, setNotes) 
   }
 
   const isComplete = operation === 'mark_complete';
-  const noteIds = targetNotes.map(n => n.id);
+  const succeededIds = [];
+  let failCount = 0;
 
-  await supabase
-    .from('notes')
-    .update({
-      completed: isComplete,
-      completed_by_user_id: isComplete ? user.id : null,
-      completed_at: isComplete ? new Date().toISOString() : null
-    })
-    .in('id', noteIds);
+  // Update notes sequentially for reliability
+  for (const note of targetNotes) {
+    const { error: updateError } = await supabase
+      .from('notes')
+      .update({
+        completed: isComplete,
+        completed_by_user_id: isComplete ? user.id : null,
+        completed_at: isComplete ? new Date().toISOString() : null
+      })
+      .eq('id', note.id);
 
-  // Update local state
+    if (updateError) {
+      console.error('Failed to update note status:', note.id, updateError);
+      failCount++;
+    } else {
+      succeededIds.push(note.id);
+    }
+  }
+
+  // Update local state only for successfully updated notes
   setNotes(prev => prev.map(n => {
-    if (!noteIds.includes(n.id)) return n;
+    if (!succeededIds.includes(n.id)) return n;
     return {
       ...n,
       completed: isComplete,
@@ -707,9 +730,10 @@ async function executeBulkStatusOperation(action, operation, context, setNotes) 
 
   return {
     action: operation,
-    name: `${targetNotes.length} notes`,
-    success: true,
-    count: targetNotes.length
+    name: `${succeededIds.length} notes`,
+    success: failCount === 0,
+    count: succeededIds.length,
+    errors: failCount
   };
 }
 
