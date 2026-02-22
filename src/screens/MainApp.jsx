@@ -3320,7 +3320,7 @@ export function MainApp({ user, onSignOut }) {
                       </>
                     );
                   })()
-                  ) : (
+                  : (
                     <p
                       style={{
                         color: colors.textMuted,
