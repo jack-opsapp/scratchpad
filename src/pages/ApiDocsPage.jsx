@@ -324,8 +324,10 @@ const endpoints = [
     method: 'GET',
     path: '/api/v1/pages',
     auth: 'X-API-Key',
-    description: 'List all pages for the authenticated user, ordered by position.',
-    params: [],
+    description: 'List all pages for the authenticated user, ordered by position. Excludes deleted pages by default.',
+    params: [
+      { name: 'deleted', type: 'string', required: false, description: '"include" to return all pages, "only" to return only deleted pages. Omit for active pages only.' },
+    ],
     curl: `curl ${BASE_URL}/api/v1/pages \\
   -H "X-API-Key: sk_live_YOUR_KEY"`,
     response: JSON.stringify({ pages: [{ id: 'uuid', name: 'Work', starred: false, position: 0, created_at: '2025-01-15T10:30:00Z' }] }, null, 2),
@@ -350,9 +352,10 @@ const endpoints = [
     method: 'GET',
     path: '/api/v1/sections',
     auth: 'X-API-Key',
-    description: 'List sections. Optionally filter by page_id. Omit page_id to get all sections across all pages.',
+    description: 'List sections. Optionally filter by page_id. Omit page_id to get all sections across all pages. Excludes deleted sections by default.',
     params: [
       { name: 'page_id', type: 'uuid', required: false, description: 'Filter to sections in this page' },
+      { name: 'deleted', type: 'string', required: false, description: '"include" to return all sections, "only" to return only deleted sections. Omit for active sections only.' },
     ],
     curl: `curl "${BASE_URL}/api/v1/sections?page_id=PAGE_UUID" \\
   -H "X-API-Key: sk_live_YOUR_KEY"`,
@@ -379,7 +382,7 @@ const endpoints = [
     method: 'GET',
     path: '/api/v1/notes',
     auth: 'X-API-Key',
-    description: 'List notes with optional filters. Returns up to 200 notes (default 50), ordered newest-first.',
+    description: 'List notes with optional filters. Returns up to 200 notes (default 50), ordered newest-first. Excludes deleted notes by default.',
     params: [
       { name: 'page_id', type: 'uuid', required: false, description: 'Filter by page' },
       { name: 'section_id', type: 'uuid', required: false, description: 'Filter by section' },
@@ -389,6 +392,7 @@ const endpoints = [
       { name: 'date_to', type: 'ISO 8601', required: false, description: 'Notes created on or before this date' },
       { name: 'search', type: 'string', required: false, description: 'Case-insensitive substring search on content' },
       { name: 'limit', type: 'integer', required: false, description: 'Max results (1-200, default 50)' },
+      { name: 'deleted', type: 'string', required: false, description: '"include" to return all notes, "only" to return only deleted notes. Omit for active notes only.' },
     ],
     curl: `curl "${BASE_URL}/api/v1/notes?section_id=SEC_UUID&completed=false&limit=10" \\
   -H "X-API-Key: sk_live_YOUR_KEY"`,

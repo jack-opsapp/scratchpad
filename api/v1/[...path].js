@@ -141,16 +141,26 @@ async function handlePages(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const { data, error } = await supabase
+      const { deleted } = req.query;
+      if (deleted && deleted !== 'include' && deleted !== 'only') {
+        return res.status(400).json({ error: 'deleted must be "include" or "only"' });
+      }
+
+      let query = supabase
         .from('pages')
-        .select('id, name, starred, position, created_at')
+        .select('id, name, starred, position, created_at, deleted_at')
         .eq('user_id', userId)
         .order('position');
 
+      if (deleted === 'only') query = query.not('deleted_at', 'is', null);
+      else if (deleted !== 'include') query = query.is('deleted_at', null);
+
+      const { data, error } = await query;
       if (error) return res.status(500).json({ error: 'Failed to fetch pages' });
       return res.json({ pages: data || [] });
     }
 
+    // POST — ownership fetch includes all pages for position calc
     const { name } = req.body || {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'name is required' });
@@ -164,7 +174,7 @@ async function handlePages(req, res) {
     const { data, error } = await supabase
       .from('pages')
       .insert({ name: name.trim(), user_id: userId, position })
-      .select('id, name, starred, position, created_at')
+      .select('id, name, starred, position, created_at, deleted_at')
       .single();
 
     if (error) return res.status(500).json({ error: 'Failed to create page' });
@@ -185,6 +195,7 @@ async function handleSections(req, res) {
   const { userId, supabase } = auth;
 
   try {
+    // Ownership check — always fetch all pages regardless of deleted status
     const { data: pages, error: pagesError } = await supabase
       .from('pages').select('id, name').eq('user_id', userId);
     if (pagesError) return res.status(500).json({ error: 'Failed to fetch pages' });
@@ -193,13 +204,19 @@ async function handleSections(req, res) {
     const pageNameMap = Object.fromEntries((pages || []).map(p => [p.id, p.name]));
 
     if (req.method === 'GET') {
-      const { page_id } = req.query;
+      const { page_id, deleted } = req.query;
+      if (deleted && deleted !== 'include' && deleted !== 'only') {
+        return res.status(400).json({ error: 'deleted must be "include" or "only"' });
+      }
       if (page_id && !userPageIds.includes(page_id)) {
         return res.status(403).json({ error: 'page_id not found or access denied' });
       }
 
       let query = supabase.from('sections')
-        .select('id, name, page_id, position, created_at').order('position');
+        .select('id, name, page_id, position, created_at, deleted_at').order('position');
+
+      if (deleted === 'only') query = query.not('deleted_at', 'is', null);
+      else if (deleted !== 'include') query = query.is('deleted_at', null);
 
       if (page_id) query = query.eq('page_id', page_id);
       else if (userPageIds.length > 0) query = query.in('page_id', userPageIds);
@@ -212,7 +229,8 @@ async function handleSections(req, res) {
         sections: (data || []).map(s => ({
           id: s.id, name: s.name, page_id: s.page_id,
           page_name: pageNameMap[s.page_id] || null,
-          position: s.position, created_at: s.created_at
+          position: s.position, created_at: s.created_at,
+          deleted_at: s.deleted_at
         }))
       });
     }
@@ -230,7 +248,7 @@ async function handleSections(req, res) {
     const { data, error } = await supabase
       .from('sections')
       .insert({ name: name.trim(), page_id, position })
-      .select('id, name, page_id, position, created_at')
+      .select('id, name, page_id, position, created_at, deleted_at')
       .single();
 
     if (error) return res.status(500).json({ error: 'Failed to create section' });
@@ -254,6 +272,7 @@ async function handleNotes(req, res) {
   const { userId, supabase } = auth;
 
   try {
+    // Ownership checks — always include all pages/sections regardless of deleted status
     const { data: pages, error: pagesError } = await supabase
       .from('pages').select('id, name').eq('user_id', userId);
     if (pagesError) return res.status(500).json({ error: 'Failed to fetch pages' });
@@ -272,7 +291,10 @@ async function handleNotes(req, res) {
     const sectionMap = Object.fromEntries((sections || []).map(s => [s.id, s]));
 
     if (req.method === 'GET') {
-      const { page_id, section_id, completed, tags, date_from, date_to, search, limit: limitParam } = req.query;
+      const { page_id, section_id, completed, tags, date_from, date_to, search, limit: limitParam, deleted } = req.query;
+      if (deleted && deleted !== 'include' && deleted !== 'only') {
+        return res.status(400).json({ error: 'deleted must be "include" or "only"' });
+      }
       const limit = Math.min(parseInt(limitParam) || 50, 200);
 
       if (page_id && !userPageIds.includes(page_id)) return res.status(403).json({ error: 'page_id not found or access denied' });
@@ -280,9 +302,12 @@ async function handleNotes(req, res) {
       if (!userSectionIds.length) return res.json({ notes: [], total: 0 });
 
       let query = supabase.from('notes')
-        .select('id, content, tags, date, completed, created_at, section_id')
+        .select('id, content, tags, date, completed, created_at, deleted_at, section_id')
         .in('section_id', userSectionIds)
         .order('created_at', { ascending: false }).limit(limit);
+
+      if (deleted === 'only') query = query.not('deleted_at', 'is', null);
+      else if (deleted !== 'include') query = query.is('deleted_at', null);
 
       if (section_id) {
         query = query.eq('section_id', section_id);
@@ -309,6 +334,7 @@ async function handleNotes(req, res) {
         return {
           id: note.id, content: note.content, tags: note.tags || [],
           date: note.date, completed: note.completed, created_at: note.created_at,
+          deleted_at: note.deleted_at,
           section_id: note.section_id, section_name: section?.name || null,
           page_id: section?.page_id || null,
           page_name: section ? (pageNameMap[section.page_id] || null) : null
@@ -326,7 +352,7 @@ async function handleNotes(req, res) {
 
     const { data, error } = await supabase.from('notes')
       .insert({ content: content.trim(), section_id, tags: Array.isArray(tags) ? tags : [], date: date || null, completed: false })
-      .select('id, content, tags, date, completed, created_at, section_id')
+      .select('id, content, tags, date, completed, created_at, deleted_at, section_id')
       .single();
 
     if (error) return res.status(500).json({ error: 'Failed to create note' });
@@ -347,16 +373,17 @@ async function handleTags(req, res) {
   const { userId, supabase } = auth;
 
   try {
-    const { data: pages } = await supabase.from('pages').select('id').eq('user_id', userId);
+    // Only aggregate tags from non-deleted pages, sections, and notes
+    const { data: pages } = await supabase.from('pages').select('id').eq('user_id', userId).is('deleted_at', null);
     const userPageIds = (pages || []).map(p => p.id);
     if (!userPageIds.length) return res.json({ tags: [] });
 
-    const { data: sections } = await supabase.from('sections').select('id').in('page_id', userPageIds);
+    const { data: sections } = await supabase.from('sections').select('id').in('page_id', userPageIds).is('deleted_at', null);
     const userSectionIds = (sections || []).map(s => s.id);
     if (!userSectionIds.length) return res.json({ tags: [] });
 
     const { data: notes, error } = await supabase.from('notes')
-      .select('tags').in('section_id', userSectionIds).not('tags', 'is', null);
+      .select('tags').in('section_id', userSectionIds).is('deleted_at', null).not('tags', 'is', null);
     if (error) return res.status(500).json({ error: 'Failed to fetch tags' });
 
     const allTags = [...new Set((notes || []).flatMap(n => n.tags || []).filter(Boolean))].sort();
