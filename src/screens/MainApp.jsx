@@ -2904,6 +2904,27 @@ export function MainApp({ user, onSignOut }) {
                       setShowHeaderMenu(!showHeaderMenu);
                     }}
                   />
+                  {currentSection && !viewingPageLevel && filteredNotes.some(n => !n.completed) && (
+                    <button
+                      onClick={handleCompleteAll}
+                      title="Complete all notes in this section"
+                      style={{
+                        background: 'transparent',
+                        border: `1px solid ${colors.border}`,
+                        color: colors.textMuted,
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        marginLeft: 8,
+                      }}
+                    >
+                      <Check size={12} /> All
+                    </button>
+                  )}
                 </div>
                 {showHeaderMenu && (
                   <ContextMenu
