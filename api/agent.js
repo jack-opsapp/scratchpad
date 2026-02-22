@@ -448,6 +448,21 @@ export default async function handler(req, res) {
     const expectsNoteCreation = !isExtension && !isCommandRequest(message);
     console.log('Note creation detection:', { message: message.substring(0, 50), expectsNoteCreation, isCommand: !expectsNoteCreation });
 
+    // Detect potentially truncated notes and inject a warning into the system prompt
+    if (expectsNoteCreation) {
+      const trimmed = message.trim();
+      const looksIncomplete = trimmed.length > 200 &&
+        !trimmed.match(/[.!?)\]"'\u2019]$/) &&
+        !trimmed.endsWith('...') &&
+        !trimmed.endsWith('\u2026');
+
+      if (looksIncomplete) {
+        const truncationWarning = '\n\nIMPORTANT: The user\'s message appears to be cut off (it\'s long and doesn\'t end with punctuation). Before creating the note, use ask_clarification to ask: "Your note seems like it might be cut off. Should I save it as-is, or did you want to add more?"';
+        messages[0].content += truncationWarning;
+        console.log('Truncation warning injected — message may be cut off');
+      }
+    }
+
     while (iterations < MAX_ITERATIONS) {
       iterations++;
       const iterStartTime = Date.now();
