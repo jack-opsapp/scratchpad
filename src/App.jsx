@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth.js';
 import { SignedOutScreen, MainApp } from './screens/index.js';
 import PublicPage from './pages/PublicPage.jsx';
+import ApiDocsPage from './pages/ApiDocsPage.jsx';
 import { colors } from './styles/theme.js';
 
 /**
@@ -96,7 +97,10 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/docs" element={<ApiDocsPage />} />
         <Route path="/public/:token" element={<PublicPage />} />
+        <Route path="/p/:pageId/s/:sectionId" element={<Slate />} />
+        <Route path="/p/:pageId" element={<Slate />} />
         <Route path="/*" element={<Slate />} />
       </Routes>
     </BrowserRouter>
