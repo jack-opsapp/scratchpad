@@ -470,7 +470,7 @@ export default function ApiDocsPage() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: colors.bg }}>
+    <div style={{ height: '100vh', overflowY: 'auto', background: colors.bg }}>
       {/* Page header */}
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '60px 32px 40px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
