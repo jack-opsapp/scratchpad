@@ -353,10 +353,10 @@ export function MainApp({ user, onSignOut }) {
 
       setExpandedPages([]);
 
-      // Check URL for page/section first, then fall back to settings default
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlPageId = urlParams.get('page');
-      const urlSectionId = urlParams.get('section');
+      // Check URL path for page/section first, then fall back to settings default
+      const pathMatch = window.location.pathname.match(/\/p\/([^/]+)(?:\/s\/([^/]+))?/);
+      const urlPageId = pathMatch?.[1] || null;
+      const urlSectionId = pathMatch?.[2] || null;
 
       if (urlPageId) {
         const urlPage = allPages.find(p => p.id === urlPageId);
@@ -390,19 +390,17 @@ export function MainApp({ user, onSignOut }) {
     load();
   }, []);
 
-  // Sync navigation state to URL for reload persistence
+  // Sync navigation state to URL path for reload persistence
   useEffect(() => {
     if (loading) return;
-    const params = new URLSearchParams();
+    let path = '/';
     if (currentPage) {
-      params.set('page', currentPage);
+      path = `/p/${currentPage}`;
       if (currentSection && !viewingPageLevel) {
-        params.set('section', currentSection);
+        path += `/s/${currentSection}`;
       }
     }
-    const qs = params.toString();
-    const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
-    window.history.replaceState(null, '', newUrl);
+    window.history.replaceState(null, '', path);
   }, [currentPage, currentSection, viewingPageLevel, loading]);
 
   // Apply theme settings when they change
