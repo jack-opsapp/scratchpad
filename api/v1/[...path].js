@@ -2,14 +2,20 @@
  * Slate REST API v1 — catch-all router
  *
  * Routes:
- *   POST /api/v1/keys              (Bearer JWT auth)
- *   GET  /api/v1/pages
- *   POST /api/v1/pages
- *   GET  /api/v1/sections?page_id=
- *   POST /api/v1/sections
- *   GET  /api/v1/notes?...filters
- *   POST /api/v1/notes
- *   GET  /api/v1/tags
+ *   POST   /api/v1/keys              (Bearer JWT auth)
+ *   GET    /api/v1/pages
+ *   POST   /api/v1/pages
+ *   PATCH  /api/v1/pages/:id
+ *   DELETE /api/v1/pages/:id
+ *   GET    /api/v1/sections?page_id=
+ *   POST   /api/v1/sections
+ *   PATCH  /api/v1/sections/:id
+ *   DELETE /api/v1/sections/:id
+ *   GET    /api/v1/notes?...filters
+ *   POST   /api/v1/notes
+ *   PATCH  /api/v1/notes/:id
+ *   DELETE /api/v1/notes/:id
+ *   GET    /api/v1/tags
  *
  * All data endpoints use X-API-Key header auth.
  */
@@ -66,21 +72,22 @@ async function authenticateApiKey(req, res) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Extract resource from URL path (works regardless of rewrite config)
+  // Extract resource and optional ID from URL path
   const urlPath = req.url.split('?')[0];
-  const match = urlPath.match(/\/api\/v1\/([^/]+)/);
+  const match = urlPath.match(/\/api\/v1\/([^/]+)(?:\/([^/]+))?/);
   const resource = match?.[1] || (req.query.path?.[0]) || '';
+  const resourceId = match?.[2] || (req.query.path?.[1]) || null;
 
   switch (resource) {
     case 'keys':     return handleKeys(req, res);
-    case 'pages':    return handlePages(req, res);
-    case 'sections': return handleSections(req, res);
-    case 'notes':    return handleNotes(req, res);
+    case 'pages':    return handlePages(req, res, resourceId);
+    case 'sections': return handleSections(req, res, resourceId);
+    case 'notes':    return handleNotes(req, res, resourceId);
     case 'tags':     return handleTags(req, res);
     default:
       return res.status(404).json({ error: `Unknown resource: ${resource || '(empty)'}` });
@@ -132,8 +139,13 @@ async function handleKeys(req, res) {
 
 // ============ /pages ============
 
-async function handlePages(req, res) {
-  if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function handlePages(req, res, resourceId) {
+  // Method guard: PATCH/DELETE require resourceId; GET/POST must not have one
+  if (resourceId) {
+    if (req.method !== 'PATCH' && req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  } else {
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const auth = await authenticateApiKey(req, res);
   if (!auth) return;
@@ -160,25 +172,74 @@ async function handlePages(req, res) {
       return res.json({ pages: data || [] });
     }
 
-    // POST — ownership fetch includes all pages for position calc
-    const { name } = req.body || {};
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'name is required' });
+    if (req.method === 'POST') {
+      const { name } = req.body || {};
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'name is required' });
+      }
+
+      const { data: existing } = await supabase
+        .from('pages').select('position').eq('user_id', userId)
+        .order('position', { ascending: false }).limit(1);
+      const position = (existing?.[0]?.position ?? -1) + 1;
+
+      const { data, error } = await supabase
+        .from('pages')
+        .insert({ name: name.trim(), user_id: userId, position })
+        .select('id, name, starred, position, created_at, deleted_at')
+        .single();
+
+      if (error) return res.status(500).json({ error: 'Failed to create page' });
+      return res.status(201).json({ page: data });
     }
 
-    const { data: existing } = await supabase
-      .from('pages').select('position').eq('user_id', userId)
-      .order('position', { ascending: false }).limit(1);
-    const position = (existing?.[0]?.position ?? -1) + 1;
+    if (req.method === 'PATCH') {
+      const { name, starred } = req.body || {};
+      const updates = {};
 
-    const { data, error } = await supabase
-      .from('pages')
-      .insert({ name: name.trim(), user_id: userId, position })
-      .select('id, name, starred, position, created_at, deleted_at')
-      .single();
+      if (name !== undefined) {
+        if (typeof name !== 'string' || !name.trim()) {
+          return res.status(400).json({ error: 'name must be a non-empty string' });
+        }
+        updates.name = name.trim();
+      }
+      if (starred !== undefined) {
+        if (typeof starred !== 'boolean') {
+          return res.status(400).json({ error: 'starred must be a boolean' });
+        }
+        updates.starred = starred;
+      }
 
-    if (error) return res.status(500).json({ error: 'Failed to create page' });
-    return res.status(201).json({ page: data });
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update (name, starred)' });
+      }
+
+      const { data, error } = await supabase
+        .from('pages')
+        .update(updates)
+        .eq('id', resourceId)
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .select('id, name, starred, position, created_at, deleted_at')
+        .single();
+
+      if (error || !data) return res.status(404).json({ error: 'Page not found' });
+      return res.json({ page: data });
+    }
+
+    if (req.method === 'DELETE') {
+      const { data, error } = await supabase
+        .from('pages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', resourceId)
+        .eq('user_id', userId)
+        .is('deleted_at', null)
+        .select('id')
+        .single();
+
+      if (error || !data) return res.status(404).json({ error: 'Page not found' });
+      return res.json({ deleted: true, id: data.id });
+    }
   } catch (err) {
     console.error('Pages error:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -187,8 +248,13 @@ async function handlePages(req, res) {
 
 // ============ /sections ============
 
-async function handleSections(req, res) {
-  if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function handleSections(req, res, resourceId) {
+  // Method guard: PATCH/DELETE require resourceId; GET/POST must not have one
+  if (resourceId) {
+    if (req.method !== 'PATCH' && req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  } else {
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const auth = await authenticateApiKey(req, res);
   if (!auth) return;
@@ -235,27 +301,89 @@ async function handleSections(req, res) {
       });
     }
 
-    const { name, page_id } = req.body || {};
-    if (!name || typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'name is required' });
-    if (!page_id) return res.status(400).json({ error: 'page_id is required' });
-    if (!userPageIds.includes(page_id)) return res.status(403).json({ error: 'page_id not found or access denied' });
+    if (req.method === 'POST') {
+      const { name, page_id } = req.body || {};
+      if (!name || typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'name is required' });
+      if (!page_id) return res.status(400).json({ error: 'page_id is required' });
+      if (!userPageIds.includes(page_id)) return res.status(403).json({ error: 'page_id not found or access denied' });
 
-    const { data: existing } = await supabase
-      .from('sections').select('position').eq('page_id', page_id)
-      .order('position', { ascending: false }).limit(1);
-    const position = (existing?.[0]?.position ?? -1) + 1;
+      const { data: existing } = await supabase
+        .from('sections').select('position').eq('page_id', page_id)
+        .order('position', { ascending: false }).limit(1);
+      const position = (existing?.[0]?.position ?? -1) + 1;
 
-    const { data, error } = await supabase
-      .from('sections')
-      .insert({ name: name.trim(), page_id, position })
-      .select('id, name, page_id, position, created_at, deleted_at')
-      .single();
+      const { data, error } = await supabase
+        .from('sections')
+        .insert({ name: name.trim(), page_id, position })
+        .select('id, name, page_id, position, created_at, deleted_at')
+        .single();
 
-    if (error) return res.status(500).json({ error: 'Failed to create section' });
+      if (error) return res.status(500).json({ error: 'Failed to create section' });
 
-    return res.status(201).json({
-      section: { ...data, page_name: pageNameMap[data.page_id] || null }
-    });
+      return res.status(201).json({
+        section: { ...data, page_name: pageNameMap[data.page_id] || null }
+      });
+    }
+
+    if (req.method === 'PATCH') {
+      // Fetch section to verify ownership via page_id
+      const { data: section, error: fetchError } = await supabase
+        .from('sections')
+        .select('id, page_id')
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .single();
+
+      if (fetchError || !section || !userPageIds.includes(section.page_id)) {
+        return res.status(404).json({ error: 'Section not found' });
+      }
+
+      const { name } = req.body || {};
+      if (name === undefined) {
+        return res.status(400).json({ error: 'No valid fields to update (name)' });
+      }
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'name must be a non-empty string' });
+      }
+
+      const { data, error } = await supabase
+        .from('sections')
+        .update({ name: name.trim() })
+        .eq('id', resourceId)
+        .select('id, name, page_id, position, created_at, deleted_at')
+        .single();
+
+      if (error || !data) return res.status(500).json({ error: 'Failed to update section' });
+
+      return res.json({
+        section: { ...data, page_name: pageNameMap[data.page_id] || null }
+      });
+    }
+
+    if (req.method === 'DELETE') {
+      // Fetch section to verify ownership via page_id
+      const { data: section, error: fetchError } = await supabase
+        .from('sections')
+        .select('id, page_id')
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .single();
+
+      if (fetchError || !section || !userPageIds.includes(section.page_id)) {
+        return res.status(404).json({ error: 'Section not found' });
+      }
+
+      const { data, error } = await supabase
+        .from('sections')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .select('id')
+        .single();
+
+      if (error || !data) return res.status(500).json({ error: 'Failed to delete section' });
+      return res.json({ deleted: true, id: data.id });
+    }
   } catch (err) {
     console.error('Sections error:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -264,8 +392,13 @@ async function handleSections(req, res) {
 
 // ============ /notes ============
 
-async function handleNotes(req, res) {
-  if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function handleNotes(req, res, resourceId) {
+  // Method guard: PATCH/DELETE require resourceId; GET/POST must not have one
+  if (resourceId) {
+    if (req.method !== 'PATCH' && req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  } else {
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const auth = await authenticateApiKey(req, res);
   if (!auth) return;
@@ -344,19 +477,115 @@ async function handleNotes(req, res) {
       return res.json({ notes, total: notes.length });
     }
 
-    // POST
-    const { content, section_id, tags, date } = req.body || {};
-    if (!content || typeof content !== 'string' || !content.trim()) return res.status(400).json({ error: 'content is required' });
-    if (!section_id) return res.status(400).json({ error: 'section_id is required' });
-    if (!userSectionIds.includes(section_id)) return res.status(403).json({ error: 'section_id not found or access denied' });
+    if (req.method === 'POST') {
+      const { content, section_id, tags, date } = req.body || {};
+      if (!content || typeof content !== 'string' || !content.trim()) return res.status(400).json({ error: 'content is required' });
+      if (!section_id) return res.status(400).json({ error: 'section_id is required' });
+      if (!userSectionIds.includes(section_id)) return res.status(403).json({ error: 'section_id not found or access denied' });
 
-    const { data, error } = await supabase.from('notes')
-      .insert({ content: content.trim(), section_id, tags: Array.isArray(tags) ? tags : [], date: date || null, completed: false })
-      .select('id, content, tags, date, completed, created_at, deleted_at, section_id')
-      .single();
+      const { data, error } = await supabase.from('notes')
+        .insert({ content: content.trim(), section_id, tags: Array.isArray(tags) ? tags : [], date: date || null, completed: false })
+        .select('id, content, tags, date, completed, created_at, deleted_at, section_id')
+        .single();
 
-    if (error) return res.status(500).json({ error: 'Failed to create note' });
-    return res.status(201).json({ note: data });
+      if (error) return res.status(500).json({ error: 'Failed to create note' });
+      return res.status(201).json({ note: data });
+    }
+
+    if (req.method === 'PATCH') {
+      // Fetch note to verify ownership via section_id chain
+      const { data: note, error: fetchError } = await supabase
+        .from('notes')
+        .select('id, content, tags, date, completed, completed_at, created_at, deleted_at, section_id')
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .single();
+
+      if (fetchError || !note || !userSectionIds.includes(note.section_id)) {
+        return res.status(404).json({ error: 'Note not found' });
+      }
+
+      const { content, tags, completed, date } = req.body || {};
+      const updates = {};
+
+      if (content !== undefined) {
+        if (typeof content !== 'string' || !content.trim()) {
+          return res.status(400).json({ error: 'content must be a non-empty string' });
+        }
+        updates.content = content.trim();
+      }
+      if (tags !== undefined) {
+        if (!Array.isArray(tags)) {
+          return res.status(400).json({ error: 'tags must be an array' });
+        }
+        updates.tags = tags;
+      }
+      if (completed !== undefined) {
+        if (typeof completed !== 'boolean') {
+          return res.status(400).json({ error: 'completed must be a boolean' });
+        }
+        updates.completed = completed;
+        // Auto-manage completed_at based on transition
+        if (completed === true && note.completed === false) {
+          updates.completed_at = new Date().toISOString();
+        } else if (completed === false && note.completed === true) {
+          updates.completed_at = null;
+        }
+      }
+      if (date !== undefined) {
+        updates.date = date;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update (content, tags, completed, date)' });
+      }
+
+      const { data, error } = await supabase
+        .from('notes')
+        .update(updates)
+        .eq('id', resourceId)
+        .select('id, content, tags, date, completed, completed_at, created_at, deleted_at, section_id')
+        .single();
+
+      if (error || !data) return res.status(500).json({ error: 'Failed to update note' });
+
+      const section = sectionMap[data.section_id];
+      return res.json({
+        note: {
+          id: data.id, content: data.content, tags: data.tags || [],
+          date: data.date, completed: data.completed, completed_at: data.completed_at,
+          created_at: data.created_at, deleted_at: data.deleted_at,
+          section_id: data.section_id, section_name: section?.name || null,
+          page_id: section?.page_id || null,
+          page_name: section ? (pageNameMap[section.page_id] || null) : null
+        }
+      });
+    }
+
+    if (req.method === 'DELETE') {
+      // Fetch note to verify ownership via section_id chain
+      const { data: note, error: fetchError } = await supabase
+        .from('notes')
+        .select('id, section_id')
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .single();
+
+      if (fetchError || !note || !userSectionIds.includes(note.section_id)) {
+        return res.status(404).json({ error: 'Note not found' });
+      }
+
+      const { data, error } = await supabase
+        .from('notes')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', resourceId)
+        .is('deleted_at', null)
+        .select('id')
+        .single();
+
+      if (error || !data) return res.status(500).json({ error: 'Failed to delete note' });
+      return res.json({ deleted: true, id: data.id });
+    }
   } catch (err) {
     console.error('Notes error:', err);
     return res.status(500).json({ error: 'Internal server error' });

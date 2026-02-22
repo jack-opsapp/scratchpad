@@ -18,6 +18,8 @@ const colors = {
   green: '#4ade80',
   blue: '#60a5fa',
   codeBg: '#111111',
+  orange: '#fb923c',
+  red: '#f87171',
 };
 
 const BASE_URL = 'https://slate.opsapp.co';
@@ -29,18 +31,34 @@ const navSections = [
     id: 'endpoints',
     label: 'Endpoints',
     children: [
-      { id: 'post-keys',     label: 'POST /keys',     method: 'POST' },
-      { id: 'get-pages',     label: 'GET /pages',     method: 'GET'  },
-      { id: 'post-pages',    label: 'POST /pages',    method: 'POST' },
-      { id: 'get-sections',  label: 'GET /sections',  method: 'GET'  },
-      { id: 'post-sections', label: 'POST /sections', method: 'POST' },
-      { id: 'get-notes',     label: 'GET /notes',     method: 'GET'  },
-      { id: 'post-notes',    label: 'POST /notes',    method: 'POST' },
-      { id: 'get-tags',      label: 'GET /tags',      method: 'GET'  },
+      { id: 'post-keys',       label: 'POST /keys',        method: 'POST'   },
+      { id: 'get-pages',       label: 'GET /pages',        method: 'GET'    },
+      { id: 'post-pages',      label: 'POST /pages',       method: 'POST'   },
+      { id: 'patch-pages',     label: 'PATCH /pages/:id',  method: 'PATCH'  },
+      { id: 'delete-pages',    label: 'DELETE /pages/:id', method: 'DELETE' },
+      { id: 'get-sections',    label: 'GET /sections',        method: 'GET'    },
+      { id: 'post-sections',   label: 'POST /sections',       method: 'POST'   },
+      { id: 'patch-sections',  label: 'PATCH /sections/:id',  method: 'PATCH'  },
+      { id: 'delete-sections', label: 'DELETE /sections/:id', method: 'DELETE' },
+      { id: 'get-notes',       label: 'GET /notes',        method: 'GET'    },
+      { id: 'post-notes',      label: 'POST /notes',       method: 'POST'   },
+      { id: 'patch-notes',     label: 'PATCH /notes/:id',  method: 'PATCH'  },
+      { id: 'delete-notes',    label: 'DELETE /notes/:id', method: 'DELETE' },
+      { id: 'get-tags',        label: 'GET /tags',         method: 'GET'    },
     ],
   },
   { id: 'errors', label: 'Error Responses' },
 ];
+
+function methodColor(method) {
+  switch (method) {
+    case 'GET':    return colors.green;
+    case 'POST':   return colors.blue;
+    case 'PATCH':  return colors.orange;
+    case 'DELETE': return colors.red;
+    default:       return colors.blue;
+  }
+}
 
 function Sidebar({ activeId }) {
   return (
@@ -107,7 +125,7 @@ function Sidebar({ activeId }) {
                       fontSize: 9,
                       fontWeight: 700,
                       fontFamily: 'monospace',
-                      color: child.method === 'GET' ? colors.green : colors.blue,
+                      color: methodColor(child.method),
                       opacity: 0.9,
                     }}
                   >
@@ -125,7 +143,7 @@ function Sidebar({ activeId }) {
 }
 
 function MethodBadge({ method }) {
-  const isGet = method === 'GET';
+  const c = methodColor(method);
   return (
     <span
       style={{
@@ -135,8 +153,8 @@ function MethodBadge({ method }) {
         fontWeight: 700,
         fontFamily: 'monospace',
         letterSpacing: 0.5,
-        color: isGet ? colors.green : colors.blue,
-        border: `1px solid ${isGet ? colors.green : colors.blue}`,
+        color: c,
+        border: `1px solid ${c}`,
         borderRadius: 2,
         marginRight: 10,
       }}
@@ -348,6 +366,33 @@ const endpoints = [
     response: JSON.stringify({ page: { id: 'uuid', name: 'New Project', starred: false, position: 1, created_at: '2025-01-15T10:30:00Z' } }, null, 2),
   },
   {
+    id: 'patch-pages',
+    method: 'PATCH',
+    path: '/api/v1/pages/:id',
+    auth: 'X-API-Key',
+    description: 'Update a page\'s name and/or starred status. All body fields are optional — only the provided fields will be changed.',
+    params: [
+      { name: 'name', type: 'string', required: false, description: 'New page name' },
+      { name: 'starred', type: 'boolean', required: false, description: 'Star or un-star the page' },
+    ],
+    curl: `curl -X PATCH ${BASE_URL}/api/v1/pages/PAGE_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "Renamed Page", "starred": true}'`,
+    response: JSON.stringify({ page: { id: 'uuid', name: 'Renamed Page', starred: true, position: 0, created_at: '2025-01-15T10:30:00Z' } }, null, 2),
+  },
+  {
+    id: 'delete-pages',
+    method: 'DELETE',
+    path: '/api/v1/pages/:id',
+    auth: 'X-API-Key',
+    description: 'Soft-delete a page. The page and its contents are marked as deleted but can still be retrieved using the deleted filter on the GET endpoints.',
+    params: [],
+    curl: `curl -X DELETE ${BASE_URL}/api/v1/pages/PAGE_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY"`,
+    response: JSON.stringify({ deleted: true, id: 'uuid' }, null, 2),
+  },
+  {
     id: 'get-sections',
     method: 'GET',
     path: '/api/v1/sections',
@@ -376,6 +421,32 @@ const endpoints = [
   -H "Content-Type: application/json" \\
   -d '{"name": "Backlog", "page_id": "PAGE_UUID"}'`,
     response: JSON.stringify({ section: { id: 'uuid', name: 'Backlog', page_id: 'uuid', page_name: 'Work', position: 1, created_at: '2025-01-15T10:30:00Z' } }, null, 2),
+  },
+  {
+    id: 'patch-sections',
+    method: 'PATCH',
+    path: '/api/v1/sections/:id',
+    auth: 'X-API-Key',
+    description: 'Update a section\'s name.',
+    params: [
+      { name: 'name', type: 'string', required: true, description: 'New section name' },
+    ],
+    curl: `curl -X PATCH ${BASE_URL}/api/v1/sections/SECTION_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "In Progress"}'`,
+    response: JSON.stringify({ section: { id: 'uuid', name: 'In Progress', page_id: 'uuid', page_name: 'Work', position: 0, created_at: '2025-01-15T10:30:00Z' } }, null, 2),
+  },
+  {
+    id: 'delete-sections',
+    method: 'DELETE',
+    path: '/api/v1/sections/:id',
+    auth: 'X-API-Key',
+    description: 'Soft-delete a section. The section and its notes are marked as deleted but can still be retrieved using the deleted filter on the GET endpoints.',
+    params: [],
+    curl: `curl -X DELETE ${BASE_URL}/api/v1/sections/SECTION_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY"`,
+    response: JSON.stringify({ deleted: true, id: 'uuid' }, null, 2),
   },
   {
     id: 'get-notes',
@@ -420,6 +491,35 @@ const endpoints = [
     response: JSON.stringify({ note: { id: 'uuid', content: 'Review PR #42', tags: ['review'], date: null, completed: false, created_at: '2025-01-15T10:30:00Z', section_id: 'uuid' } }, null, 2),
   },
   {
+    id: 'patch-notes',
+    method: 'PATCH',
+    path: '/api/v1/notes/:id',
+    auth: 'X-API-Key',
+    description: 'Update a note. All body fields are optional — only the provided fields will be changed. When setting completed to true, completed_at is automatically set to the current timestamp.',
+    params: [
+      { name: 'content', type: 'string', required: false, description: 'New note text' },
+      { name: 'tags', type: 'string[]', required: false, description: 'Replacement array of tag names' },
+      { name: 'completed', type: 'boolean', required: false, description: 'Mark complete or incomplete. Auto-sets completed_at.' },
+      { name: 'date', type: 'string', required: false, description: 'Date string (e.g. "2025-01-20"). Pass null to clear.' },
+    ],
+    curl: `curl -X PATCH ${BASE_URL}/api/v1/notes/NOTE_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"content": "Updated task", "completed": true}'`,
+    response: JSON.stringify({ note: { id: 'uuid', content: 'Updated task', tags: ['review'], date: null, completed: true, completed_at: '2025-01-20T14:00:00Z', created_at: '2025-01-15T10:30:00Z', section_id: 'uuid', section_name: 'To Do', page_id: 'uuid', page_name: 'Work' } }, null, 2),
+  },
+  {
+    id: 'delete-notes',
+    method: 'DELETE',
+    path: '/api/v1/notes/:id',
+    auth: 'X-API-Key',
+    description: 'Soft-delete a note. The note is marked as deleted but can still be retrieved using the deleted filter on the GET endpoint.',
+    params: [],
+    curl: `curl -X DELETE ${BASE_URL}/api/v1/notes/NOTE_UUID \\
+  -H "X-API-Key: sk_live_YOUR_KEY"`,
+    response: JSON.stringify({ deleted: true, id: 'uuid' }, null, 2),
+  },
+  {
     id: 'get-tags',
     method: 'GET',
     path: '/api/v1/tags',
@@ -436,6 +536,7 @@ const errorRows = [
   { code: 400, description: 'Bad request — missing or invalid parameters' },
   { code: 401, description: 'Unauthorized — missing or invalid API key / JWT' },
   { code: 403, description: 'Forbidden — resource belongs to another user' },
+  { code: 404, description: 'Not found — resource does not exist or has been deleted' },
   { code: 405, description: 'Method not allowed' },
   { code: 500, description: 'Internal server error' },
 ];
