@@ -1886,10 +1886,17 @@ export function MainApp({ user, onSignOut }) {
                                     )
                                   )
                                 }
-                                onBlur={() => setEditingItem(null)}
-                                onKeyDown={e =>
-                                  e.key === 'Enter' && setEditingItem(null)
-                                }
+                                onBlur={() => {
+                                  const pg = pages.find(p => p.id === page.id);
+                                  const sec = pg?.sections?.find(s => s.id === section.id);
+                                  if (sec?.name?.trim()) {
+                                    supabase.from('sections').update({ name: sec.name.trim() }).eq('id', section.id);
+                                  }
+                                  setEditingItem(null);
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') e.target.blur();
+                                }}
                                 style={{
                                   flex: 1,
                                   background: 'transparent',
