@@ -19,6 +19,7 @@ import UserAvatar from './UserAvatar.jsx';
  * @param {boolean} props.canDelete - Whether user can delete this note
  * @param {boolean} props.canToggle - Whether user can toggle completion
  * @param {boolean} props.compact - Hide details (tags, dates, avatars) for easy copy
+ * @param {function} props.onAddTag - Add tag handler, receives noteId
  */
 export function NoteCard({
   note,
@@ -32,6 +33,7 @@ export function NoteCard({
   canToggle = true,
   compact = false,
   onTagClick,
+  onAddTag,
   draggable = false,
 }) {
   const [editing, setEditing] = useState(false);
@@ -163,7 +165,7 @@ export function NoteCard({
           )}
 
           {/* Tags and date - hidden in compact mode */}
-          {!compact && (note.tags?.length > 0 || note.date) && (!isNew || typewriter.done) && (
+          {!compact && (note.tags?.length > 0 || note.date || canEdit) && (!isNew || typewriter.done) && (
             <div
               style={{
                 display: 'flex',
@@ -176,6 +178,32 @@ export function NoteCard({
               {note.tags?.map(tag => (
                 <TagPill key={tag} tag={tag} small onClick={() => onTagClick?.(tag)} />
               ))}
+              {canEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddTag?.(note.id);
+                  }}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    border: `1px dashed ${colors.border}`,
+                    background: 'transparent',
+                    color: colors.textMuted,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    borderRadius: 2,
+                    padding: 0,
+                  }}
+                  title="Add tag"
+                >
+                  +
+                </button>
+              )}
               {note.date && (
                 <span
                   style={{

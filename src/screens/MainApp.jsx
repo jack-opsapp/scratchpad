@@ -1226,6 +1226,23 @@ export function MainApp({ user, onSignOut }) {
       .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
   };
 
+  const handleAddTag = async (noteId) => {
+    const tag = window.prompt('Tag name:')?.trim().toLowerCase();
+    if (!tag) return;
+
+    const note = notes.find(n => n.id === noteId);
+    const newTags = [...new Set([...(note?.tags || []), tag])];
+
+    setNotes(prev => prev.map(n =>
+      n.id === noteId ? { ...n, tags: newTags } : n
+    ));
+
+    await supabase.from('notes').update({ tags: newTags }).eq('id', noteId)
+      .then(({ error }) => { if (error) console.error('Add tag persist failed:', error); });
+
+    if (!tags.includes(tag)) setTags(prev => [...prev, tag]);
+  };
+
   // Process a single message (internal)
   const processMessage = async (message, confirmedValue = null) => {
     try {
@@ -3037,6 +3054,7 @@ export function MainApp({ user, onSignOut }) {
                             onEdit={handleNoteEdit}
                             onDelete={handleNoteDelete}
                             onTagClick={(tag) => setFilterTag([tag])}
+                            onAddTag={handleAddTag}
                           />
                         </div>
                       );
@@ -3216,6 +3234,7 @@ export function MainApp({ user, onSignOut }) {
                           onEdit={handleNoteEdit}
                           onDelete={handleNoteDelete}
                           onTagClick={(tag) => setFilterTag([tag])}
+                          onAddTag={handleAddTag}
                         />
                       );
                     };
@@ -3298,6 +3317,7 @@ export function MainApp({ user, onSignOut }) {
                           onEdit={handleNoteEdit}
                           onDelete={handleNoteDelete}
                           onTagClick={(tag) => setFilterTag([tag])}
+                          onAddTag={handleAddTag}
                         />
                       );
                     };
