@@ -866,19 +866,29 @@ export function MainApp({ user, onSignOut }) {
     setNewNoteId(noteId);
     setTimeout(() => setNewNoteId(null), 3000);
 
-    setNotes([
-      ...notes,
-      {
-        id: noteId,
-        sectionId: targetSection,
-        content: parsed.content,
-        tags: parsed.tags || [],
-        completed: false,
-        date: parsed.date,
-        createdAt: Date.now(),
-        createdBy: 'Jackson',
-      },
-    ]);
+    const newNote = {
+      id: noteId,
+      sectionId: targetSection,
+      content: parsed.content,
+      tags: parsed.tags || [],
+      completed: false,
+      date: parsed.date,
+      created_by_user_id: user?.id || null,
+    };
+    setNotes(prev => [...prev, newNote]);
+
+    // Direct Supabase persist
+    supabase.from('notes').upsert({
+      id: noteId,
+      section_id: targetSection,
+      content: parsed.content,
+      tags: parsed.tags || [],
+      completed: false,
+      date: parsed.date || null,
+      created_by_user_id: user?.id || null,
+    }, { onConflict: 'id' })
+      .then(({ error }) => { if (error) console.error('Note create persist failed:', error); });
+
     setInputValue('');
   };
 
@@ -3812,10 +3822,7 @@ export function MainApp({ user, onSignOut }) {
                 const name = prompt('Section name:');
                 if (name && currentPage) {
                   const ns = { id: generateId(), name };
-                  // Direct Supabase insert
-                  supabase.from('sections').insert({
-                    id: ns.id, page_id: currentPage, name: ns.name, position: currentPageData?.sections?.length || 0
-                  });
+                  const currentPageSections = currentPageData?.sections?.length || 0;
                   setPages(prev =>
                     prev.map(p =>
                       p.id === currentPage
@@ -3825,6 +3832,14 @@ export function MainApp({ user, onSignOut }) {
                   );
                   setCurrentSection(ns.id);
                   setViewingPageLevel(false);
+                  // Direct Supabase persist
+                  supabase.from('sections').upsert({
+                    id: ns.id,
+                    page_id: currentPage,
+                    name: ns.name,
+                    position: currentPageSections,
+                  }, { onConflict: 'id' })
+                    .then(({ error }) => { if (error) console.error('Section create persist failed:', error); });
                 }
               },
             },
@@ -3871,11 +3886,7 @@ export function MainApp({ user, onSignOut }) {
                   action: () => {
                     const name = prompt('Section name:');
                     if (name) {
-                      const newSectionId = generateId();
-                      // Direct Supabase insert
-                      supabase.from('sections').insert({
-                        id: newSectionId, page_id: page.id, name, position: page.sections?.length || 0
-                      });
+                      const newSection = { id: generateId(), name };
                       setPages(prev =>
                         prev.map(p =>
                           p.id === page.id
@@ -3883,12 +3894,20 @@ export function MainApp({ user, onSignOut }) {
                                 ...p,
                                 sections: [
                                   ...p.sections,
-                                  { id: newSectionId, name },
+                                  newSection,
                                 ],
                               }
                             : p
                         )
                       );
+                      // Direct Supabase persist
+                      supabase.from('sections').upsert({
+                        id: newSection.id,
+                        page_id: page.id,
+                        name: newSection.name,
+                        position: page.sections.length,
+                      }, { onConflict: 'id' })
+                        .then(({ error }) => { if (error) console.error('Section create persist failed:', error); });
                     }
                   },
                   visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
