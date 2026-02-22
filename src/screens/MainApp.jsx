@@ -837,6 +837,8 @@ export function MainApp({ user, onSignOut }) {
     } finally {
       setProcessing(false);
       setInputValue('');
+      // Refresh data to pick up any server-side mutations (page/section creates/deletes)
+      setTimeout(() => refreshData(), 500);
     }
   };
 
@@ -982,6 +984,9 @@ export function MainApp({ user, onSignOut }) {
 
       // All done
       planState.completeExecution();
+
+      // Refresh data to pick up server-side mutations
+      await refreshData();
 
       // Animate new items
       if (allAnimatingIds.size > 0) {
@@ -1770,10 +1775,16 @@ export function MainApp({ user, onSignOut }) {
                                 )
                               )
                             }
-                            onBlur={() => setEditingItem(null)}
-                            onKeyDown={e =>
-                              e.key === 'Enter' && setEditingItem(null)
-                            }
+                            onBlur={() => {
+                              const updatedName = pages.find(p => p.id === page.id)?.name;
+                              if (updatedName?.trim()) {
+                                supabase.from('pages').update({ name: updatedName.trim() }).eq('id', page.id);
+                              }
+                              setEditingItem(null);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') e.target.blur();
+                            }}
                             style={{
                               marginLeft: 8,
                               flex: 1,
