@@ -69,6 +69,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const inputRef = useRef(null);
   const reviseInputRef = useRef(null);
   const buttonRefs = useRef([]);
+  const lastEscTime = useRef(0);
 
   // Find the last unresponded message that needs action buttons
   const pendingMessage = messages.slice().reverse().find(
@@ -344,10 +345,19 @@ const ChatPanel = forwardRef(function ChatPanel({
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        if (planState?.isReviewing) {
+        const now = Date.now();
+        if (now - lastEscTime.current < 400) {
+          // Double-tap ESC: clear chat input
+          setInputValue('');
+          lastEscTime.current = 0;
+        } else if (planState?.isReviewing) {
           handlePlanAction('cancel');
+          lastEscTime.current = now;
         } else if (pendingMessage?.type === 'group_confirmation') {
           onUserResponse('cancel', pendingMessageIndex);
+          lastEscTime.current = now;
+        } else {
+          lastEscTime.current = now;
         }
       }
     };
