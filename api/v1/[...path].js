@@ -71,8 +71,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const segments = req.query.path || [];
-  const resource = segments[0];
+  // Extract resource from URL path (works regardless of rewrite config)
+  const urlPath = req.url.split('?')[0];
+  const match = urlPath.match(/\/api\/v1\/([^/]+)/);
+  const resource = match?.[1] || (req.query.path?.[0]) || '';
 
   switch (resource) {
     case 'keys':     return handleKeys(req, res);
