@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
-import { colors } from '../styles/theme.js';
+import { colors, transitions } from '../styles/theme.js';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 /**
@@ -101,7 +101,7 @@ export function SignedOutScreen({ onSignIn, error }) {
         <p
           style={{
             color: colors.textPrimary,
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: 500,
             fontFamily: "'Manrope', sans-serif",
             marginBottom: 8,
@@ -119,7 +119,7 @@ export function SignedOutScreen({ onSignIn, error }) {
           style={{
             opacity: showContent ? 1 : 0,
             transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-            transition: 'all 0.3s ease',
+            transition: `all ${transitions.slow}`,
             marginTop: 32,
           }}
         >
@@ -144,7 +144,7 @@ export function SignedOutScreen({ onSignIn, error }) {
               style={{
                 marginBottom: 16,
                 padding: '12px 16px',
-                background: 'rgba(255, 107, 107, 0.1)',
+                background: 'rgba(184, 60, 42, 0.1)',
                 border: `1px solid ${colors.danger}`,
                 color: colors.danger,
                 fontSize: 13,

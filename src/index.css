@@ -50,6 +50,25 @@ body {
   }
 }
 
+/* Global interactive hover — accent color on all buttons */
+button {
+  transition: color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+button:not(:disabled):hover {
+  color: var(--color-primary, #948b72) !important;
+  border-color: var(--color-primary, #948b72);
+}
+
+/* Utility class for non-button clickable elements */
+.hover-accent {
+  transition: color 0.15s ease;
+}
+
+.hover-accent:hover {
+  color: var(--color-primary, #948b72) !important;
+}
+
 /* Focus styles */
 :focus-visible {
   outline: 1px solid var(--color-primary, #948b72);

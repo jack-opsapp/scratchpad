@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Send, GripHorizontal, Check, X, LayoutGrid, Minus, Maximize2, SkipForward, Copy } from 'lucide-react';
-import { colors } from '../styles/theme.js';
+import { colors, transitions } from '../styles/theme.js';
 import VoiceInput from './VoiceInput.jsx';
 import MarkdownText from './MarkdownText.jsx';
 import { WikilinkAutocomplete } from './WikilinkAutocomplete.jsx';
@@ -654,14 +654,14 @@ const ChatPanel = forwardRef(function ChatPanel({
         left: isMobile ? 12 : sidebarWidth + 20,
         right: isMobile ? 12 : 20,
         height: isMinimized ? INPUT_ONLY_HEIGHT : height,
-        background: 'rgba(20, 20, 20, 0.45)',
+        background: 'rgba(13, 13, 13, 0.85)',
         backdropFilter: 'blur(24px) saturate(150%)',
         WebkitBackdropFilter: 'blur(24px) saturate(150%)',
-        border: `1px solid rgba(255,255,255,0.08)`,
+        border: `1px solid ${colors.border}`,
         borderRadius: 4,
         display: 'flex',
         flexDirection: 'column',
-        transition: isDragging ? 'none' : 'all 0.3s ease',
+        transition: isDragging ? 'none' : `all ${transitions.slow}`,
         zIndex: 900,
         paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0,
         boxShadow: 'none',
@@ -680,7 +680,7 @@ const ChatPanel = forwardRef(function ChatPanel({
             justifyContent: 'space-between',
             padding: '0 8px',
             cursor: isMobile ? 'grab' : 'ns-resize',
-            borderBottom: `1px solid rgba(255,255,255,0.06)`,
+            borderBottom: `1px solid rgba(255,255,255,0.1)`,
             touchAction: 'none',
             minHeight: isMobile ? 44 : 24,
             marginTop: isMobile ? -12 : 0,
@@ -732,12 +732,12 @@ const ChatPanel = forwardRef(function ChatPanel({
           ref={planContainerRef}
           className={`plan-container ${['completing', 'success', 'exiting', 'collapsing'].includes(planAnimation) ? planAnimation : ''}`}
           style={{
-            borderBottom: planAnimation === 'collapsing' ? 'none' : `1px solid rgba(255,255,255,0.06)`,
+            borderBottom: planAnimation === 'collapsing' ? 'none' : `1px solid rgba(255,255,255,0.1)`,
             background: 'transparent',
             position: 'relative',
             overflow: 'hidden',
             height: planContainerHeight,
-            transition: planAnimation === 'collapsing' ? 'height 0.4s ease-out' : 'none'
+            transition: planAnimation === 'collapsing' ? `height ${transitions.slow}` : 'none'
           }}
         >
           {/* Pixel Grid Overlay for Dissolve Effect */}
@@ -788,7 +788,7 @@ const ChatPanel = forwardRef(function ChatPanel({
             className="plan-header"
             style={{
               padding: '12px 20px',
-              borderBottom: `1px solid rgba(255,255,255,0.06)`,
+              borderBottom: `1px solid rgba(255,255,255,0.1)`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
@@ -848,7 +848,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     minWidth: 140,
                     padding: '10px 12px',
                     background: isCurrent ? 'rgba(255,255,255,0.05)' : 'transparent',
-                    border: `1px solid ${isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.1)'}`,
+                    border: `1px solid ${isApproved ? colors.success : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.1)'}`,
                     borderRadius: 2,
                     opacity: isSkipped ? 0.5 : 1,
                     transition: 'all 0.2s ease',
@@ -866,8 +866,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                       width: 16,
                       height: 16,
                       borderRadius: '50%',
-                      background: isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
-                      border: `2px solid ${isApproved ? '#2d6b3a' : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
+                      background: isApproved ? colors.success : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'transparent',
+                      border: `2px solid ${isApproved ? colors.success : isSkipped ? colors.textMuted : isCurrent ? colors.primary : 'rgba(255,255,255,0.2)'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -891,7 +891,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <span style={{
                       fontSize: 10,
                       fontWeight: 600,
-                      color: isSkipped ? colors.textMuted : isApproved ? '#2d6b3a' : isCurrent ? colors.primary : colors.textMuted,
+                      color: isSkipped ? colors.textMuted : isApproved ? colors.success : isCurrent ? colors.primary : colors.textMuted,
                       textTransform: 'uppercase',
                       letterSpacing: 0.5
                     }}>
@@ -925,7 +925,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <div style={{
                       marginTop: 8,
                       paddingTop: 8,
-                      borderTop: `1px solid rgba(255,255,255,0.06)`,
+                      borderTop: `1px solid rgba(255,255,255,0.1)`,
                       fontSize: 11,
                       color: colors.textMuted
                     }}>
@@ -999,7 +999,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: copiedIndex === i ? '#2d6b3a' : colors.textMuted,
+                      color: copiedIndex === i ? colors.success : colors.textMuted,
                       cursor: 'pointer',
                       padding: 2,
                       opacity: copiedIndex === i ? 1 : 0,
@@ -1016,7 +1016,7 @@ const ChatPanel = forwardRef(function ChatPanel({
               {msg.role === 'agent' && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <span style={{
-                    color: msg.type === 'execution_result' ? '#2d6b3a' : 'var(--color-primary, ' + colors.primary + ')',
+                    color: msg.type === 'execution_result' ? colors.success : 'var(--color-primary, ' + colors.primary + ')',
                     fontSize: 11,
                     flexShrink: 0
                   }}>
@@ -1026,8 +1026,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                     <MarkdownText
                       content={msg.content}
                       baseColor={
-                        msg.type === 'execution_result' ? '#2d6b3a' :
-                        msg.type === 'error' ? '#b83c2a' : 'inherit'
+                        msg.type === 'execution_result' ? colors.success :
+                        msg.type === 'error' ? colors.danger : 'inherit'
                       }
                       onPathClick={onNavigate}
                     />
@@ -1074,7 +1074,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: copiedIndex === i ? '#2d6b3a' : colors.textMuted,
+                      color: copiedIndex === i ? colors.success : colors.textMuted,
                       cursor: 'pointer',
                       padding: 2,
                       opacity: copiedIndex === i ? 1 : 0,
@@ -1122,7 +1122,7 @@ const ChatPanel = forwardRef(function ChatPanel({
             padding: '6px 20px',
             background: 'transparent',
             border: 'none',
-            borderBottom: `1px solid rgba(255,255,255,0.06)`,
+            borderBottom: `1px solid rgba(255,255,255,0.1)`,
             color: colors.textMuted,
             fontSize: 9,
             fontWeight: 600,
@@ -1275,8 +1275,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                 alignItems: 'center',
                 gap: 6,
                 padding: '4px 8px',
-                background: 'rgba(148, 139, 114, 0.1)',
-                border: `1px solid rgba(148, 139, 114, 0.2)`,
+                background: 'color-mix(in srgb, var(--color-primary, #948b72) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-primary, #948b72) 20%, transparent)',
                 borderRadius: 2,
                 alignSelf: 'flex-start',
               }}>
@@ -1348,9 +1348,9 @@ const ChatPanel = forwardRef(function ChatPanel({
                 justifyContent: 'center',
                 gap: 2,
                 padding: '0 12px',
-                background: 'rgba(255,68,68,0.1)',
+                background: 'rgba(184, 60, 42, 0.1)',
                 borderRadius: 2,
-                border: '1px solid rgba(255,68,68,0.2)',
+                border: '1px solid rgba(184, 60, 42, 0.2)',
                 overflow: 'hidden'
               }}>
                 {audioWaveform.length > 0 ? (
@@ -1360,14 +1360,14 @@ const ChatPanel = forwardRef(function ChatPanel({
                       style={{
                         width: 3,
                         height: Math.max(4, level * 28),
-                        background: `rgba(255, 68, 68, ${0.5 + level * 0.5})`,
+                        background: `rgba(184, 60, 42, ${0.5 + level * 0.5})`,
                         borderRadius: 2,
                         transition: 'height 0.05s ease'
                       }}
                     />
                   ))
                 ) : (
-                  <span style={{ color: '#b83c2a', fontSize: 12, fontWeight: 500 }}>
+                  <span style={{ color: colors.danger, fontSize: 11, fontWeight: 500 }}>
                     Listening...
                   </span>
                 )}
@@ -1594,7 +1594,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         .plan-container.collapsing .plan-steps,
         .plan-container.collapsing .plan-header {
           opacity: 0;
-          transition: opacity 0.3s ease;
+          transition: opacity ${transitions.slow};
         }
 
         .plan-container.exiting,
@@ -1607,7 +1607,7 @@ const ChatPanel = forwardRef(function ChatPanel({
           bottom: 0;
           left: 0;
           height: 3px;
-          background: linear-gradient(90deg, #2d6b3a, #8BC34A, #2d6b3a);
+          background: linear-gradient(90deg, ${colors.success}, #4a8a55, ${colors.success});
           animation: greenPulse 0.8s ease-out forwards;
           box-shadow: none;
         }
@@ -1626,11 +1626,11 @@ const ChatPanel = forwardRef(function ChatPanel({
         }
 
         .success-text {
-          color: #2d6b3a;
-          font-size: 12px;
+          color: ${colors.success};
+          font-size: 11px;
           font-weight: 600;
           letter-spacing: 2px;
-          font-family: monospace;
+          font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
           animation: successFade 1.5s ease-in-out forwards;
         }
 

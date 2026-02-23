@@ -133,6 +133,12 @@ export function TableView({
               <th
                 key={col.key}
                 onClick={() => col.key !== 'status' && toggleSort(col.key)}
+                onMouseEnter={e => {
+                  if (col.key !== 'status') e.currentTarget.style.color = colors.primary;
+                }}
+                onMouseLeave={e => {
+                  if (col.key !== 'status') e.currentTarget.style.color = colors.textMuted;
+                }}
                 style={{
                   padding: '8px 12px',
                   textAlign: 'left',
@@ -151,6 +157,7 @@ export function TableView({
                   top: 0,
                   zIndex: 1,
                   userSelect: 'none',
+                  transition: 'color 0.15s ease',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

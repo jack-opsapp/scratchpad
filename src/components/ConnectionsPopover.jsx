@@ -155,7 +155,7 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
         )}
 
         {/* AI Suggestions */}
-        {!loading && (loadingSuggestions || suggestions.length > 0) && (
+        {!loading && userId && (
           <div style={{ padding: '4px 12px', borderTop: connections.length > 0 ? `1px solid ${colors.border}` : 'none' }}>
             <div style={{
               display: 'flex',
@@ -176,7 +176,7 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
               <div style={{ padding: '6px 0', color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif" }}>
                 Finding similar notes...
               </div>
-            ) : (
+            ) : suggestions.length > 0 ? (
               suggestions.map(s => (
                 <SuggestionRow
                   key={s.id}
@@ -189,6 +189,10 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
                   onNavigate={onNavigate}
                 />
               ))
+            ) : (
+              <div style={{ padding: '6px 0', color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif" }}>
+                Building search index — check back soon
+              </div>
             )}
           </div>
         )}

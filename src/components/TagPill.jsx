@@ -28,16 +28,12 @@ export function TagPill({ tag, small, selected, onClick }) {
         transition: 'border-color 0.15s ease, color 0.15s ease',
       }}
       onMouseOver={e => {
-        if (onClick) {
-          e.currentTarget.style.borderColor = colors.primary;
-          e.currentTarget.style.color = colors.primary;
-        }
+        e.currentTarget.style.borderColor = colors.primary;
+        e.currentTarget.style.color = colors.primary;
       }}
       onMouseOut={e => {
-        if (onClick) {
-          e.currentTarget.style.borderColor = selected ? colors.primary : colors.border;
-          e.currentTarget.style.color = selected ? colors.primary : colors.textMuted;
-        }
+        e.currentTarget.style.borderColor = selected ? colors.primary : colors.border;
+        e.currentTarget.style.color = selected ? colors.primary : colors.textMuted;
       }}
     >
       {tag}

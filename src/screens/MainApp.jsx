@@ -400,6 +400,9 @@ export function MainApp({ user, onSignOut }) {
       // If no default set, currentPage stays null = home view
 
       setLoading(false);
+
+      // Backfill embeddings for notes that don't have them (async, non-blocking)
+      dataStore.backfillEmbeddings().catch(() => {});
     };
     load();
   }, []);
@@ -1867,7 +1870,9 @@ export function MainApp({ user, onSignOut }) {
                                 : [...expandedPages, page.id]
                             )
                           }
-                          style={{ cursor: 'pointer' }}
+                          style={{ cursor: 'pointer', transition: 'color 0.15s ease' }}
+                          onMouseOver={e => { e.currentTarget.style.color = colors.primary; }}
+                          onMouseOut={e => { e.currentTarget.style.color = ''; }}
                         >
                           {expandedPages.includes(page.id) ? (
                             <ChevronDown size={12} />
@@ -1910,12 +1915,14 @@ export function MainApp({ user, onSignOut }) {
                           />
                         ) : (
                           <span
-                            style={{ marginLeft: 8, flex: 1, cursor: 'pointer' }}
+                            style={{ marginLeft: 8, flex: 1, cursor: 'pointer', transition: 'color 0.15s ease' }}
                             onClick={() => {
                               setCurrentPage(page.id);
                               setViewingPageLevel(true);
                               setAgentView(null);
                             }}
+                            onMouseOver={e => { e.currentTarget.style.color = colors.primary; }}
+                            onMouseOut={e => { e.currentTarget.style.color = ''; }}
                           >
                             <TypewriterText
                               text={page.name}
@@ -2039,6 +2046,16 @@ export function MainApp({ user, onSignOut }) {
                                 ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
                               e.currentTarget.style.color = currentSection === section.id
                                 ? colors.textPrimary : colors.textMuted;
+                            }}
+                            onMouseEnter={e => {
+                              if (currentSection !== section.id) {
+                                e.currentTarget.style.color = colors.primary;
+                              }
+                            }}
+                            onMouseLeave={e => {
+                              if (currentSection !== section.id) {
+                                e.currentTarget.style.color = colors.textMuted;
+                              }
                             }}
                             style={{
                               display: 'flex',
@@ -2177,7 +2194,9 @@ export function MainApp({ user, onSignOut }) {
                                   : [...expandedPages, page.id]
                               )
                             }
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: 'pointer', transition: 'color 0.15s ease' }}
+                            onMouseOver={e => { e.currentTarget.style.color = colors.primary; }}
+                            onMouseOut={e => { e.currentTarget.style.color = ''; }}
                           >
                             {expandedPages.includes(page.id) ? (
                               <ChevronDown size={12} />
@@ -2186,12 +2205,14 @@ export function MainApp({ user, onSignOut }) {
                             )}
                           </span>
                           <span
-                            style={{ marginLeft: 8, flex: 1, cursor: 'pointer' }}
+                            style={{ marginLeft: 8, flex: 1, cursor: 'pointer', transition: 'color 0.15s ease' }}
                             onClick={() => {
                               setCurrentPage(page.id);
                               setViewingPageLevel(true);
                               setAgentView(null);
                             }}
+                            onMouseOver={e => { e.currentTarget.style.color = colors.primary; }}
+                            onMouseOut={e => { e.currentTarget.style.color = ''; }}
                           >
                             {page.name}
                           </span>
@@ -2239,6 +2260,16 @@ export function MainApp({ user, onSignOut }) {
                                 setCurrentSection(section.id);
                                 setViewingPageLevel(false);
                               }}
+                              onMouseEnter={e => {
+                                if (currentSection !== section.id) {
+                                  e.currentTarget.style.color = colors.primary;
+                                }
+                              }}
+                              onMouseLeave={e => {
+                                if (currentSection !== section.id) {
+                                  e.currentTarget.style.color = colors.textMuted;
+                                }
+                              }}
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2253,6 +2284,7 @@ export function MainApp({ user, onSignOut }) {
                                   currentSection === section.id
                                     ? `1px solid ${colors.textPrimary}`
                                     : '1px solid transparent',
+                                transition: 'border-color 0.15s ease, color 0.15s ease',
                               }}
                             >
                               <span style={{ flex: 1 }}>{section.name}</span>
@@ -3088,7 +3120,10 @@ export function MainApp({ user, onSignOut }) {
                         fontWeight: viewingPageLevel ? 600 : 500,
                         letterSpacing: viewingPageLevel ? -1 : 1,
                         cursor: 'pointer',
+                        transition: 'color 0.15s ease',
                       }}
+                      onMouseOver={e => { if (!viewingPageLevel) e.currentTarget.style.color = colors.primary; }}
+                      onMouseOut={e => { if (!viewingPageLevel) e.currentTarget.style.color = colors.textMuted; }}
                     >
                       {currentPageData?.name?.toUpperCase()}
                     </span>

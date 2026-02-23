@@ -863,6 +863,77 @@ export const dataStore = {
   },
 
   /**
+   * Backfill embeddings for notes that don't have them.
+   * Runs in background, non-blocking. Processes in batches.
+   * @returns {Promise<number>} Number of notes processed
+   */
+  async backfillEmbeddings() {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return 0;
+
+      // Get notes without embeddings
+      const { data: notes, error } = await supabase
+        .from('notes')
+        .select('id, content, section_id')
+        .is('embedding', null)
+        .is('deleted_at', null)
+        .not('content', 'is', null)
+        .limit(50);
+
+      if (error || !notes?.length) return 0;
+
+      // Verify these notes belong to the user
+      const { data: userPages } = await supabase
+        .from('pages')
+        .select('id, sections(id)')
+        .eq('user_id', userId)
+        .is('deleted_at', null);
+
+      const userSectionIds = new Set(
+        (userPages || []).flatMap(p => (p.sections || []).map(s => s.id))
+      );
+
+      const userNotes = notes.filter(n => userSectionIds.has(n.section_id));
+      if (userNotes.length === 0) return 0;
+
+      // Process in batches of 5 to avoid rate limiting
+      let processed = 0;
+      for (let i = 0; i < userNotes.length; i += 5) {
+        const batch = userNotes.slice(i, i + 5);
+        await Promise.all(
+          batch.map(async (note) => {
+            try {
+              await fetch('/api/embeddings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'embed_note',
+                  noteId: note.id,
+                  content: note.content,
+                }),
+              });
+              processed++;
+            } catch (e) {
+              // Silently skip individual failures
+            }
+          })
+        );
+      }
+
+      // If there are more notes to process, schedule another batch
+      if (userNotes.length === 50) {
+        setTimeout(() => this.backfillEmbeddings().catch(() => {}), 2000);
+      }
+
+      return processed;
+    } catch (error) {
+      console.error('backfillEmbeddings error:', error);
+      return 0;
+    }
+  },
+
+  /**
    * Get AI-suggested connections for a note using vector similarity
    * @param {string} noteId - The note to find suggestions for
    * @param {string} userId - Current user's ID

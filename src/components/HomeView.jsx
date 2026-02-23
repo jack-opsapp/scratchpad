@@ -120,15 +120,17 @@ export function HomeView({
             padding: '12px 0',
             cursor: 'pointer',
             marginBottom: 8,
+            transition: 'color 0.15s ease',
           }}
+          onMouseOver={e => { e.currentTarget.style.color = colors.primary; }}
+          onMouseOut={e => { e.currentTarget.style.color = ''; }}
         >
           <ChevronRight
             size={14}
-            color={colors.textMuted}
-            style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s' }}
+            style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s', color: 'inherit' }}
           />
           <span style={{
-            color: colors.textMuted,
+            color: 'inherit',
             fontSize: 11,
             fontWeight: 600,
             letterSpacing: 1.5,
@@ -159,7 +161,10 @@ export function HomeView({
                 letterSpacing: 1.5,
                 textTransform: 'uppercase',
                 cursor: 'pointer',
+                transition: 'opacity 0.15s ease',
               }}
+              onMouseOver={e => { e.currentTarget.style.opacity = '0.7'; }}
+              onMouseOut={e => { e.currentTarget.style.opacity = '1'; }}
             >
               {card.page.name}
             </span>

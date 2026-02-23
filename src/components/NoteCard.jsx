@@ -24,33 +24,14 @@ function renderContentWithLinks(content, onLinkClick) {
           onLinkClick?.(seg.noteId);
         }}
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 2,
-          padding: '0 1px',
-          margin: '0 1px',
-          background: 'transparent',
-          border: '1px solid transparent',
-          borderRadius: 2,
           color: colors.primary,
-          fontSize: 13,
           cursor: 'pointer',
-          transition: 'border-color 0.15s ease',
-          verticalAlign: 'baseline',
+          transition: 'opacity 0.15s ease',
         }}
-        onMouseOver={e => {
-          e.currentTarget.style.borderColor = colors.primary;
-          e.currentTarget.querySelector('.wikilink-icon').style.opacity = '1';
-        }}
-        onMouseOut={e => {
-          e.currentTarget.style.borderColor = 'transparent';
-          e.currentTarget.querySelector('.wikilink-icon').style.opacity = '0';
-        }}
+        onMouseOver={e => { e.currentTarget.style.opacity = '0.7'; }}
+        onMouseOut={e => { e.currentTarget.style.opacity = '1'; }}
       >
-        <span style={{ color: colors.primary, fontSize: 11, opacity: 0.5 }}>[[</span>
-        <Link2 className="wikilink-icon" size={10} style={{ flexShrink: 0, opacity: 0, transition: 'opacity 0.15s ease' }} />
         {seg.displayText}
-        <span style={{ color: colors.primary, fontSize: 11, opacity: 0.5 }}>]]</span>
       </span>
     );
   });

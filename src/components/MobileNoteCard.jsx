@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Trash2, Check, Edit3 } from 'lucide-react';
-import { colors } from '../styles/theme';
+import { colors, fonts, transitions } from '../styles/theme';
 
 export default function MobileNoteCard({
   note,
@@ -149,7 +149,7 @@ export default function MobileNoteCard({
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#fff',
+            color: colors.textPrimary,
             cursor: 'pointer',
             padding: 16,
             minWidth: 44,
@@ -203,9 +203,9 @@ export default function MobileNoteCard({
             }}
           >
             <div style={{
-              width: 24,
-              height: 24,
-              border: `2px solid ${note.completed ? colors.textMuted : colors.border}`,
+              width: 18,
+              height: 18,
+              border: `1px solid ${note.completed ? colors.textMuted : colors.border}`,
               background: note.completed ? colors.textMuted : 'transparent',
               display: 'flex',
               alignItems: 'center',
@@ -280,7 +280,7 @@ export default function MobileNoteCard({
                     }}
                     style={{
                       display: 'inline-flex',
-                      padding: '3px 8px',
+                      padding: '2px 8px',
                       border: `1px solid ${colors.border}`,
                       color: colors.textMuted,
                       fontSize: 11,
@@ -294,7 +294,7 @@ export default function MobileNoteCard({
                   </span>
                 ))}
                 {note.date && (
-                  <span style={{ color: colors.textMuted, fontSize: 12 }}>
+                  <span style={{ color: colors.textMuted, fontSize: 11 }}>
                     {note.date}
                   </span>
                 )}
@@ -314,17 +314,21 @@ export default function MobileNoteCard({
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.6)',
+            background: colors.overlay,
             display: 'flex',
             alignItems: 'flex-end',
             zIndex: 9999,
-            backdropFilter: 'blur(4px)'
+            backdropFilter: 'blur(24px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(150%)'
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: colors.surface,
+              background: 'rgba(13, 13, 13, 0.85)',
+              backdropFilter: 'blur(24px) saturate(150%)',
+              WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+              border: `1px solid ${colors.border}`,
               width: '100%',
               borderTopLeftRadius: 4,
               borderTopRightRadius: 4,

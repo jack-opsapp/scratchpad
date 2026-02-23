@@ -71,7 +71,7 @@ export default function MobileHeader({
       <div style={{ flex: 1, minWidth: 0, paddingLeft: 4 }}>
         <p style={{
           color: colors.textPrimary,
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: 600,
           margin: 0,
           overflow: 'hidden',

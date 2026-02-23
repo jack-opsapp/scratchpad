@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ChevronDown, ChevronRight, Star, Users } from 'lucide-react';
-import { colors } from '../styles/theme';
+import { colors, fonts, transitions } from '../styles/theme';
 
 const SWIPE_THRESHOLD = 50;
 
@@ -142,9 +142,9 @@ export default function MobileSidebar({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
+          background: colors.overlay,
           opacity: Math.min(1, (translateX + window.innerWidth) / window.innerWidth),
-          transition: dragging ? 'none' : 'opacity 0.3s ease',
+          transition: dragging ? 'none' : `opacity ${transitions.slow}`,
           zIndex: 998,
           WebkitTapHighlightColor: 'transparent'
         }}
@@ -159,11 +159,11 @@ export default function MobileSidebar({
           position: 'fixed',
           top: 0,
           left: 0,
+          bottom: 0,
           width: '100vw',
-          height: '100vh',
           background: colors.bg,
           transform: `translateX(${translateX}px)`,
-          transition: dragging ? 'none' : 'transform 0.3s ease',
+          transition: dragging ? 'none' : `transform ${transitions.slow}`,
           zIndex: 999,
           display: 'flex',
           flexDirection: 'column',
@@ -173,12 +173,13 @@ export default function MobileSidebar({
       >
         {/* Header with close button */}
         <div style={{
-          padding: '16px 20px',
+          padding: '16px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           borderBottom: `1px solid ${colors.border}`,
-          flexShrink: 0
+          flexShrink: 0,
+          fontFamily: fonts.sans
         }}>
           <span style={{
             color: colors.primary,
@@ -214,7 +215,7 @@ export default function MobileSidebar({
           padding: '16px 0'
         }}>
           {/* My Pages */}
-          <div style={{ padding: '0 20px', marginBottom: 24 }}>
+          <div style={{ padding: '0 16px', marginBottom: 24 }}>
             <p style={{
               color: colors.textMuted,
               fontSize: 11,
@@ -247,7 +248,7 @@ export default function MobileSidebar({
                       border: 'none',
                       color: colors.textPrimary,
                       padding: '14px 16px',
-                      fontSize: 16,
+                      fontSize: 14,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -318,7 +319,7 @@ export default function MobileSidebar({
 
           {/* Shared Pages */}
           {sharedPages.length > 0 && (
-            <div style={{ padding: '0 20px', marginBottom: 24 }}>
+            <div style={{ padding: '0 16px', marginBottom: 24 }}>
               <p style={{
                 color: colors.textMuted,
                 fontSize: 11,
@@ -355,7 +356,7 @@ export default function MobileSidebar({
                         border: 'none',
                         color: colors.textPrimary,
                         padding: '14px 16px',
-                        fontSize: 16,
+                        fontSize: 14,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -427,7 +428,7 @@ export default function MobileSidebar({
         {user && (
           <div style={{
             borderTop: `1px solid ${colors.border}`,
-            padding: '16px 20px',
+            padding: '16px',
             paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
             flexShrink: 0
           }}>
@@ -462,7 +463,7 @@ export default function MobileSidebar({
                 {user.user_metadata?.full_name && (
                   <p style={{
                     color: colors.textMuted,
-                    fontSize: 12,
+                    fontSize: 11,
                     margin: '2px 0 0 0'
                   }}>
                     {user.email}
