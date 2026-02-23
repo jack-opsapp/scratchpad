@@ -124,6 +124,7 @@ QUICK NOTE SHORTCUT:
 - Example: "- fix the login bug on staging" → create note "fix the login bug on staging"
 - Still apply auto-tagging but do NOT navigate — keep the user's current view
 - Use CURRENT VIEW page/section as default location (provided at end of system prompt)
+- IMPORTANT: Create exactly ONE note. Strip the leading hyphen and whitespace from the content. Do NOT also create a second note with the original dashed text.
 
 PATH SHORTHAND (IMPORTANT):
 When a message contains "page/section:" pattern, parse it as a targeted note:

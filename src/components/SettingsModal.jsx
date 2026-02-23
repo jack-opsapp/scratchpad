@@ -1312,6 +1312,8 @@ function DeveloperTab({ settings, onChange, user }) {
   const [generatingKey, setGeneratingKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [revealedKeyId, setRevealedKeyId] = useState(null);
+  const [copiedKeyId, setCopiedKeyId] = useState(null);
 
   // Load existing keys from Supabase (RLS scopes to current user)
   useEffect(() => {
@@ -1319,7 +1321,7 @@ function DeveloperTab({ settings, onChange, user }) {
     setKeysLoading(true);
     supabase
       .from('api_keys')
-      .select('id, name, created_at, last_used_at, revoked_at')
+      .select('id, name, key_raw, created_at, last_used_at, revoked_at')
       .is('revoked_at', null)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -1354,7 +1356,7 @@ function DeveloperTab({ settings, onChange, user }) {
       // Refresh key list
       const { data: updated } = await supabase
         .from('api_keys')
-        .select('id, name, created_at, last_used_at, revoked_at')
+        .select('id, name, key_raw, created_at, last_used_at, revoked_at')
         .is('revoked_at', null)
         .order('created_at', { ascending: false });
       setKeys(updated || []);
@@ -1567,34 +1569,95 @@ function DeveloperTab({ settings, onChange, user }) {
                 style={{
                   padding: '12px 16px',
                   borderBottom: i < keys.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12
                 }}
               >
-                <div>
-                  <div style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 500 }}>
-                    {key.name}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 500 }}>
+                      {key.name}
+                    </div>
+                    <div style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                      Created {formatDate(key.created_at)} · {formatRelative(key.last_used_at)}
+                    </div>
                   </div>
-                  <div style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                    Created {formatDate(key.created_at)} · {formatRelative(key.last_used_at)}
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setRevealedKeyId(revealedKeyId === key.id ? null : key.id)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'transparent',
+                        border: `1px solid ${colors.border}`,
+                        color: colors.textPrimary,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {revealedKeyId === key.id ? 'Hide' : 'Reveal'}
+                    </button>
+                    <button
+                      onClick={() => handleRevoke(key.id)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'transparent',
+                        border: `1px solid ${colors.danger}`,
+                        color: colors.danger,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Revoke
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleRevoke(key.id)}
-                  style={{
-                    padding: '6px 12px',
-                    background: 'transparent',
-                    border: `1px solid ${colors.danger}`,
-                    color: colors.danger,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
-                >
-                  Revoke
-                </button>
+                {revealedKeyId === key.id && (
+                  key.key_raw ? (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <code style={{
+                        flex: 1,
+                        padding: '8px 10px',
+                        background: colors.bg,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.textPrimary,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-all'
+                      }}>
+                        {key.key_raw}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(key.key_raw).then(() => {
+                            setCopiedKeyId(key.id);
+                            setTimeout(() => setCopiedKeyId(null), 2000);
+                          });
+                        }}
+                        style={{
+                          padding: '8px 14px',
+                          background: copiedKeyId === key.id ? colors.success : colors.primary,
+                          border: 'none',
+                          color: colors.bg,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          flexShrink: 0
+                        }}
+                      >
+                        {copiedKeyId === key.id ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '10px 12px',
+                      background: `${colors.warning || '#f59e0b'}12`,
+                      border: `1px solid ${colors.warning || '#f59e0b'}40`,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    }}>
+                      This key was created before reveal was supported. Revoke it and generate a new one to get a revealable key.
+                    </div>
+                  )
+                )}
               </div>
             ))}
           </div>

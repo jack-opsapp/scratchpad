@@ -230,6 +230,8 @@ export function MainApp({ user, onSignOut }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState('list');
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [headerMenuPosition, setHeaderMenuPosition] = useState({ top: 0, left: 0 });
+  const [editingHeaderItem, setEditingHeaderItem] = useState(null);
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterTag, setFilterTag] = useState([]);
   const [sortBy, setSortBy] = useState('status'); // Default: incomplete first
@@ -494,13 +496,15 @@ export function MainApp({ user, onSignOut }) {
             supabase.from('sections').insert({
               id: ns.id, page_id: currentPage, name: ns.name, position: currentPageData?.sections?.length || 0
             });
-            setPages(pg =>
+            const updatePageSections = pg =>
               pg.map(p =>
                 p.id === currentPage
                   ? { ...p, sections: [...p.sections, ns] }
                   : p
-              )
-            );
+              );
+            setPages(updatePageSections);
+            setOwnedPages(updatePageSections);
+            setSharedPages(updatePageSections);
             setCurrentSection(ns.id);
             setViewingPageLevel(false);
           }
@@ -2862,35 +2866,103 @@ export function MainApp({ user, onSignOut }) {
                 })()}
 
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span
-                    onClick={() => setViewingPageLevel(true)}
-                    style={{
-                      color: viewingPageLevel ? colors.textPrimary : colors.textMuted,
-                      fontSize: viewingPageLevel ? 24 : 11,
-                      fontWeight: viewingPageLevel ? 600 : 500,
-                      letterSpacing: viewingPageLevel ? -1 : 1,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {currentPageData?.name?.toUpperCase()}
-                  </span>
+                  {viewingPageLevel && editingHeaderItem === currentPage ? (
+                    <input
+                      autoFocus
+                      defaultValue={currentPageData?.name || ''}
+                      onClick={e => e.stopPropagation()}
+                      onBlur={e => {
+                        const newName = e.target.value.trim();
+                        if (newName) {
+                          const updateName = pg => pg.map(p => p.id === currentPage ? { ...p, name: newName } : p);
+                          setPages(updateName);
+                          setOwnedPages(updateName);
+                          setSharedPages(updateName);
+                          supabase.from('pages').update({ name: newName }).eq('id', currentPage);
+                        }
+                        setEditingHeaderItem(null);
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingHeaderItem(null); }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: `2px solid ${colors.primary}`,
+                        color: colors.textPrimary,
+                        fontSize: 24,
+                        fontWeight: 600,
+                        letterSpacing: -1,
+                        outline: 'none',
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onClick={() => setViewingPageLevel(true)}
+                      style={{
+                        color: viewingPageLevel ? colors.textPrimary : colors.textMuted,
+                        fontSize: viewingPageLevel ? 24 : 11,
+                        fontWeight: viewingPageLevel ? 600 : 500,
+                        letterSpacing: viewingPageLevel ? -1 : 1,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {currentPageData?.name?.toUpperCase()}
+                    </span>
+                  )}
                   {!viewingPageLevel && (
                     <>
                       <span style={{ color: colors.textMuted }}>/</span>
-                      <h1
-                        style={{
-                          color: colors.textPrimary,
-                          fontSize: 24,
-                          fontWeight: 600,
-                          letterSpacing: -1,
-                          margin: 0,
-                        }}
-                      >
-                        {title.displayed}
-                        {!title.done && (
-                          <span style={{ color: colors.primary }}>_</span>
-                        )}
-                      </h1>
+                      {editingHeaderItem === currentSection ? (
+                        <input
+                          autoFocus
+                          defaultValue={currentPageData?.sections?.find(s => s.id === currentSection)?.name || ''}
+                          onClick={e => e.stopPropagation()}
+                          onBlur={e => {
+                            const newName = e.target.value.trim();
+                            if (newName) {
+                              const updateSections = pg => pg.map(p =>
+                                p.id === currentPage
+                                  ? { ...p, sections: p.sections.map(s => s.id === currentSection ? { ...s, name: newName } : s) }
+                                  : p
+                              );
+                              setPages(updateSections);
+                              setOwnedPages(updateSections);
+                              setSharedPages(updateSections);
+                              supabase.from('sections').update({ name: newName }).eq('id', currentSection);
+                            }
+                            setEditingHeaderItem(null);
+                          }}
+                          onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingHeaderItem(null); }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            borderBottom: `2px solid ${colors.primary}`,
+                            color: colors.textPrimary,
+                            fontSize: 24,
+                            fontWeight: 600,
+                            letterSpacing: -1,
+                            outline: 'none',
+                            padding: 0,
+                            margin: 0,
+                          }}
+                        />
+                      ) : (
+                        <h1
+                          style={{
+                            color: colors.textPrimary,
+                            fontSize: 24,
+                            fontWeight: 600,
+                            letterSpacing: -1,
+                            margin: 0,
+                          }}
+                        >
+                          {title.displayed}
+                          {!title.done && (
+                            <span style={{ color: colors.primary }}>_</span>
+                          )}
+                        </h1>
+                      )}
                     </>
                   )}
                   <ChevronDown
@@ -2899,6 +2971,12 @@ export function MainApp({ user, onSignOut }) {
                     style={{ cursor: 'pointer' }}
                     onClick={e => {
                       e.stopPropagation();
+                      if (!showHeaderMenu) {
+                        setHeaderMenuPosition({
+                          top: e.currentTarget.getBoundingClientRect().bottom + 4,
+                          left: e.currentTarget.getBoundingClientRect().left,
+                        });
+                      }
                       setShowHeaderMenu(!showHeaderMenu);
                     }}
                   />
@@ -2926,14 +3004,14 @@ export function MainApp({ user, onSignOut }) {
                 </div>
                 {showHeaderMenu && (
                   <ContextMenu
-                    position={{ top: 100, left: 40 }}
+                    position={headerMenuPosition}
                     onClose={() => setShowHeaderMenu(false)}
                     items={[
                       {
                         label: 'Rename',
                         icon: Edit3,
                         action: () =>
-                          setEditingItem(
+                          setEditingHeaderItem(
                             viewingPageLevel ? currentPage : currentSection
                           ),
                         visible: myRole === 'owner' || (!viewingPageLevel && ['owner', 'team-admin', 'team'].includes(myRole)),
@@ -3432,12 +3510,15 @@ export function MainApp({ user, onSignOut }) {
                 groupBy={groupBy}
                 onNoteMove={
                   viewingPageLevel
-                    ? (id, sid) =>
+                    ? (id, sid) => {
                         setNotes(
                           notes.map(n =>
                             n.id === id ? { ...n, sectionId: sid } : n
                           )
-                        )
+                        );
+                        supabase.from('notes').update({ section_id: sid }).eq('id', id)
+                          .then(({ error }) => { if (error) console.error('Note move persist failed:', error); });
+                      }
                     : null
                 }
                 onNoteToggle={handleNoteToggle}
