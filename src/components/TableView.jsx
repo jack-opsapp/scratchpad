@@ -124,7 +124,7 @@ export function TableView({
         width: '100%',
         borderCollapse: 'collapse',
         fontSize: 13,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}>
         {/* Header */}
         <thead>
@@ -208,7 +208,7 @@ export function TableView({
                       border: `1px solid ${colors.primary}`,
                       color: colors.textPrimary,
                       fontSize: 13,
-                      fontFamily: "'Inter', sans-serif",
+                      fontFamily: "'Manrope', sans-serif",
                       padding: '2px 6px',
                       outline: 'none',
                       borderRadius: 2,

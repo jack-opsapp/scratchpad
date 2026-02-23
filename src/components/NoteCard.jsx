@@ -4,7 +4,7 @@ import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors } from '../styles/theme.js';
 import { TagPill } from './TagPill.jsx';
 import UserAvatar from './UserAvatar.jsx';
-import { parseWikilinks, buildWikilink } from '../lib/wikilinks.js';
+import { parseWikilinks, buildWikilink, stripWikilinks } from '../lib/wikilinks.js';
 
 /**
  * Render note content with wikilink chips inline
@@ -47,10 +47,10 @@ function renderContentWithLinks(content, onLinkClick) {
           e.currentTarget.querySelector('.wikilink-icon').style.opacity = '0';
         }}
       >
-        <span style={{ color: colors.textMuted, fontSize: 11 }}>[[</span>
+        <span style={{ color: colors.primary, fontSize: 11, opacity: 0.5 }}>[[</span>
         <Link2 className="wikilink-icon" size={10} style={{ flexShrink: 0, opacity: 0, transition: 'opacity 0.15s ease' }} />
         {seg.displayText}
-        <span style={{ color: colors.textMuted, fontSize: 11 }}>]]</span>
+        <span style={{ color: colors.primary, fontSize: 11, opacity: 0.5 }}>]]</span>
       </span>
     );
   });
@@ -106,14 +106,14 @@ function WikilinkAutocompleteInline({ notes, position, onSelect, onClose }) {
           borderBottom: `1px solid ${colors.border}`,
           color: colors.textPrimary,
           fontSize: 12,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           outline: 'none',
           boxSizing: 'border-box',
         }}
       />
       <div style={{ maxHeight: 220, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: 10, color: colors.textMuted, fontSize: 11, fontFamily: "'Inter', sans-serif" }}>
+          <div style={{ padding: 10, color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif" }}>
             No matching notes
           </div>
         ) : (
@@ -129,8 +129,8 @@ function WikilinkAutocompleteInline({ notes, position, onSelect, onClose }) {
                 borderBottom: `1px solid ${colors.border}`,
               }}
             >
-              <div style={{ color: colors.textPrimary, fontSize: 12, fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {n.content?.substring(0, 50)}
+              <div style={{ color: colors.textPrimary, fontSize: 12, fontFamily: "'Manrope', sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {stripWikilinks(n.content)?.substring(0, 50)}
               </div>
             </div>
           ))
@@ -312,7 +312,7 @@ export function NoteCard({
                   border: 'none',
                   color: colors.textPrimary,
                   fontSize: 14,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   outline: 'none',
                 }}
               />
@@ -325,7 +325,7 @@ export function NoteCard({
                     const cursorPos = inputRef.current?.selectionStart || content.length;
                     const textBefore = content.substring(0, cursorPos);
                     const lastBracket = textBefore.lastIndexOf('[[');
-                    const displayText = targetNote.content?.substring(0, 40) || 'note';
+                    const displayText = stripWikilinks(targetNote.content)?.substring(0, 40) || 'note';
                     const wikilink = buildWikilink(targetNote.id, displayText);
                     const newContent = content.substring(0, lastBracket) + wikilink + content.substring(cursorPos);
                     setContent(newContent);
@@ -343,7 +343,7 @@ export function NoteCard({
               style={{
                 color: note.completed ? colors.textMuted : colors.textPrimary,
                 fontSize: 14,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 textDecoration: note.completed ? 'line-through' : 'none',
                 cursor: canEdit ? 'text' : 'default',
                 margin: 0,
@@ -417,7 +417,7 @@ export function NoteCard({
                     borderRadius: 2,
                     color: colors.primary,
                     fontSize: 11,
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                     cursor: 'pointer',
                     transition: 'border-color 0.15s ease',
                   }}
@@ -434,7 +434,7 @@ export function NoteCard({
                   style={{
                     color: colors.textMuted,
                     fontSize: 11,
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                   }}
                 >
                   {note.date}

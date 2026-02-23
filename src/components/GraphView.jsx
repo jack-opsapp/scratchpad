@@ -422,7 +422,7 @@ export function GraphView({
         minHeight: 400,
         gap: 16,
         color: colors.textMuted,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}>
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4">
           <circle cx="6" cy="6" r="3" />
@@ -472,7 +472,7 @@ export function GraphView({
             borderRadius: 3,
             color: colors.textSecondary,
             fontSize: 11,
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
             cursor: 'pointer',
             outline: 'none',
           }}
@@ -496,7 +496,7 @@ export function GraphView({
               borderRadius: 3,
               color: colors.textSecondary,
               fontSize: 11,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               cursor: 'pointer',
               outline: 'none',
             }}
@@ -519,7 +519,7 @@ export function GraphView({
         zIndex: 10,
         color: colors.textMuted,
         fontSize: 11,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}>
         <span>{graphData.nodes.length} notes</span>
         <span>{graphData.links.length} links</span>
@@ -557,7 +557,7 @@ export function GraphView({
           <div style={{
             color: colors.textPrimary,
             fontSize: 13,
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
             lineHeight: 1.5,
             marginBottom: 6,
             overflow: 'hidden',
@@ -582,7 +582,7 @@ export function GraphView({
             <span style={{
               color: colors.textMuted,
               fontSize: 11,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
             }}>
               {hoveredNode.pageName}{hoveredNode.sectionName ? ` / ${hoveredNode.sectionName}` : ''}
             </span>
@@ -590,7 +590,7 @@ export function GraphView({
           <div style={{
             color: colors.textMuted,
             fontSize: 10,
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
             marginTop: 4,
           }}>
             {hoveredNode.connectionCount} connection{hoveredNode.connectionCount === 1 ? '' : 's'} &middot; Click to navigate
@@ -624,7 +624,7 @@ export function GraphView({
               <span style={{
                 color: colors.textMuted,
                 fontSize: 10,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
               }}>
                 {p.name}
               </span>
@@ -640,7 +640,7 @@ export function GraphView({
         right: 12,
         color: colors.textMuted,
         fontSize: 10,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
         opacity: 0.5,
         zIndex: 10,
       }}>

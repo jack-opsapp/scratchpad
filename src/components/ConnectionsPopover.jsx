@@ -70,7 +70,7 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
           fontSize: 11,
           fontWeight: 600,
           letterSpacing: 1.5,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
         }}>
           CONNECTIONS
         </span>
@@ -91,11 +91,11 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
 
       <div style={{ maxHeight: 340, overflowY: 'auto', padding: '4px 0' }}>
         {loading ? (
-          <div style={{ padding: 12, color: colors.textMuted, fontSize: 12, fontFamily: "'Inter', sans-serif" }}>
+          <div style={{ padding: 12, color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif" }}>
             Loading...
           </div>
         ) : connections.length === 0 ? (
-          <div style={{ padding: 12, color: colors.textMuted, fontSize: 12, fontFamily: "'Inter', sans-serif" }}>
+          <div style={{ padding: 12, color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif" }}>
             No connections yet
           </div>
         ) : (
@@ -107,7 +107,7 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
                   fontSize: 10,
                   fontWeight: 600,
                   letterSpacing: 1.5,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   marginBottom: 4,
                   marginTop: 4,
                 }}>
@@ -125,7 +125,7 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
                   fontSize: 10,
                   fontWeight: 600,
                   letterSpacing: 1.5,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   marginBottom: 4,
                   marginTop: 4,
                 }}>
@@ -178,7 +178,7 @@ function ConnectionRow({ connection, onNavigate, onDelete }) {
         <div style={{
           color: colors.textPrimary,
           fontSize: 12,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -188,7 +188,7 @@ function ConnectionRow({ connection, onNavigate, onDelete }) {
         <div style={{
           color: colors.textMuted,
           fontSize: 10,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
         }}>
           {connection.connected_page_name} / {connection.connected_section_name}
           {connection.connection_type !== 'related' && (

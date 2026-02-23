@@ -81,14 +81,14 @@ export function WikilinkAutocomplete({ notes, position, onSelect, onClose }) {
           borderBottom: `1px solid ${colors.border}`,
           color: colors.textPrimary,
           fontSize: 13,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
           outline: 'none',
           boxSizing: 'border-box',
         }}
       />
       <div style={{ maxHeight: 260, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '12px', color: colors.textMuted, fontSize: 12, fontFamily: "'Inter', sans-serif" }}>
+          <div style={{ padding: '12px', color: colors.textMuted, fontSize: 12, fontFamily: "'Manrope', sans-serif" }}>
             No matching notes
           </div>
         ) : (
@@ -108,7 +108,7 @@ export function WikilinkAutocomplete({ notes, position, onSelect, onClose }) {
               <div style={{
                 color: colors.textPrimary,
                 fontSize: 13,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -116,7 +116,7 @@ export function WikilinkAutocomplete({ notes, position, onSelect, onClose }) {
                 {note.content.substring(0, 60)}
               </div>
               {note.pageName && (
-                <div style={{ color: colors.textMuted, fontSize: 11, fontFamily: "'Inter', sans-serif", marginTop: 2 }}>
+                <div style={{ color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif", marginTop: 2 }}>
                   {note.pageName} / {note.sectionName}
                 </div>
               )}

@@ -77,7 +77,7 @@ export default function MobileHeader({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}>
           {agentViewTitle ? (
             <>

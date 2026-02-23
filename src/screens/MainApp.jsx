@@ -149,6 +149,9 @@ function generateId() {
   return crypto.randomUUID();
 }
 
+// Track whether current drag is a section (can't read data during dragover)
+let draggingSection = false;
+
 /**
  * Get user display name from user object
  * @param {object} user - Supabase user object
@@ -1524,7 +1527,7 @@ export function MainApp({ user, onSignOut }) {
         maxWidth: '100vw',
         overflow: 'hidden',
         background: colors.bg,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}
       onClick={() => {
         setContextMenu(null);
@@ -1806,6 +1809,45 @@ export function MainApp({ user, onSignOut }) {
                   {ownedPages.map(page => (
                     <div key={page.id}>
                       <div
+                        onDragOver={e => {
+                          if (draggingSection && e.dataTransfer.types.includes('text/plain')) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            e.currentTarget.style.borderBottom = `2px solid ${colors.primary}`;
+                          }
+                        }}
+                        onDragLeave={e => {
+                          e.currentTarget.style.borderBottom = '2px solid transparent';
+                        }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          e.currentTarget.style.borderBottom = '2px solid transparent';
+                          const data = e.dataTransfer.getData('text/plain');
+                          const sectionMatch = data.match(/^section:(.+)$/);
+                          if (!sectionMatch) return;
+                          const sectionId = sectionMatch[1];
+                          // Find the source page that contains this section
+                          const sourcePage = pages.find(p => p.sections.some(s => s.id === sectionId));
+                          if (!sourcePage || sourcePage.id === page.id) return; // same page = no-op
+                          const section = sourcePage.sections.find(s => s.id === sectionId);
+                          if (!section) return;
+                          // Move section in local state
+                          setPages(prev => prev.map(p => {
+                            if (p.id === sourcePage.id) {
+                              return { ...p, sections: p.sections.filter(s => s.id !== sectionId) };
+                            }
+                            if (p.id === page.id) {
+                              return { ...p, sections: [...p.sections, section] };
+                            }
+                            return p;
+                          }));
+                          // Update Supabase
+                          supabase.from('sections').update({ page_id: page.id }).eq('id', sectionId);
+                          // Auto-expand the target page
+                          setExpandedPages(prev =>
+                            prev.includes(page.id) ? prev : [...prev, page.id]
+                          );
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1813,6 +1855,8 @@ export function MainApp({ user, onSignOut }) {
                           color: colors.textPrimary,
                           fontSize: 13,
                           fontWeight: 500,
+                          borderBottom: '2px solid transparent',
+                          transition: 'border-color 0.15s ease',
                         }}
                       >
                         <span
@@ -1912,6 +1956,17 @@ export function MainApp({ user, onSignOut }) {
                         page.sections.map(section => (
                           <div
                             key={section.id}
+                            draggable
+                            onDragStart={e => {
+                              e.dataTransfer.setData('text/plain', `section:${section.id}`);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.currentTarget.style.opacity = '0.4';
+                              draggingSection = true;
+                            }}
+                            onDragEnd={e => {
+                              e.currentTarget.style.opacity = '1';
+                              draggingSection = false;
+                            }}
                             onClick={() => {
                               setCurrentPage(page.id);
                               setCurrentSection(section.id);
@@ -2005,25 +2060,28 @@ export function MainApp({ user, onSignOut }) {
                             {editingItem === section.id ? (
                               <input
                                 autoFocus
-                                defaultValue={section.name}
+                                value={section.name}
                                 onClick={e => e.stopPropagation()}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setPages(
+                                    pages.map(p =>
+                                      p.id === page.id
+                                        ? {
+                                            ...p,
+                                            sections: p.sections.map(s =>
+                                              s.id === section.id
+                                                ? { ...s, name: val }
+                                                : s
+                                            ),
+                                          }
+                                        : p
+                                    )
+                                  );
+                                }}
                                 onBlur={e => {
                                   const newName = e.target.value.trim();
                                   if (newName) {
-                                    setPages(
-                                      pages.map(p =>
-                                        p.id === page.id
-                                          ? {
-                                              ...p,
-                                              sections: p.sections.map(s =>
-                                                s.id === section.id
-                                                  ? { ...s, name: newName }
-                                                  : s
-                                              ),
-                                            }
-                                          : p
-                                      )
-                                    );
                                     supabase.from('sections').update({ name: newName }).eq('id', section.id);
                                   }
                                   setEditingItem(null);
@@ -2043,7 +2101,7 @@ export function MainApp({ user, onSignOut }) {
                                 }}
                               />
                             ) : (
-                              <span style={{ flex: 1 }}>
+                              <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <TypewriterText
                                   text={section.name}
                                   animate={animatingItems.has(section.id)}
@@ -2053,6 +2111,13 @@ export function MainApp({ user, onSignOut }) {
                                     return next;
                                   })}
                                 />
+                                <span style={{
+                                  fontSize: 10,
+                                  color: colors.textMuted,
+                                  opacity: 0.6,
+                                }}>
+                                  {notes.filter(n => n.sectionId === section.id && !n.completed).length || ''}
+                                </span>
                               </span>
                             )}
                             <button
@@ -2520,7 +2585,7 @@ export function MainApp({ user, onSignOut }) {
                         style={{
                           color: colors.textMuted,
                           fontSize: 12,
-                          fontFamily: "'Inter', sans-serif",
+                          fontFamily: "'Manrope', sans-serif",
                           margin: '6px 0',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -2558,7 +2623,7 @@ export function MainApp({ user, onSignOut }) {
                         style={{
                           color: colors.textMuted,
                           fontSize: 12,
-                          fontFamily: "'Inter', sans-serif",
+                          fontFamily: "'Manrope', sans-serif",
                           margin: '6px 0',
                           display: 'flex',
                           alignItems: 'center',
@@ -2620,7 +2685,7 @@ export function MainApp({ user, onSignOut }) {
                     style={{
                       color: colors.textMuted,
                       fontSize: 12,
-                      fontFamily: "'Inter', sans-serif",
+                      fontFamily: "'Manrope', sans-serif",
                       flex: 1,
                     }}
                   >
@@ -3289,7 +3354,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textMuted,
                         fontSize: 13,
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'Manrope', sans-serif",
                       }}
                     >
                       No notes match this view.
@@ -3673,7 +3738,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textMuted,
                         fontSize: 13,
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'Manrope', sans-serif",
                       }}
                     >
                       No notes yet.
@@ -3940,7 +4005,7 @@ export function MainApp({ user, onSignOut }) {
                   border: 'none',
                   color: colors.textPrimary,
                   fontSize: 14,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   outline: 'none',
                 }}
               />
@@ -3985,7 +4050,7 @@ export function MainApp({ user, onSignOut }) {
                       style={{
                         color: colors.textPrimary,
                         fontSize: 13,
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'Manrope', sans-serif",
                         margin: 0,
                       }}
                     >
@@ -4038,7 +4103,7 @@ export function MainApp({ user, onSignOut }) {
               style={{
                 color: colors.textPrimary,
                 fontSize: 14,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 marginBottom: 16,
               }}
             >
@@ -4166,7 +4231,7 @@ export function MainApp({ user, onSignOut }) {
                   style={{
                     color: colors.textMuted,
                     fontSize: 13,
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                   }}
                 >
                   {desc}

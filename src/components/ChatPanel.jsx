@@ -4,7 +4,7 @@ import { colors } from '../styles/theme.js';
 import VoiceInput from './VoiceInput.jsx';
 import MarkdownText from './MarkdownText.jsx';
 import { WikilinkAutocomplete } from './WikilinkAutocomplete.jsx';
-import { buildWikilink } from '../lib/wikilinks.js';
+import { buildWikilink, stripWikilinks } from '../lib/wikilinks.js';
 
 const INPUT_ONLY_HEIGHT = 76; // Just input with padding (input ~40px + padding 20px + border 2px + breathing room)
 const COLLAPSED_HEIGHT = 110; // Input + collapsed indicator bar when there are messages
@@ -80,6 +80,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const reviseInputRef = useRef(null);
   const buttonRefs = useRef([]);
   const lastEscTime = useRef(0);
+  const prefixBaseContent = useRef('');
 
   // Find the last unresponded message that needs action buttons
   const pendingMessage = messages.slice().reverse().find(
@@ -489,26 +490,30 @@ const ChatPanel = forwardRef(function ChatPanel({
       e.preventDefault();
       handleSubmit();
     } else if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && prefixHistory.length > 0) {
-      // Shift+Up/Down: cycle through prefix history
+      // Shift+Up/Down: cycle through previous section/page prefixes only
+      // Does NOT change the user's typed content — only the prefix ahead of it
       e.preventDefault();
-      const currentContent = inputValue.replace(/^[\w/.-]+:\s*/, ''); // strip any existing prefix
       let newIndex;
       if (e.key === 'ArrowUp') {
         newIndex = prefixIndex === -1
           ? prefixHistory.length - 1
           : Math.max(0, prefixIndex - 1);
       } else {
-        if (prefixIndex === -1) return; // nothing to cycle forward to
+        if (prefixIndex === -1) return;
         newIndex = prefixIndex + 1;
         if (newIndex >= prefixHistory.length) {
-          // Cycled past end — remove prefix
+          // Cycled past end — remove prefix, restore original input
           setPrefixIndex(-1);
-          setInputValue(currentContent);
+          setInputValue(prefixBaseContent.current);
           return;
         }
       }
+      // On first cycle, save the current input content (without any prefix) as the base
+      if (prefixIndex === -1) {
+        prefixBaseContent.current = inputValue.replace(/^-?[\w/.-]+:\s*/, '');
+      }
       setPrefixIndex(newIndex);
-      setInputValue(prefixHistory[newIndex] + currentContent);
+      setInputValue(prefixHistory[newIndex] + prefixBaseContent.current);
       setShimmerActive(true);
       setTimeout(() => setShimmerActive(false), 600);
     } else if (e.key === 'Tab' && autofillSuggestion) {
@@ -939,7 +944,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                           }}>
                             {action.type === 'create_page' && action.name}
                             {action.type === 'create_section' && action.name}
-                            {action.type === 'create_note' && (action.content?.substring(0, 30) + (action.content?.length > 30 ? '...' : ''))}
+                            {action.type === 'create_note' && (stripWikilinks(action.content)?.substring(0, 30) + ((action.content?.length > 30) ? '...' : ''))}
                           </span>
                         </div>
                       ))}
@@ -1280,7 +1285,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                   style={{
                     fontSize: 11,
                     color: colors.primary,
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                   }}
                 >
                   {referencedNote.preview}
@@ -1368,7 +1373,23 @@ const ChatPanel = forwardRef(function ChatPanel({
                 )}
               </div>
             ) : (
-              <div style={{ flex: 1, position: 'relative' }}>
+              <div
+                style={{ flex: 1, position: 'relative' }}
+                onTouchStart={(e) => {
+                  if (!autofillSuggestion) return;
+                  e.currentTarget._swipeStartX = e.touches[0].clientX;
+                }}
+                onTouchEnd={(e) => {
+                  if (!autofillSuggestion || !e.currentTarget._swipeStartX) return;
+                  const deltaX = e.changedTouches[0].clientX - e.currentTarget._swipeStartX;
+                  e.currentTarget._swipeStartX = null;
+                  if (deltaX > 40) {
+                    setInputValue(autofillSuggestion);
+                    setAutofillSuggestion('');
+                    inputRef.current?.focus();
+                  }
+                }}
+              >
                 <textarea
                   ref={inputRef}
                   value={inputValue}
@@ -1430,7 +1451,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                     }}
                   >
                     {autofillSuggestion}
-                    <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>TAB</span>
+                    <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>{isMobile ? 'swipe →' : 'TAB'}</span>
                   </div>
                 )}
                 {/* Wikilink autocomplete */}
@@ -1442,7 +1463,7 @@ const ChatPanel = forwardRef(function ChatPanel({
                       const cursorPos = inputRef.current?.selectionStart || inputValue.length;
                       const textBefore = inputValue.substring(0, cursorPos);
                       const lastBracket = textBefore.lastIndexOf('[[');
-                      const displayText = targetNote.content?.substring(0, 40) || 'note';
+                      const displayText = stripWikilinks(targetNote.content)?.substring(0, 40) || 'note';
                       const wikilink = buildWikilink(targetNote.id, displayText);
                       const newValue = inputValue.substring(0, lastBracket) + wikilink + inputValue.substring(cursorPos);
                       setInputValue(newValue);

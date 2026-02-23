@@ -72,7 +72,7 @@ export function ContextMenu({ items, onClose, position }) {
               border: 'none',
               color: item.danger ? colors.danger : colors.textMuted,
               fontSize: 12,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               cursor: 'pointer',
               textAlign: 'left',
             }}

@@ -87,7 +87,7 @@ export function HomeView({
         <p style={{
           color: colors.textMuted,
           fontSize: 14,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Manrope', sans-serif",
         }}>
           No notes yet — Open a page to start adding notes
         </p>
@@ -167,7 +167,7 @@ export function HomeView({
               color: colors.textPrimary,
               fontSize: 18,
               fontWeight: 600,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               margin: '4px 0 0',
             }}>
               {card.section.name}
@@ -290,7 +290,7 @@ export function HomeView({
                   color: colors.textPrimary,
                   fontSize: 14,
                   fontWeight: 600,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   margin: '2px 0 0',
                   lineHeight: 1.3,
                 }}>

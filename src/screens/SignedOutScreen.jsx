@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors } from '../styles/theme.js';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 /**
  * Landing/sign-in screen with animated branding
@@ -14,6 +15,7 @@ export function SignedOutScreen({ onSignIn, error }) {
   const subtitle = useTypewriter('Your ideas, organized.', 30, 700);
   const [showContent, setShowContent] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const { isMobile } = useMediaQuery();
 
   useEffect(() => {
     if (subtitle.done) {
@@ -39,35 +41,37 @@ export function SignedOutScreen({ onSignIn, error }) {
         display: 'flex',
         height: '100vh',
         background: colors.bg,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}
     >
-      {/* Sidebar branding */}
-      <div
-        style={{
-          width: 64,
-          background: colors.surface,
-          borderRight: `1px solid ${colors.border}`,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
-          padding: '0 0 80px 0',
-        }}
-      >
-        <span
+      {/* Sidebar branding — hidden on mobile */}
+      {!isMobile && (
+        <div
           style={{
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-            color: colors.textPrimary,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: -1,
-            margin: '0 auto',
+            width: 64,
+            background: colors.surface,
+            borderRight: `1px solid ${colors.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            padding: '0 0 80px 0',
           }}
         >
-          SLATE
-        </span>
-      </div>
+          <span
+            style={{
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              color: colors.textPrimary,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: -1,
+              margin: '0 auto',
+            }}
+          >
+            SLATE
+          </span>
+        </div>
+      )}
 
       {/* Main content */}
       <div
@@ -76,14 +80,14 @@ export function SignedOutScreen({ onSignIn, error }) {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          padding: '0 80px',
+          padding: isMobile ? '0 24px' : '0 80px',
         }}
       >
         {/* Title with typewriter */}
         <h1
           style={{
             color: colors.textPrimary,
-            fontSize: 56,
+            fontSize: isMobile ? 40 : 56,
             fontWeight: 600,
             letterSpacing: -2,
             marginBottom: 16,
@@ -99,7 +103,7 @@ export function SignedOutScreen({ onSignIn, error }) {
             color: colors.textPrimary,
             fontSize: 15,
             fontWeight: 500,
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: "'Manrope', sans-serif",
             marginBottom: 8,
             minHeight: 24,
           }}
@@ -123,7 +127,7 @@ export function SignedOutScreen({ onSignIn, error }) {
             style={{
               color: colors.textPrimary,
               fontSize: 13,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Manrope', sans-serif",
               lineHeight: 1.6,
               marginBottom: 40,
               opacity: 0.7,

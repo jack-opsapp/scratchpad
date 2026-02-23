@@ -17,7 +17,7 @@ function LoadingScreen() {
         alignItems: 'center',
         justifyContent: 'center',
         background: colors.bg,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: "'Manrope', sans-serif",
       }}
     >
       <div

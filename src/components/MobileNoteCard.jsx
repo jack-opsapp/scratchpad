@@ -236,7 +236,7 @@ export default function MobileNoteCard({
                     border: `1px solid ${colors.border}`,
                     color: colors.textPrimary,
                     fontSize: 16,
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'Manrope', sans-serif",
                     outline: 'none',
                     padding: '8px 12px',
                     borderRadius: 2
@@ -249,7 +249,7 @@ export default function MobileNoteCard({
                 style={{
                   color: note.completed ? colors.textMuted : colors.textPrimary,
                   fontSize: 16,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   textDecoration: note.completed ? 'line-through' : 'none',
                   cursor: 'text',
                   margin: 0,

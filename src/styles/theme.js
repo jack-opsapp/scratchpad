@@ -35,7 +35,7 @@ export const colors = {
 };
 
 export const fonts = {
-  sans: "'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif",
+  sans: "'Manrope', 'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif",
   mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
 };
 

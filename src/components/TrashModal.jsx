@@ -143,7 +143,7 @@ export default function TrashModal({ isOpen, onClose, onRestore, userId }) {
               fontSize: 18,
               fontWeight: 600,
               margin: 0,
-              fontFamily: "'Inter', sans-serif"
+              fontFamily: "'Manrope', sans-serif"
             }}>
               Recently Deleted
             </h2>
@@ -315,7 +315,7 @@ function TrashGroup({ icon: Icon, label, count, expanded, onToggle, children }) 
           cursor: 'pointer',
           fontSize: 13,
           fontWeight: 600,
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

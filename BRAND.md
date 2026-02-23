@@ -15,14 +15,16 @@
 | Token | Value | Usage |
 |-------|-------|-------|
 | Background | `#000000` | Primary canvas |
-| Surface | `#0a0a0a` | Elevated elements, cards |
-| Border | `#1a1a1a` | Subtle dividers and outlines |
-| Primary | `#d1b18f` | Gold accent - use sparingly |
-| Primary Dark | `#BC8E5E` | Darker gold variant |
-| Primary Light | `#E5D4C1` | Lighter gold variant |
-| Text | `#ffffff` | Primary content |
-| Text Muted | `#888888` | Secondary content, labels |
-| Danger | `#ff6b6b` | Destructive actions |
+| Surface | `#0d0d0d` | Elevated elements, sidebar |
+| Surface Raised | `#1a1a1a` | Cards, popovers, hover states |
+| Border | `rgba(255,255,255,0.1)` | Subtle dividers and outlines |
+| Primary | `#948b72` | Beige accent - use sparingly (user-configurable via CSS var) |
+| Primary Dark | `#766f5b` | Darker beige variant |
+| Primary Light | `#b5ae9a` | Lighter beige variant |
+| Text | `#e8e8e8` | Primary content |
+| Text Secondary | `#a0a0a0` | Captions, metadata |
+| Text Muted | `#525252` | Disabled, placeholders |
+| Danger | `#b83c2a` | Destructive actions |
 
 ### Color Usage
 
@@ -36,9 +38,9 @@
 ## Typography
 
 ### Fonts
-- **Primary:** Manrope (body text, UI)
-- **Fallback:** Inter, system sans-serif
-- **Monospace:** For keyboard shortcuts
+- **Primary:** Manrope (all UI text, headings, inputs, buttons)
+- **Fallback:** Inter, Helvetica Now, Helvetica Neue, Arial, sans-serif
+- **Monospace:** JetBrains Mono (code, keyboard shortcuts)
 
 ### Principles
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Check, Trash2, GripVertical, Move } from 'lucide-react';
 import { colors } from '../styles/theme.js';
+import { stripWikilinks } from '../lib/wikilinks.js';
 
 /**
  * Kanban-style boxes view with drag-and-drop
@@ -372,8 +373,8 @@ export function BoxesView({
                         transition: 'opacity 0.15s ease',
                       }}
                     >
-                      {/* Drag handle or move button */}
-                      {sections &&
+                      {/* Drag handle or move button - hidden in compact mode */}
+                      {sections && !compact &&
                         (isTouchDevice ? (
                           <button
                             onClick={e => {
@@ -432,12 +433,12 @@ export function BoxesView({
                               ? colors.textMuted
                               : colors.textPrimary,
                             fontSize: compact ? 12 : 13,
-                            fontFamily: "'Inter', sans-serif",
+                            fontFamily: "'Manrope', sans-serif",
                             margin: 0,
                             textDecoration: note.completed ? 'line-through' : 'none',
                           }}
                         >
-                          {note.content}
+                          {stripWikilinks(note.content)}
                         </p>
                         {!compact && note.tags?.length > 0 && (
                           <div
@@ -488,25 +489,27 @@ export function BoxesView({
                         )}
                       </div>
 
-                      {/* Delete button */}
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          onNoteDelete(note.id);
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#b83c2a',
-                          cursor: 'pointer',
-                          padding: 4,
-                          opacity: 0.7,
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {/* Delete button - hidden in compact mode */}
+                      {!compact && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onNoteDelete(note.id);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#b83c2a',
+                            cursor: 'pointer',
+                            padding: 4,
+                            opacity: 0.7,
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -616,9 +619,9 @@ export function BoxesView({
                   lineHeight: 1.4,
                 }}
               >
-                {moveNoteModal.note.content.length > 50
-                  ? moveNoteModal.note.content.slice(0, 50) + '...'
-                  : moveNoteModal.note.content}
+                {stripWikilinks(moveNoteModal.note.content).length > 50
+                  ? stripWikilinks(moveNoteModal.note.content).slice(0, 50) + '...'
+                  : stripWikilinks(moveNoteModal.note.content)}
               </p>
             </div>
 
@@ -660,7 +663,7 @@ export function BoxesView({
                         ? colors.textMuted
                         : colors.textPrimary,
                       fontSize: 13,
-                      fontFamily: "'Inter', sans-serif",
+                      fontFamily: "'Manrope', sans-serif",
                       cursor: isCurrentSection ? 'default' : 'pointer',
                       textAlign: 'left',
                       opacity: isCurrentSection ? 0.5 : 1,

@@ -138,7 +138,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpe
             fontSize: 20,
             fontWeight: 600,
             margin: 0,
-            fontFamily: "'Inter', sans-serif"
+            fontFamily: "'Manrope', sans-serif"
           }}>
             Settings
           </h2>
@@ -177,7 +177,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpe
                   borderLeft: activeTab === tab.id ? `2px solid ${colors.primary}` : '2px solid transparent',
                   color: activeTab === tab.id ? colors.textPrimary : colors.textMuted,
                   fontSize: 14,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Manrope', sans-serif",
                   textAlign: 'left',
                   cursor: 'pointer',
                   transition: 'all 0.2s'
@@ -283,7 +283,7 @@ export default function SettingsModal({ isOpen, onClose, pages = [], user, onOpe
 function AppearanceTab({ settings, onChange }) {
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         Appearance
       </h3>
 
@@ -397,7 +397,7 @@ function ChatPanelSettings({ settings, onChange }) {
         fontWeight: 600,
         marginBottom: 20,
         letterSpacing: 0.5,
-        fontFamily: "'Inter', sans-serif"
+        fontFamily: "'Manrope', sans-serif"
       }}>
         CHAT PANEL
       </h4>
@@ -474,7 +474,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Manrope', sans-serif"
               }}>
                 Found 3 notes tagged "marketing". Opening view.
               </p>
@@ -488,7 +488,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Manrope', sans-serif"
               }}>
                 create note: launch campaign tomorrow
               </p>
@@ -502,7 +502,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Manrope', sans-serif"
               }}>
                 Added to Marketing/Tasks.
               </p>
@@ -516,7 +516,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 fontSize: chatFontSize,
                 margin: 0,
                 lineHeight: 1.4,
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Manrope', sans-serif"
               }}>
                 show me all urgent notes
               </p>
@@ -540,7 +540,7 @@ function ChatPanelSettings({ settings, onChange }) {
                 border: 'none',
                 color: userTextColor,
                 fontSize: chatFontSize,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Manrope', sans-serif",
                 outline: 'none',
                 opacity: 0.5
               }}
@@ -690,7 +690,7 @@ function AIBehaviorTab({ settings, onChange }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         AI Behavior
       </h3>
 
@@ -714,7 +714,7 @@ function AIBehaviorTab({ settings, onChange }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 15, fontFamily: "'Inter', sans-serif" }}>
+                <span style={{ fontWeight: 600, fontSize: 15, fontFamily: "'Manrope', sans-serif" }}>
                   {style.label}
                 </span>
                 {settings.aiResponseStyle === style.id && (
@@ -798,7 +798,7 @@ function ContentTab({ settings, pages, onChange }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         Content
       </h3>
 
@@ -969,7 +969,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         Data & Privacy
       </h3>
 
@@ -1051,7 +1051,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}>
           <Brain size={16} />
           AI MEMORY
@@ -1100,7 +1100,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           fontWeight: 600,
           marginBottom: 20,
           letterSpacing: 0.5,
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}>
           EXPORT DATA
         </h4>
@@ -1138,7 +1138,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           fontWeight: 600,
           marginBottom: 12,
           letterSpacing: 0.5,
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}>
           FULL BACKUP
         </h4>
@@ -1170,7 +1170,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Manrope', sans-serif"
         }}>
           <AlertTriangle size={16} />
           DANGER ZONE
@@ -1216,7 +1216,7 @@ function AccountTab({ user }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 20, fontFamily: "'Manrope', sans-serif" }}>
         Account
       </h3>
 
@@ -1402,7 +1402,7 @@ function DeveloperTab({ settings, onChange, user }) {
 
   return (
     <div>
-      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
+      <h3 style={{ color: colors.textPrimary, fontSize: 16, marginBottom: 8, fontFamily: "'Manrope', sans-serif" }}>
         Developer Settings
       </h3>
       <p style={{ color: colors.textMuted, fontSize: 12, marginBottom: 24, lineHeight: 1.5 }}>

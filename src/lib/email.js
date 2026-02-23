@@ -24,7 +24,7 @@ export async function sendInviteEmail(
       <html>
       <head>
         <style>
-          body { font-family: 'Inter', sans-serif; background: #000; color: #fff; padding: 40px; }
+          body { font-family: 'Manrope', sans-serif; background: #000; color: #fff; padding: 40px; }
           .container { max-width: 500px; margin: 0 auto; background: #0a0a0a; border: 1px solid #1a1a1a; padding: 32px; }
           h1 { color: #d1b18f; font-size: 24px; margin-bottom: 24px; }
           p { color: #888; font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
