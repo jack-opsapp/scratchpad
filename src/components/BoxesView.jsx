@@ -29,6 +29,7 @@ export function BoxesView({
   contextId,
   boxConfigs,
   onSaveBoxConfigs,
+  compact = false,
 }) {
   const [draggingNote, setDraggingNote] = useState(null);
   const [dragOverBox, setDragOverBox] = useState(null);
@@ -53,7 +54,7 @@ export function BoxesView({
       setAltHeld(false);
       return;
     }
-    const onKey = (e) => setAltHeld(e.altKey);
+    const onKey = (e) => setAltHeld(e.altKey || e.ctrlKey || e.metaKey);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
     return () => {
@@ -187,7 +188,7 @@ export function BoxesView({
     if (!e.dataTransfer.types.includes('text/plain')) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move';
+    e.dataTransfer.dropEffect = (e.altKey || e.ctrlKey || e.metaKey) ? 'copy' : 'move';
     if (draggingNote) setDragOverBox(boxId);
   };
 
@@ -200,7 +201,7 @@ export function BoxesView({
       return;
     }
     if (draggingNote.sectionId !== targetBoxId) {
-      if (e.altKey && onNoteCopy) {
+      if ((e.altKey || e.ctrlKey || e.metaKey) && onNoteCopy) {
         onNoteCopy(draggingNote, targetBoxId);
       } else {
         onNoteMove(draggingNote.id, targetBoxId);
@@ -353,7 +354,7 @@ export function BoxesView({
                     <div
                       key={note.id}
                       style={{
-                        padding: '10px 0',
+                        padding: compact ? '6px 0' : '10px 0',
                         borderBottom: `1px solid ${colors.border}`,
                         display: 'flex',
                         alignItems: 'flex-start',
@@ -421,7 +422,7 @@ export function BoxesView({
                             color: note.completed
                               ? colors.textMuted
                               : colors.textPrimary,
-                            fontSize: 13,
+                            fontSize: compact ? 12 : 13,
                             fontFamily: "'Inter', sans-serif",
                             margin: 0,
                             textDecoration: note.completed ? 'line-through' : 'none',
@@ -429,7 +430,7 @@ export function BoxesView({
                         >
                           {note.content}
                         </p>
-                        {note.tags?.length > 0 && (
+                        {!compact && note.tags?.length > 0 && (
                           <div
                             style={{
                               display: 'flex',
@@ -447,6 +448,16 @@ export function BoxesView({
                                   textTransform: 'uppercase',
                                   padding: '2px 4px',
                                   border: `1px solid ${colors.border}`,
+                                  cursor: 'default',
+                                  transition: 'border-color 0.15s ease, color 0.15s ease',
+                                }}
+                                onMouseOver={e => {
+                                  e.currentTarget.style.borderColor = colors.primary;
+                                  e.currentTarget.style.color = colors.primary;
+                                }}
+                                onMouseOut={e => {
+                                  e.currentTarget.style.borderColor = colors.border;
+                                  e.currentTarget.style.color = colors.textMuted;
                                 }}
                               >
                                 {tag}
@@ -454,7 +465,7 @@ export function BoxesView({
                             ))}
                           </div>
                         )}
-                        {note.date && (
+                        {!compact && note.date && (
                           <span
                             style={{
                               color: colors.textMuted,
@@ -537,7 +548,7 @@ export function BoxesView({
         >
           <span style={{ color: altHeld ? '#000' : colors.primary, marginRight: 8 }}>{altHeld ? '⧉' : '↗'}</span>
           {altHeld
-            ? 'Drag note to duplicate it to another section'
+            ? 'Drop to duplicate note to another section'
             : dragOverBox
               ? 'Release to move note'
               : 'Drag to another section'}

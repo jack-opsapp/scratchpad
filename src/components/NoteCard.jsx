@@ -26,29 +26,31 @@ function renderContentWithLinks(content, onLinkClick) {
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 3,
-          padding: '1px 6px',
-          margin: '0 2px',
-          background: colors.surfaceRaised,
-          border: `1px solid ${colors.border}`,
+          gap: 2,
+          padding: '0 1px',
+          margin: '0 1px',
+          background: 'transparent',
+          border: '1px solid transparent',
           borderRadius: 2,
           color: colors.primary,
           fontSize: 13,
           cursor: 'pointer',
-          transition: 'border-color 0.15s ease, background 0.15s ease',
+          transition: 'border-color 0.15s ease',
           verticalAlign: 'baseline',
         }}
         onMouseOver={e => {
           e.currentTarget.style.borderColor = colors.primary;
-          e.currentTarget.style.background = 'rgba(148, 139, 114, 0.1)';
+          e.currentTarget.querySelector('.wikilink-icon').style.opacity = '1';
         }}
         onMouseOut={e => {
-          e.currentTarget.style.borderColor = colors.border;
-          e.currentTarget.style.background = colors.surfaceRaised;
+          e.currentTarget.style.borderColor = 'transparent';
+          e.currentTarget.querySelector('.wikilink-icon').style.opacity = '0';
         }}
       >
-        <Link2 size={10} style={{ flexShrink: 0 }} />
+        <span style={{ color: colors.textMuted, fontSize: 11 }}>[[</span>
+        <Link2 className="wikilink-icon" size={10} style={{ flexShrink: 0, opacity: 0, transition: 'opacity 0.15s ease' }} />
         {seg.displayText}
+        <span style={{ color: colors.textMuted, fontSize: 11 }}>]]</span>
       </span>
     );
   });

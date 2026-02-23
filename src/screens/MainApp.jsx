@@ -246,6 +246,7 @@ export function MainApp({ user, onSignOut }) {
   const [groupBy] = useState('status');
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
   const [showCompleted, setShowCompleted] = useState(false); // Collapsible completed notes section
+  const [collapsedSections, setCollapsedSections] = useState(new Set()); // Per-section collapse in page-level view
 
   // Pinch-to-zoom for notes area
   const { containerRef: zoomRef, scale: zoomScale, resetZoom, setScale: setZoomScale } = usePinchZoom({ minScale: 0.5, maxScale: 2.0 });
@@ -1913,6 +1914,62 @@ export function MainApp({ user, onSignOut }) {
                               setViewingPageLevel(false);
                               setAgentView(null);
                             }}
+                            onDragOver={e => {
+                              if (e.dataTransfer.types.includes('text/plain')) {
+                                e.preventDefault();
+                                e.currentTarget.style.borderLeft = `1px solid ${colors.primary}`;
+                                e.currentTarget.style.color = colors.primary;
+                              }
+                            }}
+                            onDragLeave={e => {
+                              e.currentTarget.style.borderLeft = currentSection === section.id
+                                ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
+                              e.currentTarget.style.color = currentSection === section.id
+                                ? colors.textPrimary : colors.textMuted;
+                            }}
+                            onDrop={e => {
+                              e.preventDefault();
+                              const data = e.dataTransfer.getData('text/plain');
+                              const noteMatch = data.match(/^note:(.+)$/);
+                              if (noteMatch) {
+                                const noteId = noteMatch[1];
+                                if (e.ctrlKey || e.metaKey) {
+                                  // Ctrl+drop: copy note to this section
+                                  const note = notes.find(n => n.id === noteId);
+                                  if (note) {
+                                    const newId = generateId();
+                                    const newNote = {
+                                      id: newId,
+                                      sectionId: section.id,
+                                      content: note.content,
+                                      tags: note.tags || [],
+                                      completed: false,
+                                      date: note.date || null,
+                                      created_by_user_id: user?.id || null,
+                                    };
+                                    setNotes(prev => [...prev, newNote]);
+                                    supabase.from('notes').insert({
+                                      id: newId,
+                                      section_id: section.id,
+                                      content: note.content,
+                                      tags: note.tags || [],
+                                      completed: false,
+                                      date: note.date || null,
+                                      created_by_user_id: user?.id || null,
+                                    });
+                                  }
+                                } else {
+                                  // Move note to this section
+                                  setNotes(notes.map(n => n.id === noteId ? { ...n, sectionId: section.id } : n));
+                                  supabase.from('notes').update({ section_id: section.id }).eq('id', noteId);
+                                }
+                              }
+                              // Reset styles
+                              e.currentTarget.style.borderLeft = currentSection === section.id
+                                ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
+                              e.currentTarget.style.color = currentSection === section.id
+                                ? colors.textPrimary : colors.textMuted;
+                            }}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -1927,39 +1984,38 @@ export function MainApp({ user, onSignOut }) {
                                 currentSection === section.id
                                   ? `1px solid ${colors.textPrimary}`
                                   : '1px solid transparent',
+                              transition: 'border-color 0.15s ease, color 0.15s ease',
                             }}
                           >
                             {editingItem === section.id ? (
                               <input
                                 autoFocus
-                                value={section.name}
+                                defaultValue={section.name}
                                 onClick={e => e.stopPropagation()}
-                                onChange={e =>
-                                  setPages(
-                                    pages.map(p =>
-                                      p.id === page.id
-                                        ? {
-                                            ...p,
-                                            sections: p.sections.map(s =>
-                                              s.id === section.id
-                                                ? { ...s, name: e.target.value }
-                                                : s
-                                            ),
-                                          }
-                                        : p
-                                    )
-                                  )
-                                }
-                                onBlur={() => {
-                                  const pg = pages.find(p => p.id === page.id);
-                                  const sec = pg?.sections?.find(s => s.id === section.id);
-                                  if (sec?.name?.trim()) {
-                                    supabase.from('sections').update({ name: sec.name.trim() }).eq('id', section.id);
+                                onBlur={e => {
+                                  const newName = e.target.value.trim();
+                                  if (newName) {
+                                    setPages(
+                                      pages.map(p =>
+                                        p.id === page.id
+                                          ? {
+                                              ...p,
+                                              sections: p.sections.map(s =>
+                                                s.id === section.id
+                                                  ? { ...s, name: newName }
+                                                  : s
+                                              ),
+                                            }
+                                          : p
+                                      )
+                                    );
+                                    supabase.from('sections').update({ name: newName }).eq('id', section.id);
                                   }
                                   setEditingItem(null);
                                 }}
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') e.target.blur();
+                                  if (e.key === 'Escape') setEditingItem(null);
                                 }}
                                 style={{
                                   flex: 1,
@@ -1968,6 +2024,7 @@ export function MainApp({ user, onSignOut }) {
                                   color: colors.textPrimary,
                                   fontSize: 13,
                                   outline: 'none',
+                                  fontFamily: 'inherit',
                                 }}
                               />
                             ) : (
@@ -3026,6 +3083,16 @@ export function MainApp({ user, onSignOut }) {
                       setShowHeaderMenu(!showHeaderMenu);
                     }}
                   />
+                  {currentSection && !viewingPageLevel && (
+                    <span style={{
+                      color: colors.textMuted,
+                      fontSize: 12,
+                      fontWeight: 400,
+                      marginLeft: 4,
+                    }}>
+                      {filteredNotes.filter(n => !n.completed).length}
+                    </span>
+                  )}
                   {currentSection && !viewingPageLevel && filteredNotes.some(n => !n.completed) && (
                     <button
                       onClick={handleCompleteAll}
@@ -3406,26 +3473,61 @@ export function MainApp({ user, onSignOut }) {
                       );
                     };
 
+                    const isSectionCollapsed = collapsedSections.has(section.id);
+
                     return (
                       <div key={section.id} style={{ marginBottom: 32 }}>
-                        <p
-                          onClick={() => {
-                            setCurrentSection(section.id);
-                            setViewingPageLevel(false);
-                          }}
+                        <div
                           style={{
-                            color: colors.textMuted,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            letterSpacing: 1.5,
-                            marginBottom: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            marginBottom: isSectionCollapsed ? 0 : 12,
                             cursor: 'pointer',
                           }}
                         >
-                          {section.name.toUpperCase()}
-                        </p>
-                        {snIncomplete.map(renderSectionNote)}
-                        {snCompleted.length > 0 && (
+                          <ChevronRight
+                            size={12}
+                            color={colors.textMuted}
+                            style={{
+                              transform: isSectionCollapsed ? 'none' : 'rotate(90deg)',
+                              transition: 'transform 0.15s ease',
+                              flexShrink: 0,
+                            }}
+                            onClick={() => {
+                              setCollapsedSections(prev => {
+                                const next = new Set(prev);
+                                if (next.has(section.id)) next.delete(section.id);
+                                else next.add(section.id);
+                                return next;
+                              });
+                            }}
+                          />
+                          <p
+                            onClick={() => {
+                              setCurrentSection(section.id);
+                              setViewingPageLevel(false);
+                            }}
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              letterSpacing: 1.5,
+                              margin: 0,
+                            }}
+                          >
+                            {section.name.toUpperCase()}
+                          </p>
+                          <span style={{
+                            color: colors.textMuted,
+                            fontSize: 10,
+                            opacity: 0.6,
+                          }}>
+                            {snIncomplete.length}
+                          </span>
+                        </div>
+                        {!isSectionCollapsed && snIncomplete.map(renderSectionNote)}
+                        {!isSectionCollapsed && snCompleted.length > 0 && (
                           <>
                             <button
                               onClick={() => setShowCompleted(!showCompleted)}
@@ -3646,6 +3748,7 @@ export function MainApp({ user, onSignOut }) {
                 contextId={getBoxContextId()}
                 boxConfigs={boxConfigs}
                 onSaveBoxConfigs={handleSaveBoxConfigs}
+                compact={compactMode}
               />
             )}
 
@@ -3747,6 +3850,7 @@ export function MainApp({ user, onSignOut }) {
             const sec = pg?.sections?.find(s => s.id === n.sectionId);
             return { ...n, pageName: pg?.name, sectionName: sec?.name };
           })}
+          pages={allPages}
           onCreateConnection={(targetNoteId) => {
             // Connection will be created when the note is saved and parsed
             // For now this is a no-op placeholder; connections are created on note edit

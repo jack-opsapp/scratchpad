@@ -42,6 +42,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   isOnline = true,
   allNotes = [],
   onCreateConnection,
+  pages = [],
 }, ref) {
   const [height, setHeight] = useState(isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -62,7 +63,10 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [audioWaveform, setAudioWaveform] = useState([]);
   const [lastPrefix, setLastPrefix] = useState('');
+  const [prefixHistory, setPrefixHistory] = useState([]);
+  const [prefixIndex, setPrefixIndex] = useState(-1);
   const [shimmerActive, setShimmerActive] = useState(false);
+  const [autofillSuggestion, setAutofillSuggestion] = useState('');
   const [isNoteDragOver, setIsNoteDragOver] = useState(false);
   const [referencedNote, setReferencedNote] = useState(null);
   const [showWikilink, setShowWikilink] = useState(false);
@@ -452,7 +456,13 @@ const ChatPanel = forwardRef(function ChatPanel({
     // Extract prefix (e.g. "scratchpad/bugs: ") before clearing
     const prefixMatch = inputValue.match(/^([\w/.-]+:\s*)/);
     if (prefixMatch) {
-      setLastPrefix(prefixMatch[1]);
+      const prefix = prefixMatch[1];
+      setLastPrefix(prefix);
+      setPrefixHistory(prev => {
+        const filtered = prev.filter(p => p !== prefix);
+        return [...filtered, prefix];
+      });
+      setPrefixIndex(-1);
     }
 
     // Add to history
@@ -478,12 +488,34 @@ const ChatPanel = forwardRef(function ChatPanel({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-    } else if (e.shiftKey && e.key === 'ArrowUp' && lastPrefix && !inputValue.trim()) {
-      // Shift+Up: recall last prefix
+    } else if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && prefixHistory.length > 0) {
+      // Shift+Up/Down: cycle through prefix history
       e.preventDefault();
-      setInputValue(lastPrefix);
+      const currentContent = inputValue.replace(/^[\w/.-]+:\s*/, ''); // strip any existing prefix
+      let newIndex;
+      if (e.key === 'ArrowUp') {
+        newIndex = prefixIndex === -1
+          ? prefixHistory.length - 1
+          : Math.max(0, prefixIndex - 1);
+      } else {
+        if (prefixIndex === -1) return; // nothing to cycle forward to
+        newIndex = prefixIndex + 1;
+        if (newIndex >= prefixHistory.length) {
+          // Cycled past end — remove prefix
+          setPrefixIndex(-1);
+          setInputValue(currentContent);
+          return;
+        }
+      }
+      setPrefixIndex(newIndex);
+      setInputValue(prefixHistory[newIndex] + currentContent);
       setShimmerActive(true);
       setTimeout(() => setShimmerActive(false), 600);
+    } else if (e.key === 'Tab' && autofillSuggestion) {
+      // Tab: accept autofill suggestion
+      e.preventDefault();
+      setInputValue(autofillSuggestion);
+      setAutofillSuggestion('');
     } else if (e.key === 'ArrowUp' && inputHistory.length > 0) {
       // Navigate to previous input in history (only when history exists)
       e.preventDefault();
@@ -505,6 +537,52 @@ const ChatPanel = forwardRef(function ChatPanel({
       }
     }
   };
+
+  // Compute autofill suggestion when input starts with dash prefix
+  useEffect(() => {
+    if (!inputValue) { setAutofillSuggestion(''); return; }
+
+    // Match "-" or "-pagename" or "-pagename/"
+    const dashMatch = inputValue.match(/^-(\w*)(\/?)(.*)/);
+    if (!dashMatch) { setAutofillSuggestion(''); return; }
+
+    const [, pageFragment, hasSlash, sectionFragment] = dashMatch;
+
+    if (!hasSlash) {
+      // Suggest page name: "-scr" → "-scratchpad/"
+      const match = pages.find(p =>
+        p.name.toLowerCase().startsWith(pageFragment.toLowerCase()) && pageFragment.length > 0
+      );
+      if (match && pageFragment.toLowerCase() !== match.name.toLowerCase()) {
+        setAutofillSuggestion(`-${match.name.toLowerCase()}/`);
+      } else {
+        setAutofillSuggestion('');
+      }
+    } else {
+      // Suggest section name: "-scratchpad/bu" → "-scratchpad/bugs: "
+      const page = pages.find(p => p.name.toLowerCase() === pageFragment.toLowerCase());
+      if (page && page.sections) {
+        const secMatch = page.sections.find(s =>
+          s.name.toLowerCase().startsWith(sectionFragment.toLowerCase()) && sectionFragment.length > 0
+        );
+        if (secMatch && sectionFragment.toLowerCase() !== secMatch.name.toLowerCase()) {
+          setAutofillSuggestion(`-${pageFragment}/${secMatch.name.toLowerCase()}: `);
+        } else if (!sectionFragment) {
+          // Show first section as suggestion
+          const firstSec = page.sections[0];
+          if (firstSec) {
+            setAutofillSuggestion(`-${pageFragment}/${firstSec.name.toLowerCase()}: `);
+          } else {
+            setAutofillSuggestion('');
+          }
+        } else {
+          setAutofillSuggestion('');
+        }
+      } else {
+        setAutofillSuggestion('');
+      }
+    }
+  }, [inputValue, pages]);
 
   // Handle clicking the Revise button - enter revise mode
   const handleReviseClick = () => {
@@ -1335,6 +1413,26 @@ const ChatPanel = forwardRef(function ChatPanel({
                     padding: 0,
                   }}
                 />
+                {/* Autofill ghost text */}
+                {autofillSuggestion && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      pointerEvents: 'none',
+                      color: colors.textMuted,
+                      opacity: 0.35,
+                      fontSize: isMobile ? 16 : 'var(--chat-font-input, 13px)',
+                      fontFamily: 'inherit',
+                      lineHeight: 1.4,
+                      whiteSpace: 'pre',
+                    }}
+                  >
+                    {autofillSuggestion}
+                    <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>TAB</span>
+                  </div>
+                )}
                 {/* Wikilink autocomplete */}
                 {showWikilink && (
                   <WikilinkAutocomplete
