@@ -862,6 +862,51 @@ export const dataStore = {
     }
   },
 
+  /**
+   * Get AI-suggested connections for a note using vector similarity
+   * @param {string} noteId - The note to find suggestions for
+   * @param {string} userId - Current user's ID
+   * @param {Array} existingConnectionNoteIds - Note IDs already connected (to exclude)
+   * @returns {Promise<Array>} Similar notes with similarity scores
+   */
+  async suggestConnections(noteId, userId, existingConnectionNoteIds = []) {
+    try {
+      // First get the note content
+      const { data: note, error: noteError } = await supabase
+        .from('notes')
+        .select('content')
+        .eq('id', noteId)
+        .single();
+      if (noteError || !note?.content) return [];
+
+      // Call embeddings API to find similar notes
+      const response = await fetch('/api/embeddings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'search_notes',
+          query: note.content,
+          userId,
+          threshold: 0.4,
+          limit: 8,
+        }),
+      });
+      if (!response.ok) return [];
+
+      const { results } = await response.json();
+      if (!results?.length) return [];
+
+      // Filter out the note itself and already-connected notes
+      const excluded = new Set([noteId, ...existingConnectionNoteIds]);
+      return results
+        .filter(r => !excluded.has(r.id))
+        .slice(0, 3);
+    } catch (error) {
+      console.error('suggestConnections error:', error);
+      return [];
+    }
+  },
+
   // -------------------------------------------------------------------------
   // Bulk Operations
   // -------------------------------------------------------------------------

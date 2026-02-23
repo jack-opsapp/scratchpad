@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Sparkles, Plus, Check } from 'lucide-react';
 import { colors } from '../styles/theme.js';
 import { dataStore } from '../lib/storage.js';
 
@@ -11,9 +11,12 @@ const TYPE_COLORS = {
   source: '#7a5c1a',
 };
 
-export default function ConnectionsPopover({ noteId, position, onClose, onNavigate, onDelete }) {
+export default function ConnectionsPopover({ noteId, position, onClose, onNavigate, onDelete, onCreateConnection, userId }) {
   const [connections, setConnections] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [acceptedIds, setAcceptedIds] = useState(new Set());
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -22,10 +25,22 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
       if (!cancelled) {
         setConnections(data || []);
         setLoading(false);
+
+        // Fetch AI suggestions after connections load
+        const connectedNoteIds = (data || []).map(c => c.connected_note_id);
+        if (userId) {
+          setLoadingSuggestions(true);
+          dataStore.suggestConnections(noteId, userId, connectedNoteIds).then(results => {
+            if (!cancelled) {
+              setSuggestions(results || []);
+              setLoadingSuggestions(false);
+            }
+          });
+        }
       }
     });
     return () => { cancelled = true; };
-  }, [noteId]);
+  }, [noteId, userId]);
 
   // Close on click outside
   useEffect(() => {
@@ -138,6 +153,45 @@ export default function ConnectionsPopover({ noteId, position, onClose, onNaviga
             )}
           </>
         )}
+
+        {/* AI Suggestions */}
+        {!loading && (loadingSuggestions || suggestions.length > 0) && (
+          <div style={{ padding: '4px 12px', borderTop: connections.length > 0 ? `1px solid ${colors.border}` : 'none' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              color: colors.primary,
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: 1.5,
+              fontFamily: "'Manrope', sans-serif",
+              marginBottom: 4,
+              marginTop: 4,
+            }}>
+              <Sparkles size={10} />
+              SUGGESTED
+            </div>
+            {loadingSuggestions ? (
+              <div style={{ padding: '6px 0', color: colors.textMuted, fontSize: 11, fontFamily: "'Manrope', sans-serif" }}>
+                Finding similar notes...
+              </div>
+            ) : (
+              suggestions.map(s => (
+                <SuggestionRow
+                  key={s.id}
+                  suggestion={s}
+                  accepted={acceptedIds.has(s.id)}
+                  onAccept={() => {
+                    setAcceptedIds(prev => new Set([...prev, s.id]));
+                    onCreateConnection?.(noteId, s.id);
+                  }}
+                  onNavigate={onNavigate}
+                />
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -216,6 +270,85 @@ function ConnectionRow({ connection, onNavigate, onDelete }) {
         >
           <X size={10} />
         </button>
+      )}
+    </div>
+  );
+}
+
+function SuggestionRow({ suggestion, accepted, onAccept, onNavigate }) {
+  const [hover, setHover] = useState(false);
+  const similarity = Math.round((suggestion.similarity || 0) * 100);
+
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 8px',
+        borderRadius: 3,
+        cursor: 'pointer',
+        background: hover ? colors.surfaceRaised : 'transparent',
+        transition: 'background 0.1s ease',
+        opacity: accepted ? 0.5 : 1,
+      }}
+      onClick={() => onNavigate(suggestion.id, suggestion.section_id, suggestion.page_id)}
+    >
+      <span style={{
+        color: colors.primary,
+        fontSize: 10,
+        fontFamily: "'Manrope', sans-serif",
+        flexShrink: 0,
+        opacity: 0.7,
+      }}>
+        {similarity}%
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          color: colors.textPrimary,
+          fontSize: 12,
+          fontFamily: "'Manrope', sans-serif",
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          {suggestion.content?.substring(0, 50)}
+        </div>
+        <div style={{
+          color: colors.textMuted,
+          fontSize: 10,
+          fontFamily: "'Manrope', sans-serif",
+        }}>
+          {suggestion.page_name} / {suggestion.section_name}
+        </div>
+      </div>
+      {!accepted ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onAccept();
+          }}
+          style={{
+            background: 'none',
+            border: `1px solid ${colors.border}`,
+            borderRadius: 2,
+            color: colors.primary,
+            cursor: 'pointer',
+            padding: '2px 4px',
+            display: 'flex',
+            flexShrink: 0,
+            transition: 'border-color 0.15s ease',
+          }}
+          onMouseOver={e => e.currentTarget.style.borderColor = colors.primary}
+          onMouseOut={e => e.currentTarget.style.borderColor = colors.border}
+          title="Connect"
+        >
+          <Plus size={10} />
+        </button>
+      ) : (
+        <Check size={10} style={{ color: colors.success, flexShrink: 0 }} />
       )}
     </div>
   );

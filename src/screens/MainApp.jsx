@@ -3896,6 +3896,7 @@ export function MainApp({ user, onSignOut }) {
         <ConnectionsPopover
           noteId={connectionsPopover.noteId}
           position={{ top: connectionsPopover.top, left: connectionsPopover.left }}
+          userId={user?.id}
           onClose={() => setConnectionsPopover(null)}
           onNavigate={(noteId, sectionId, pageId) => {
             setCurrentPage(pageId);
@@ -3904,6 +3905,7 @@ export function MainApp({ user, onSignOut }) {
             setConnectionsPopover(null);
           }}
           onDelete={(connId) => handleDeleteConnection(connId)}
+          onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
         />
       )}
 
