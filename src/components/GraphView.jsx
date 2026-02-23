@@ -12,18 +12,26 @@ import {
 import { select } from 'd3-selection';
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom';
 
-// ─── Page color palette (deterministic by page index) ────────────────────────
-const PAGE_COLORS = [
-  '#948b72', // beige/sand (default accent)
-  '#6b8f71', // sage
-  '#7a6f9b', // lavender
-  '#8b6f5c', // terracotta
-  '#5c7d8b', // steel
-  '#9b7a5c', // amber
-  '#6b5c8b', // mauve
-  '#5c8b6f', // olive
-  '#8b5c6f', // dusty rose
-  '#7a8b5c', // moss
+// ─── Monochromatic page tones (opacity-based, brand-aligned) ────────────────
+// Each page gets a different opacity/lightness of the accent family
+// Pure monochrome: accent at varying intensities
+const PAGE_TONES = [
+  { fill: 'rgba(148, 139, 114, 0.85)', stroke: 'rgba(148, 139, 114, 0.4)' }, // accent full
+  { fill: 'rgba(148, 139, 114, 0.60)', stroke: 'rgba(148, 139, 114, 0.3)' }, // accent mid
+  { fill: 'rgba(148, 139, 114, 0.40)', stroke: 'rgba(148, 139, 114, 0.2)' }, // accent light
+  { fill: 'rgba(181, 174, 154, 0.70)', stroke: 'rgba(181, 174, 154, 0.3)' }, // primaryLight
+  { fill: 'rgba(118, 111, 91, 0.80)',  stroke: 'rgba(118, 111, 91, 0.35)' }, // primaryDark
+  { fill: 'rgba(148, 139, 114, 0.50)', stroke: 'rgba(148, 139, 114, 0.25)' },
+  { fill: 'rgba(181, 174, 154, 0.50)', stroke: 'rgba(181, 174, 154, 0.25)' },
+  { fill: 'rgba(118, 111, 91, 0.60)',  stroke: 'rgba(118, 111, 91, 0.3)' },
+  { fill: 'rgba(148, 139, 114, 0.35)', stroke: 'rgba(148, 139, 114, 0.2)' },
+  { fill: 'rgba(181, 174, 154, 0.45)', stroke: 'rgba(181, 174, 154, 0.2)' },
+];
+
+// Legend labels use solid hex so they're readable
+const PAGE_LEGEND_COLORS = [
+  '#948b72', '#8a8268', '#7d775f', '#b5ae9a', '#766f5b',
+  '#a89f88', '#c2bba5', '#685f4d', '#b0a78e', '#9e9580',
 ];
 
 const TYPE_COLORS = {
@@ -34,18 +42,10 @@ const TYPE_COLORS = {
   source: 'rgba(122, 92, 26, 0.5)',
 };
 
-const TYPE_GLOW = {
-  related: 'rgba(148, 139, 114, 0.15)',
-  supports: 'rgba(45, 107, 58, 0.2)',
-  contradicts: 'rgba(184, 60, 42, 0.2)',
-  extends: 'rgba(148, 139, 114, 0.25)',
-  source: 'rgba(122, 92, 26, 0.2)',
-};
-
 /**
  * Force-directed graph visualization for note connections.
  *
- * Nodes = notes (colored by page, sized by connection count)
+ * Nodes = notes (toned by page, sized by connection count)
  * Edges = connections (colored by type)
  * Interactive: zoom/pan, hover preview, click to navigate
  */
@@ -66,16 +66,19 @@ export function GraphView({
   const [filterPage, setFilterPage] = useState('all');
   const [isReady, setIsReady] = useState(false);
 
-  // ─── Build page color map ───────────────────────────────────────────────
-  const pageColorMap = useMemo(() => {
+  // ─── Build page tone map ─────────────────────────────────────────────
+  const pageToneMap = useMemo(() => {
     const map = {};
     (pages || []).forEach((p, i) => {
-      map[p.id] = PAGE_COLORS[i % PAGE_COLORS.length];
+      map[p.id] = {
+        ...PAGE_TONES[i % PAGE_TONES.length],
+        legend: PAGE_LEGEND_COLORS[i % PAGE_LEGEND_COLORS.length],
+      };
     });
     return map;
   }, [pages]);
 
-  // ─── Build graph data from connections + notes ──────────────────────────
+  // ─── Build graph data from connections + notes ────────────────────────
   const graphData = useMemo(() => {
     if (!connections || !notes) return { nodes: [], links: [] };
 
@@ -123,6 +126,8 @@ export function GraphView({
         c => c.source_note_id === id || c.target_note_id === id
       ).length;
 
+      const tone = pageToneMap[pageInfo.pageId] || PAGE_TONES[0];
+
       nodes.push({
         id,
         content: note.content,
@@ -130,7 +135,9 @@ export function GraphView({
         sectionName: sectionNameMap[note.sectionId] || '',
         pageId: pageInfo.pageId,
         pageName: pageInfo.pageName || '',
-        color: pageColorMap[pageInfo.pageId] || PAGE_COLORS[0],
+        fill: tone.fill,
+        stroke: tone.stroke,
+        legendColor: tone.legend,
         connectionCount: connCount,
         radius: Math.max(5, Math.min(16, 4 + connCount * 3)),
       });
@@ -147,9 +154,9 @@ export function GraphView({
       }));
 
     return { nodes, links };
-  }, [connections, notes, pages, sections, pageColorMap, filterType, filterPage]);
+  }, [connections, notes, pages, sections, pageToneMap, filterType, filterPage]);
 
-  // ─── Measure container ──────────────────────────────────────────────────
+  // ─── Measure container ────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
       if (containerRef.current) {
@@ -162,7 +169,7 @@ export function GraphView({
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // ─── D3 Force simulation ───────────────────────────────────────────────
+  // ─── D3 Force simulation ─────────────────────────────────────────────
   useEffect(() => {
     if (!svgRef.current || graphData.nodes.length === 0) {
       setIsReady(true);
@@ -175,19 +182,19 @@ export function GraphView({
     // Clear previous render
     svg.selectAll('*').remove();
 
-    // Defs for glow filter and arrow markers
+    // Defs for glow filter
     const defs = svg.append('defs');
 
-    // Glow filter
+    // Subtle glow filter
     const filter = defs.append('filter').attr('id', 'node-glow');
-    filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'coloredBlur');
+    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
     const feMerge = filter.append('feMerge');
     feMerge.append('feMergeNode').attr('in', 'coloredBlur');
     feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    // Hover glow filter (stronger)
+    // Hover glow filter (slightly stronger)
     const hoverFilter = defs.append('filter').attr('id', 'node-glow-hover');
-    hoverFilter.append('feGaussianBlur').attr('stdDeviation', '8').attr('result', 'coloredBlur');
+    hoverFilter.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'coloredBlur');
     const hoverMerge = hoverFilter.append('feMerge');
     hoverMerge.append('feMergeNode').attr('in', 'coloredBlur');
     hoverMerge.append('feMergeNode').attr('in', 'SourceGraphic');
@@ -224,14 +231,14 @@ export function GraphView({
 
     simulationRef.current = simulation;
 
-    // ─── Render links ─────────────────────────────────────────────────
+    // ─── Render links ───────────────────────────────────────────────
     const linkGroup = g.append('g').attr('class', 'links');
     const link = linkGroup
       .selectAll('line')
       .data(linkData)
       .join('line')
       .attr('stroke', d => TYPE_COLORS[d.type] || TYPE_COLORS.related)
-      .attr('stroke-width', 1.5)
+      .attr('stroke-width', 1)
       .attr('stroke-linecap', 'round')
       .style('opacity', 0)
       .transition()
@@ -242,7 +249,7 @@ export function GraphView({
     // Re-select without transition for tick updates
     const linkSelection = linkGroup.selectAll('line');
 
-    // ─── Render nodes ─────────────────────────────────────────────────
+    // ─── Render nodes ───────────────────────────────────────────────
     const nodeGroup = g.append('g').attr('class', 'nodes');
     const node = nodeGroup
       .selectAll('g')
@@ -262,9 +269,9 @@ export function GraphView({
     node
       .append('circle')
       .attr('class', 'glow')
-      .attr('r', d => d.radius + 6)
-      .attr('fill', d => d.color)
-      .attr('opacity', 0.08)
+      .attr('r', d => d.radius + 4)
+      .attr('fill', d => d.fill)
+      .attr('opacity', 0.06)
       .attr('filter', 'url(#node-glow)');
 
     // Main node circle
@@ -272,52 +279,40 @@ export function GraphView({
       .append('circle')
       .attr('class', 'main')
       .attr('r', d => d.radius)
-      .attr('fill', d => d.color)
-      .attr('opacity', 0.85)
-      .attr('stroke', d => d.color)
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.3);
+      .attr('fill', d => d.fill)
+      .attr('stroke', d => d.stroke)
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.4);
 
-    // Inner highlight
-    node
-      .append('circle')
-      .attr('class', 'highlight')
-      .attr('r', d => d.radius * 0.4)
-      .attr('fill', 'white')
-      .attr('opacity', 0.15)
-      .attr('cx', d => -d.radius * 0.2)
-      .attr('cy', d => -d.radius * 0.2);
-
-    // ─── Hover interactions ───────────────────────────────────────────
+    // ─── Hover interactions ─────────────────────────────────────────
     node
       .on('mouseenter', function (event, d) {
         // Scale up node
         select(this).select('.main')
-          .transition().duration(200)
-          .attr('r', d.radius * 1.3)
-          .attr('opacity', 1)
-          .attr('stroke-width', 2)
-          .attr('stroke-opacity', 0.6);
+          .transition().duration(150)
+          .attr('r', d.radius * 1.2)
+          .attr('stroke-width', 1.5)
+          .attr('stroke-opacity', 0.7);
 
         select(this).select('.glow')
-          .transition().duration(200)
-          .attr('r', d.radius * 1.3 + 10)
-          .attr('opacity', 0.2)
+          .transition().duration(150)
+          .attr('r', d.radius * 1.2 + 8)
+          .attr('opacity', 0.15)
           .attr('filter', 'url(#node-glow-hover)');
 
         // Highlight connected links
         linkSelection
-          .transition().duration(200)
+          .transition().duration(150)
           .attr('stroke-width', l =>
-            l.source.id === d.id || l.target.id === d.id ? 3 : 1
+            l.source.id === d.id || l.target.id === d.id ? 2 : 0.5
           )
           .style('opacity', l =>
-            l.source.id === d.id || l.target.id === d.id ? 1 : 0.15
+            l.source.id === d.id || l.target.id === d.id ? 1 : 0.1
           );
 
         // Dim unconnected nodes
         node
-          .transition().duration(200)
+          .transition().duration(150)
           .style('opacity', n => {
             if (n.id === d.id) return 1;
             const isConnected = linkData.some(
@@ -325,7 +320,7 @@ export function GraphView({
                 (l.source.id === d.id && l.target.id === n.id) ||
                 (l.target.id === d.id && l.source.id === n.id)
             );
-            return isConnected ? 1 : 0.15;
+            return isConnected ? 1 : 0.1;
           });
 
         // Show tooltip
@@ -346,25 +341,24 @@ export function GraphView({
       .on('mouseleave', function () {
         // Reset all
         node.selectAll('.main')
-          .transition().duration(300)
+          .transition().duration(200)
           .attr('r', d => d.radius)
-          .attr('opacity', 0.85)
-          .attr('stroke-width', 1.5)
-          .attr('stroke-opacity', 0.3);
+          .attr('stroke-width', 1)
+          .attr('stroke-opacity', 0.4);
 
         node.selectAll('.glow')
-          .transition().duration(300)
-          .attr('r', d => d.radius + 6)
-          .attr('opacity', 0.08)
+          .transition().duration(200)
+          .attr('r', d => d.radius + 4)
+          .attr('opacity', 0.06)
           .attr('filter', 'url(#node-glow)');
 
         linkSelection
-          .transition().duration(300)
-          .attr('stroke-width', 1.5)
+          .transition().duration(200)
+          .attr('stroke-width', 1)
           .style('opacity', 1);
 
         node
-          .transition().duration(300)
+          .transition().duration(200)
           .style('opacity', 1);
 
         setHoveredNode(null);
@@ -376,7 +370,7 @@ export function GraphView({
         }
       });
 
-    // ─── Simulation tick ──────────────────────────────────────────────
+    // ─── Simulation tick ────────────────────────────────────────────
     simulation.on('tick', () => {
       linkSelection
         .attr('x1', d => d.source.x)
@@ -395,7 +389,7 @@ export function GraphView({
     };
   }, [graphData, dimensions, onNavigate]);
 
-  // ─── Unique connection types and pages for filters ──────────────────
+  // ─── Unique connection types and pages for filters ────────────────────
   const connectionTypes = useMemo(() => {
     const types = new Set((connections || []).map(c => c.connection_type).filter(Boolean));
     return ['all', ...types];
@@ -410,7 +404,7 @@ export function GraphView({
     return (pages || []).filter(p => pageIds.has(p.id));
   }, [connections, pages]);
 
-  // ─── Empty state ────────────────────────────────────────────────────
+  // ─── Empty state ──────────────────────────────────────────────────────
   if (!connections || connections.length === 0) {
     return (
       <div style={{
@@ -433,7 +427,7 @@ export function GraphView({
         </svg>
         <div style={{ fontSize: 16, fontWeight: 500 }}>No connections yet</div>
         <div style={{ fontSize: 13, maxWidth: 280, textAlign: 'center', lineHeight: 1.6 }}>
-          Type <span style={{ color: colors.primary, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, padding: '2px 6px', background: colors.surfaceRaised, borderRadius: 3 }}>[[</span> in any note to link it to another note, or use the AI agent.
+          Type <span style={{ color: colors.primary, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, padding: '2px 6px', background: colors.surfaceRaised }}>[[</span> in any note to link it to another note, or use the AI agent.
         </div>
       </div>
     );
@@ -448,7 +442,6 @@ export function GraphView({
         height: '100%',
         minHeight: 500,
         background: colors.bg,
-        borderRadius: 4,
         overflow: 'hidden',
       }}
     >
@@ -467,9 +460,11 @@ export function GraphView({
           onChange={e => setFilterType(e.target.value)}
           style={{
             padding: '4px 8px',
-            background: colors.surface,
+            background: 'rgba(13, 13, 13, 0.85)',
+            backdropFilter: 'blur(24px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(150%)',
             border: `1px solid ${colors.border}`,
-            borderRadius: 3,
+            borderRadius: 2,
             color: colors.textSecondary,
             fontSize: 11,
             fontFamily: "'Manrope', sans-serif",
@@ -491,9 +486,11 @@ export function GraphView({
             onChange={e => setFilterPage(e.target.value)}
             style={{
               padding: '4px 8px',
-              background: colors.surface,
+              background: 'rgba(13, 13, 13, 0.85)',
+              backdropFilter: 'blur(24px) saturate(150%)',
+              WebkitBackdropFilter: 'blur(24px) saturate(150%)',
               border: `1px solid ${colors.border}`,
-              borderRadius: 3,
+              borderRadius: 2,
               color: colors.textSecondary,
               fontSize: 11,
               fontFamily: "'Manrope', sans-serif",
@@ -536,7 +533,7 @@ export function GraphView({
         }}
       />
 
-      {/* ─── Hover tooltip ────────────────────────────────────────────── */}
+      {/* ─── Hover tooltip (frosted glass) ─────────────────────────────── */}
       {hoveredNode && (
         <div
           style={{
@@ -545,13 +542,13 @@ export function GraphView({
             left: tooltipPos.x,
             width: 220,
             padding: '10px 12px',
-            background: colors.surface,
+            background: 'rgba(13, 13, 13, 0.85)',
+            backdropFilter: 'blur(24px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(150%)',
             border: `1px solid ${colors.border}`,
-            borderRadius: 4,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            borderRadius: 2,
             pointerEvents: 'none',
             zIndex: 20,
-            transition: 'opacity 0.15s ease',
           }}
         >
           <div style={{
@@ -576,7 +573,7 @@ export function GraphView({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: hoveredNode.color,
+              background: hoveredNode.legendColor,
               flexShrink: 0,
             }} />
             <span style={{
@@ -598,7 +595,7 @@ export function GraphView({
         </div>
       )}
 
-      {/* ─── Page legend ──────────────────────────────────────────────── */}
+      {/* ─── Page legend (frosted glass) ──────────────────────────────── */}
       {connectedPages.length > 0 && (
         <div style={{
           position: 'absolute',
@@ -609,17 +606,19 @@ export function GraphView({
           gap: 12,
           zIndex: 10,
           padding: '6px 10px',
-          background: 'rgba(13, 13, 13, 0.8)',
-          borderRadius: 3,
+          background: 'rgba(13, 13, 13, 0.85)',
+          backdropFilter: 'blur(24px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+          borderRadius: 2,
           border: `1px solid ${colors.border}`,
         }}>
-          {connectedPages.map(p => (
+          {connectedPages.map((p, i) => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: pageColorMap[p.id] || PAGE_COLORS[0],
+                background: PAGE_LEGEND_COLORS[i % PAGE_LEGEND_COLORS.length],
               }} />
               <span style={{
                 color: colors.textMuted,
@@ -633,7 +632,7 @@ export function GraphView({
         </div>
       )}
 
-      {/* ─── Zoom hint ────────────────────────────────────────────────── */}
+      {/* ─── Zoom hint ──────────────────────────────────────────────── */}
       <div style={{
         position: 'absolute',
         bottom: 12,
