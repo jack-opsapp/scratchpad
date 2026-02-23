@@ -12,6 +12,7 @@ export { ChatResponseBox } from './ChatResponseBox.jsx';
 export { CalendarView } from './CalendarView.jsx';
 export { BoxesView } from './BoxesView.jsx';
 export { TableView } from './TableView.jsx';
+export { GraphView } from './GraphView.jsx';
 
 // Collaboration Components
 export { default as UserAvatar } from './UserAvatar.jsx';
@@ -23,6 +24,10 @@ export { default as PlanModeInterface } from './PlanModeInterface.jsx';
 
 // Chat Components
 export { default as ChatPanel } from './ChatPanel.jsx';
+
+// Connection Components
+export { WikilinkAutocomplete } from './WikilinkAutocomplete.jsx';
+export { default as ConnectionsPopover } from './ConnectionsPopover.jsx';
 
 // Settings Components
 export { default as SettingsModal } from './SettingsModal.jsx';

@@ -585,6 +585,57 @@ EXAMPLE:
       }
     }
   },
+  // ============ CONNECTION OPERATIONS ============
+  {
+    type: 'function',
+    function: {
+      name: 'get_connected_notes',
+      description: 'Get all notes connected to a specific note (both incoming and outgoing links)',
+      parameters: {
+        type: 'object',
+        properties: {
+          note_id: { type: 'string', description: 'The note ID to find connections for' },
+        },
+        required: ['note_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_connection',
+      description: 'Create a connection (link) between two notes. Use when the user says to connect, link, or relate notes together.',
+      parameters: {
+        type: 'object',
+        properties: {
+          source_note_id: { type: 'string', description: 'Source note ID' },
+          target_note_id: { type: 'string', description: 'Target note ID' },
+          connection_type: {
+            type: 'string',
+            description: 'Type of connection: related, supports, contradicts, extends, source',
+            enum: ['related', 'supports', 'contradicts', 'extends', 'source']
+          },
+          label: { type: 'string', description: 'Optional display label for the connection' },
+        },
+        required: ['source_note_id', 'target_note_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_connection',
+      description: 'Delete a connection between two notes',
+      parameters: {
+        type: 'object',
+        properties: {
+          connection_id: { type: 'string', description: 'The connection ID to delete' },
+        },
+        required: ['connection_id']
+      }
+    }
+  },
+
   {
     type: 'function',
     function: {

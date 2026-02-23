@@ -37,6 +37,7 @@ export function BoxesView({
   const [boxOrder, setBoxOrder] = useState([]);
   const [moveNoteModal, setMoveNoteModal] = useState(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [altHeld, setAltHeld] = useState(false);
   const boxRefs = useRef({});
 
   // Detect touch device
@@ -45,6 +46,21 @@ export function BoxesView({
     const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
     setIsTouchDevice(hasTouch && isCoarsePointer);
   }, []);
+
+  // Track Alt key during drag
+  useEffect(() => {
+    if (!draggingNote) {
+      setAltHeld(false);
+      return;
+    }
+    const onKey = (e) => setAltHeld(e.altKey);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, [draggingNote]);
 
   // Generate default box IDs
   const generateDefaultBoxIds = () => {
@@ -163,7 +179,7 @@ export function BoxesView({
   const handleNoteDragStart = (e, note) => {
     e.stopPropagation();
     e.dataTransfer.setData('text/plain', `note:${note.id}`);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copyMove';
     setTimeout(() => setDraggingNote(note), 0);
   };
 
@@ -509,17 +525,22 @@ export function BoxesView({
             bottom: 100,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: colors.surface,
-            border: `1px solid ${dragOverBox ? colors.primary : colors.border}`,
+            background: altHeld ? '#fff' : colors.surface,
+            border: `1px solid ${altHeld ? '#000' : dragOverBox ? colors.primary : colors.border}`,
             padding: '10px 20px',
             fontSize: 12,
-            color: dragOverBox ? colors.textPrimary : colors.textMuted,
+            color: altHeld ? '#000' : dragOverBox ? colors.textPrimary : colors.textMuted,
             zIndex: 1000,
-            boxShadow: 'none',
+            boxShadow: altHeld ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+            transition: 'all 0.15s ease',
           }}
         >
-          <span style={{ color: colors.primary, marginRight: 8 }}>↗</span>
-          {dragOverBox ? 'Release to move note' : 'Drag to another section'}
+          <span style={{ color: altHeld ? '#000' : colors.primary, marginRight: 8 }}>{altHeld ? '⧉' : '↗'}</span>
+          {altHeld
+            ? 'Drag note to duplicate it to another section'
+            : dragOverBox
+              ? 'Release to move note'
+              : 'Drag to another section'}
         </div>
       )}
 

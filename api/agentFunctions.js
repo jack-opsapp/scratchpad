@@ -85,6 +85,14 @@ export async function executeFunction(name, args, userId) {
       case 'restore_items':
         return await restoreItems(supabase, userId, args);
 
+      // Connection Operations
+      case 'get_connected_notes':
+        return await getConnectedNotes(supabase, userId, args);
+      case 'create_connection':
+        return await createConnectionAgent(supabase, userId, args);
+      case 'delete_connection':
+        return await deleteConnectionAgent(supabase, userId, args);
+
       default:
         return { error: `Unknown function: ${name}` };
     }
@@ -943,4 +951,40 @@ async function restoreItems(supabase, userId, args) {
   }
 
   return { restored: results.filter(r => r.restored).length, results };
+}
+
+// ============ CONNECTION OPERATIONS ============
+
+async function getConnectedNotes(supabase, userId, { note_id }) {
+  const { data, error } = await supabase.rpc('get_note_connections', { p_note_id: note_id });
+  if (error) return { error: error.message };
+  return { connections: data || [], count: data?.length || 0 };
+}
+
+async function createConnectionAgent(supabase, userId, { source_note_id, target_note_id, connection_type = 'related', label = null }) {
+  const { data, error } = await supabase
+    .from('note_connections')
+    .insert({
+      source_note_id,
+      target_note_id,
+      connection_type,
+      label,
+      created_by_user_id: userId,
+    })
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+  return { success: true, connection_id: data.id, action: 'refresh_connections' };
+}
+
+async function deleteConnectionAgent(supabase, userId, { connection_id }) {
+  const { error } = await supabase
+    .from('note_connections')
+    .delete()
+    .eq('id', connection_id)
+    .eq('created_by_user_id', userId);
+
+  if (error) return { error: error.message };
+  return { success: true, action: 'refresh_connections' };
 }

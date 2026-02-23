@@ -754,6 +754,83 @@ export const dataStore = {
   },
 
   // -------------------------------------------------------------------------
+  // Note Connections
+  // -------------------------------------------------------------------------
+
+  async getConnections() {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return [];
+      const { data, error } = await supabase.rpc('get_all_connections', { p_user_id: userId });
+      if (error) {
+        console.error('Failed to fetch connections:', error);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('getConnections error:', error);
+      return [];
+    }
+  },
+
+  async getNoteConnections(noteId) {
+    try {
+      const { data, error } = await supabase.rpc('get_note_connections', { p_note_id: noteId });
+      if (error) {
+        console.error('Failed to fetch note connections:', error);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('getNoteConnections error:', error);
+      return [];
+    }
+  },
+
+  async createConnection(sourceNoteId, targetNoteId, connectionType = 'related', label = null) {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('note_connections')
+        .insert({
+          source_note_id: sourceNoteId,
+          target_note_id: targetNoteId,
+          connection_type: connectionType,
+          label,
+          created_by_user_id: userId,
+        })
+        .select()
+        .single();
+      if (error) {
+        console.error('Failed to create connection:', error);
+        return null;
+      }
+      return data;
+    } catch (error) {
+      console.error('createConnection error:', error);
+      return null;
+    }
+  },
+
+  async deleteConnection(connectionId) {
+    try {
+      const { error } = await supabase
+        .from('note_connections')
+        .delete()
+        .eq('id', connectionId);
+      if (error) {
+        console.error('Failed to delete connection:', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('deleteConnection error:', error);
+      return false;
+    }
+  },
+
+  // -------------------------------------------------------------------------
   // Bulk Operations
   // -------------------------------------------------------------------------
 

@@ -29,6 +29,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Network,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
@@ -125,10 +126,13 @@ import {
   ChatResponseBox,
   CalendarView,
   BoxesView,
+  GraphView,
   PlanModeInterface,
   ChatPanel,
+  ConnectionsPopover,
 } from '../components/index.js';
 import { TableView } from '../components/TableView.jsx';
+import { parseWikilinks, buildWikilink } from '../lib/wikilinks.js';
 import ShareModal from '../components/ShareModal.jsx';
 import SettingsModal from '../components/SettingsModal.jsx';
 import TrashModal from '../components/TrashModal.jsx';
@@ -197,6 +201,8 @@ export function MainApp({ user, onSignOut }) {
   const [tags, setTags] = useState([]);
   const [notes, setNotes] = useState([]);
   const [boxConfigs, setBoxConfigs] = useState({});
+  const [connections, setConnections] = useState([]);
+  const [connectionsPopover, setConnectionsPopover] = useState(null); // { noteId, top, left }
 
   // Animation state - track newly created items for typewriter effect
   const [animatingItems, setAnimatingItems] = useState(new Set());
@@ -245,7 +251,7 @@ export function MainApp({ user, onSignOut }) {
   const { containerRef: zoomRef, scale: zoomScale, resetZoom, setScale: setZoomScale } = usePinchZoom({ minScale: 0.5, maxScale: 2.0 });
 
   // Swipe-right to cycle view modes
-  const viewModes = ['list', 'boxes', 'calendar', 'table'];
+  const viewModes = ['list', 'boxes', 'calendar', 'table', 'graph'];
   const swipeStartRef = useRef(null);
   const handleContentTouchStart = (e) => {
     if (e.touches.length === 1) {
@@ -315,11 +321,12 @@ export function MainApp({ user, onSignOut }) {
   useEffect(() => {
     const load = async () => {
       // Load owned and shared pages separately
-      const [owned, shared, notesData, boxConfigsData] = await Promise.all([
+      const [owned, shared, notesData, boxConfigsData, connectionsData] = await Promise.all([
         dataStore.getOwnedPages(),
         dataStore.getSharedPages(),
         dataStore.getNotes(),
         dataStore.getBoxConfigs(),
+        dataStore.getConnections(),
       ]);
 
       const allPages = [...owned, ...shared];
@@ -328,6 +335,7 @@ export function MainApp({ user, onSignOut }) {
       setSharedPages(shared || []);
       setPages(allPages);
       setNotes(notesData || []);
+      setConnections(connectionsData || []);
       // Derive tags from notes
       const allTags = [...new Set(
         (notesData || []).flatMap(n => n.tags || []).filter(Boolean)
@@ -1116,15 +1124,17 @@ export function MainApp({ user, onSignOut }) {
   // Refresh data from database after agent makes changes
   const refreshData = async () => {
     try {
-      const [owned, shared, notesData] = await Promise.all([
+      const [owned, shared, notesData, connectionsData] = await Promise.all([
         dataStore.getOwnedPages(),
         dataStore.getSharedPages(),
-        dataStore.getNotes()
+        dataStore.getNotes(),
+        dataStore.getConnections()
       ]);
 
       if (owned) setOwnedPages(owned);
       if (shared) setSharedPages(shared);
       if (notesData) setNotes(notesData);
+      if (connectionsData) setConnections(connectionsData);
 
       // Also refresh tags
       const allTags = [...new Set(
@@ -1243,6 +1253,41 @@ export function MainApp({ user, onSignOut }) {
       .then(({ error }) => { if (error) console.error('Add tag persist failed:', error); });
 
     if (!tags.includes(tag)) setTags(prev => [...prev, tag]);
+  };
+
+  // Connection handlers
+  const handleCreateConnection = async (sourceNoteId, targetNoteId, type = 'related', label = null) => {
+    const sourceNote = notes.find(n => n.id === sourceNoteId);
+    const targetNote = notes.find(n => n.id === targetNoteId);
+    if (!sourceNote || !targetNote) return;
+
+    const tempId = generateId();
+    const optimistic = {
+      connection_id: tempId,
+      source_note_id: sourceNoteId,
+      source_content: sourceNote.content,
+      target_note_id: targetNoteId,
+      target_content: targetNote.content,
+      connection_type: type,
+      label,
+    };
+    setConnections(prev => [...prev, optimistic]);
+
+    const result = await dataStore.createConnection(sourceNoteId, targetNoteId, type, label);
+    if (result) {
+      setConnections(prev => prev.map(c => c.connection_id === tempId ? { ...c, connection_id: result.id } : c));
+    } else {
+      setConnections(prev => prev.filter(c => c.connection_id !== tempId));
+    }
+  };
+
+  const handleDeleteConnection = async (connectionId) => {
+    setConnections(prev => prev.filter(c => c.connection_id !== connectionId));
+    const ok = await dataStore.deleteConnection(connectionId);
+    if (!ok) {
+      const fresh = await dataStore.getConnections();
+      setConnections(fresh || []);
+    }
   };
 
   // Process a single message (internal)
@@ -2664,6 +2709,7 @@ export function MainApp({ user, onSignOut }) {
                 { m: 'boxes', I: LayoutGrid },
                 { m: 'calendar', I: Calendar },
                 { m: 'table', I: Table2 },
+                { m: 'graph', I: Network },
               ].map(({ m, I }) => {
                 const currentMode = agentView ? agentView.viewType : viewMode;
                 return (
@@ -3316,6 +3362,9 @@ export function MainApp({ user, onSignOut }) {
                       const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
+                      const noteConns = connections.filter(
+                        c => c.source_note_id === note.id || c.target_note_id === note.id
+                      ).length;
                       return (
                         <NoteCard
                           key={note.id}
@@ -3332,6 +3381,27 @@ export function MainApp({ user, onSignOut }) {
                           onDelete={handleNoteDelete}
                           onTagClick={(tag) => setFilterTag([tag])}
                           onAddTag={handleAddTag}
+                          connectionCount={noteConns}
+                          allNotes={notes.map(n => {
+                            const pg = pages.find(p => p.sections?.some(s => s.id === n.sectionId));
+                            const sec = pg?.sections?.find(s => s.id === n.sectionId);
+                            return { ...n, pageName: pg?.name, sectionName: sec?.name };
+                          })}
+                          onLinkClick={(targetNoteId) => {
+                            const targetNote = notes.find(n => n.id === targetNoteId);
+                            if (targetNote) {
+                              const targetPage = pages.find(p => p.sections?.some(s => s.id === targetNote.sectionId));
+                              if (targetPage) {
+                                setCurrentPage(targetPage.id);
+                                setCurrentSection(targetNote.sectionId);
+                              }
+                            }
+                          }}
+                          onConnectionBadgeClick={(noteId, e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setConnectionsPopover({ noteId, top: rect.bottom + 4, left: rect.left });
+                          }}
+                          onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
                     };
@@ -3399,6 +3469,9 @@ export function MainApp({ user, onSignOut }) {
                       const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canToggleNote = ['owner', 'team-admin', 'team', 'team-limited'].includes(myRole);
+                      const noteConnectionCount = connections.filter(
+                        c => c.source_note_id === note.id || c.target_note_id === note.id
+                      ).length;
                       return (
                         <NoteCard
                           key={note.id}
@@ -3415,6 +3488,27 @@ export function MainApp({ user, onSignOut }) {
                           onDelete={handleNoteDelete}
                           onTagClick={(tag) => setFilterTag([tag])}
                           onAddTag={handleAddTag}
+                          connectionCount={noteConnectionCount}
+                          allNotes={notes.map(n => {
+                            const pg = pages.find(p => p.sections?.some(s => s.id === n.sectionId));
+                            const sec = pg?.sections?.find(s => s.id === n.sectionId);
+                            return { ...n, pageName: pg?.name, sectionName: sec?.name };
+                          })}
+                          onLinkClick={(targetNoteId) => {
+                            const targetNote = notes.find(n => n.id === targetNoteId);
+                            if (targetNote) {
+                              const targetPage = pages.find(p => p.sections?.some(s => s.id === targetNote.sectionId));
+                              if (targetPage) {
+                                setCurrentPage(targetPage.id);
+                                setCurrentSection(targetNote.sectionId);
+                              }
+                            }
+                          }}
+                          onConnectionBadgeClick={(noteId, e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setConnectionsPopover({ noteId, top: rect.bottom + 4, left: rect.left });
+                          }}
+                          onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
                     };
@@ -3573,12 +3667,46 @@ export function MainApp({ user, onSignOut }) {
                 currentUserId={user?.id}
               />
             )}
+
+            {viewMode === 'graph' && (
+              <GraphView
+                connections={connections}
+                notes={viewingPageLevel
+                  ? notes.filter(n => currentPageData?.sections.some(s => s.id === n.sectionId))
+                  : notes
+                }
+                pages={allPages}
+                sections={allSections}
+                onNavigate={(pageId, sectionId) => {
+                  setCurrentPage(pageId);
+                  setCurrentSection(sectionId);
+                  setViewingPageLevel(false);
+                  setViewMode('list');
+                }}
+              />
+            )}
               </>
             )}
           </div>{/* close zoom wrapper */}
           </div>{/* close content area */}
         </div>
       </div>
+
+      {/* Connections Popover */}
+      {connectionsPopover && (
+        <ConnectionsPopover
+          noteId={connectionsPopover.noteId}
+          position={{ top: connectionsPopover.top, left: connectionsPopover.left }}
+          onClose={() => setConnectionsPopover(null)}
+          onNavigate={(noteId, sectionId, pageId) => {
+            setCurrentPage(pageId);
+            setCurrentSection(sectionId);
+            setViewingPageLevel(false);
+            setConnectionsPopover(null);
+          }}
+          onDelete={(connId) => handleDeleteConnection(connId)}
+        />
+      )}
 
       {/* Chat Panel - replaces floating input */}
       {['owner', 'team-admin', 'team'].includes(myRole) && (

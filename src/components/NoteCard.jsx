@@ -1,9 +1,142 @@
-import { useState } from 'react';
-import { Check, Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Check, Trash2, Link2 } from 'lucide-react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors } from '../styles/theme.js';
 import { TagPill } from './TagPill.jsx';
 import UserAvatar from './UserAvatar.jsx';
+import { parseWikilinks, buildWikilink } from '../lib/wikilinks.js';
+
+/**
+ * Render note content with wikilink chips inline
+ */
+function renderContentWithLinks(content, onLinkClick) {
+  const segments = parseWikilinks(content);
+  if (segments.length === 1 && segments[0].type === 'text') {
+    return content;
+  }
+  return segments.map((seg, i) => {
+    if (seg.type === 'text') return <span key={i}>{seg.value}</span>;
+    return (
+      <span
+        key={i}
+        onClick={(e) => {
+          e.stopPropagation();
+          onLinkClick?.(seg.noteId);
+        }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          padding: '1px 6px',
+          margin: '0 2px',
+          background: colors.surfaceRaised,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 2,
+          color: colors.primary,
+          fontSize: 13,
+          cursor: 'pointer',
+          transition: 'border-color 0.15s ease, background 0.15s ease',
+          verticalAlign: 'baseline',
+        }}
+        onMouseOver={e => {
+          e.currentTarget.style.borderColor = colors.primary;
+          e.currentTarget.style.background = 'rgba(148, 139, 114, 0.1)';
+        }}
+        onMouseOut={e => {
+          e.currentTarget.style.borderColor = colors.border;
+          e.currentTarget.style.background = colors.surfaceRaised;
+        }}
+      >
+        <Link2 size={10} style={{ flexShrink: 0 }} />
+        {seg.displayText}
+      </span>
+    );
+  });
+}
+
+/**
+ * Inline wikilink autocomplete for note editing (uses WikilinkAutocomplete pattern)
+ */
+function WikilinkAutocompleteInline({ notes, position, onSelect, onClose }) {
+  const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const searchRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const filtered = (notes || [])
+    .filter(n => n.content && n.content.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 6);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'fixed',
+        top: position.top,
+        left: position.left,
+        width: 260,
+        maxHeight: 280,
+        background: colors.surface,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 4,
+        zIndex: 1200,
+        overflow: 'hidden',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+      }}
+      onMouseDown={e => e.preventDefault()} // Prevent blur on parent input
+    >
+      <input
+        ref={searchRef}
+        value={query}
+        onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex(i => Math.min(i + 1, filtered.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex(i => Math.max(i - 1, 0)); }
+          else if (e.key === 'Enter' && filtered.length > 0) { e.preventDefault(); onSelect(filtered[selectedIndex]); }
+          else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+        }}
+        placeholder="Search notes..."
+        style={{
+          width: '100%',
+          padding: '6px 10px',
+          background: colors.bg,
+          border: 'none',
+          borderBottom: `1px solid ${colors.border}`,
+          color: colors.textPrimary,
+          fontSize: 12,
+          fontFamily: "'Inter', sans-serif",
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {filtered.length === 0 ? (
+          <div style={{ padding: 10, color: colors.textMuted, fontSize: 11, fontFamily: "'Inter', sans-serif" }}>
+            No matching notes
+          </div>
+        ) : (
+          filtered.map((n, i) => (
+            <div
+              key={n.id}
+              onClick={() => onSelect(n)}
+              onMouseEnter={() => setSelectedIndex(i)}
+              style={{
+                padding: '6px 10px',
+                cursor: 'pointer',
+                background: i === selectedIndex ? colors.surfaceRaised : 'transparent',
+                borderBottom: `1px solid ${colors.border}`,
+              }}
+            >
+              <div style={{ color: colors.textPrimary, fontSize: 12, fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {n.content?.substring(0, 50)}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Animated note card with typewriter effect for new notes
@@ -20,6 +153,11 @@ import UserAvatar from './UserAvatar.jsx';
  * @param {boolean} props.canToggle - Whether user can toggle completion
  * @param {boolean} props.compact - Hide details (tags, dates, avatars) for easy copy
  * @param {function} props.onAddTag - Add tag handler, receives noteId
+ * @param {function} props.onLinkClick - Handler when a wikilink chip is clicked (noteId)
+ * @param {number} props.connectionCount - Number of connections for this note
+ * @param {function} props.onConnectionBadgeClick - Handler for connection badge click (noteId, event)
+ * @param {Array} props.allNotes - All notes for wikilink autocomplete
+ * @param {function} props.onCreateConnection - Handler to create a connection via wikilink
  */
 export function NoteCard({
   note,
@@ -35,10 +173,18 @@ export function NoteCard({
   onTagClick,
   onAddTag,
   draggable = false,
+  onLinkClick,
+  connectionCount = 0,
+  onConnectionBadgeClick,
+  allNotes = [],
+  onCreateConnection,
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
   const [dragHover, setDragHover] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompletePos, setAutocompletePos] = useState({ top: 0, left: 0 });
+  const inputRef = useRef(null);
   const typewriter = useTypewriter(note.content, 20, 0, isNew);
 
   const handleDragStart = (e) => {
@@ -120,30 +266,75 @@ export function NoteCard({
         {/* Content */}
         <div style={{ flex: 1 }}>
           {editing && canEdit ? (
-            <input
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              onBlur={() => {
-                onEdit(note.id, content);
-                setEditing(false);
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  onEdit(note.id, content);
-                  setEditing(false);
-                }
-              }}
-              autoFocus
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                color: colors.textPrimary,
-                fontSize: 14,
-                fontFamily: "'Inter', sans-serif",
-                outline: 'none',
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={inputRef}
+                value={content}
+                onChange={e => {
+                  const val = e.target.value;
+                  setContent(val);
+                  // Detect [[ trigger for wikilink autocomplete
+                  const cursorPos = e.target.selectionStart;
+                  const textBefore = val.substring(0, cursorPos);
+                  if (textBefore.endsWith('[[')) {
+                    const rect = e.target.getBoundingClientRect();
+                    setAutocompletePos({ top: rect.bottom + 4, left: rect.left });
+                    setShowAutocomplete(true);
+                  } else if (!textBefore.includes('[[') || textBefore.endsWith(']]')) {
+                    setShowAutocomplete(false);
+                  }
+                }}
+                onBlur={() => {
+                  // Small delay to allow autocomplete click to register
+                  setTimeout(() => {
+                    if (!showAutocomplete) {
+                      onEdit(note.id, content);
+                      setEditing(false);
+                    }
+                  }, 150);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !showAutocomplete) {
+                    onEdit(note.id, content);
+                    setEditing(false);
+                  }
+                  if (e.key === 'Escape') {
+                    setShowAutocomplete(false);
+                    setEditing(false);
+                  }
+                }}
+                autoFocus
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: 'none',
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  fontFamily: "'Inter', sans-serif",
+                  outline: 'none',
+                }}
+              />
+              {showAutocomplete && (
+                <WikilinkAutocompleteInline
+                  notes={allNotes.filter(n => n.id !== note.id)}
+                  position={autocompletePos}
+                  onSelect={(targetNote) => {
+                    // Replace the [[ trigger with the full wikilink
+                    const cursorPos = inputRef.current?.selectionStart || content.length;
+                    const textBefore = content.substring(0, cursorPos);
+                    const lastBracket = textBefore.lastIndexOf('[[');
+                    const displayText = targetNote.content?.substring(0, 40) || 'note';
+                    const wikilink = buildWikilink(targetNote.id, displayText);
+                    const newContent = content.substring(0, lastBracket) + wikilink + content.substring(cursorPos);
+                    setContent(newContent);
+                    setShowAutocomplete(false);
+                    onCreateConnection?.(note.id, targetNote.id);
+                    inputRef.current?.focus();
+                  }}
+                  onClose={() => setShowAutocomplete(false)}
+                />
+              )}
+            </div>
           ) : (
             <p
               onClick={() => canEdit && setEditing(true)}
@@ -157,9 +348,13 @@ export function NoteCard({
                 lineHeight: 1.5,
               }}
             >
-              {isNew ? typewriter.displayed : note.content}
-              {isNew && !typewriter.done && (
-                <span style={{ color: colors.primary }}>_</span>
+              {isNew ? (
+                <>
+                  {typewriter.displayed}
+                  {!typewriter.done && <span style={{ color: colors.primary }}>_</span>}
+                </>
+              ) : (
+                renderContentWithLinks(note.content, onLinkClick)
               )}
             </p>
           )}
@@ -202,6 +397,34 @@ export function NoteCard({
                   title="Add tag"
                 >
                   +
+                </button>
+              )}
+              {connectionCount > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onConnectionBadgeClick?.(note.id, e);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 2,
+                    color: colors.primary,
+                    fontSize: 11,
+                    fontFamily: "'Inter', sans-serif",
+                    cursor: 'pointer',
+                    transition: 'border-color 0.15s ease',
+                  }}
+                  onMouseOver={e => e.currentTarget.style.borderColor = colors.primary}
+                  onMouseOut={e => e.currentTarget.style.borderColor = colors.border}
+                  title={`${connectionCount} connection${connectionCount !== 1 ? 's' : ''}`}
+                >
+                  <Link2 size={10} />
+                  {connectionCount}
                 </button>
               )}
               {note.date && (
