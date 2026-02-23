@@ -540,9 +540,13 @@ export function MainApp({ user, onSignOut }) {
   const filteredNotes = (
     viewingPageLevel
       ? notes.filter(n =>
-          currentPageData?.sections.some(s => s.id === n.sectionId)
+          currentPageData?.sections.some(s =>
+            s.id === n.sectionId || n.sharedSectionIds?.includes(s.id)
+          )
         )
-      : notes.filter(n => n.sectionId === currentSection)
+      : notes.filter(n =>
+          n.sectionId === currentSection || n.sharedSectionIds?.includes(currentSection)
+        )
   )
     .filter(n => !filterIncomplete || !n.completed)
     .filter(
@@ -1934,7 +1938,18 @@ export function MainApp({ user, onSignOut }) {
                               if (noteMatch) {
                                 const noteId = noteMatch[1];
                                 if (e.ctrlKey || e.metaKey) {
-                                  // Ctrl+drop: copy note to this section
+                                  // Ctrl/Cmd+drop: share note to this section (same note, reference)
+                                  setNotes(prev => prev.map(n =>
+                                    n.id === noteId
+                                      ? { ...n, sharedSectionIds: [...(n.sharedSectionIds || []), section.id] }
+                                      : n
+                                  ));
+                                  supabase.from('note_sections').insert({
+                                    note_id: noteId,
+                                    section_id: section.id,
+                                  }).then(({ error }) => { if (error) console.error('Note share failed:', error); });
+                                } else if (e.altKey) {
+                                  // Alt+drop: duplicate note to this section (new copy)
                                   const note = notes.find(n => n.id === noteId);
                                   if (note) {
                                     const newId = generateId();
@@ -1959,7 +1974,7 @@ export function MainApp({ user, onSignOut }) {
                                     });
                                   }
                                 } else {
-                                  // Move note to this section
+                                  // Plain drop: move note to this section
                                   setNotes(notes.map(n => n.id === noteId ? { ...n, sectionId: section.id } : n));
                                   supabase.from('notes').update({ section_id: section.id }).eq('id', noteId);
                                 }
@@ -3418,7 +3433,7 @@ export function MainApp({ user, onSignOut }) {
               (viewingPageLevel
                 ? currentPageData?.sections.map(section => {
                     const sn = filteredNotes.filter(
-                      n => n.sectionId === section.id
+                      n => n.sectionId === section.id || n.sharedSectionIds?.includes(section.id)
                     );
                     if (!sn.length) return null;
                     const snIncomplete = sn.filter(n => !n.completed);
@@ -3740,6 +3755,22 @@ export function MainApp({ user, onSignOut }) {
                           date: note.date || null,
                           created_by_user_id: user?.id || null,
                         }).then(({ error }) => { if (error) console.error('Note copy persist failed:', error); });
+                      }
+                    : null
+                }
+                onNoteShare={
+                  viewingPageLevel
+                    ? (note, targetSectionId) => {
+                        // Share: add note_sections reference (same note in multiple sections)
+                        setNotes(prev => prev.map(n =>
+                          n.id === note.id
+                            ? { ...n, sharedSectionIds: [...(n.sharedSectionIds || []), targetSectionId] }
+                            : n
+                        ));
+                        supabase.from('note_sections').insert({
+                          note_id: note.id,
+                          section_id: targetSectionId,
+                        }).then(({ error }) => { if (error) console.error('Note share failed:', error); });
                       }
                     : null
                 }

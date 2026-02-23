@@ -24,6 +24,7 @@ export function BoxesView({
   groupBy,
   onNoteMove,
   onNoteCopy,
+  onNoteShare,
   onNoteToggle,
   onNoteDelete,
   contextId,
@@ -38,7 +39,7 @@ export function BoxesView({
   const [boxOrder, setBoxOrder] = useState([]);
   const [moveNoteModal, setMoveNoteModal] = useState(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [altHeld, setAltHeld] = useState(false);
+  const [dragModifier, setDragModifier] = useState(null); // null | 'share' | 'duplicate'
   const boxRefs = useRef({});
 
   // Detect touch device
@@ -48,13 +49,17 @@ export function BoxesView({
     setIsTouchDevice(hasTouch && isCoarsePointer);
   }, []);
 
-  // Track Alt key during drag
+  // Track modifier keys during drag
   useEffect(() => {
     if (!draggingNote) {
-      setAltHeld(false);
+      setDragModifier(null);
       return;
     }
-    const onKey = (e) => setAltHeld(e.altKey || e.ctrlKey || e.metaKey);
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey) setDragModifier('share');
+      else if (e.altKey) setDragModifier('duplicate');
+      else setDragModifier(null);
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
     return () => {
@@ -201,7 +206,11 @@ export function BoxesView({
       return;
     }
     if (draggingNote.sectionId !== targetBoxId) {
-      if ((e.altKey || e.ctrlKey || e.metaKey) && onNoteCopy) {
+      if ((e.ctrlKey || e.metaKey) && onNoteShare) {
+        // Ctrl/Cmd+drop: share note to target section (same note, multiple sections)
+        onNoteShare(draggingNote, targetBoxId);
+      } else if (e.altKey && onNoteCopy) {
+        // Alt+drop: duplicate note to target section (new copy)
         onNoteCopy(draggingNote, targetBoxId);
       } else {
         onNoteMove(draggingNote.id, targetBoxId);
@@ -536,22 +545,26 @@ export function BoxesView({
             bottom: 100,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: altHeld ? '#fff' : colors.surface,
-            border: `1px solid ${altHeld ? '#000' : dragOverBox ? colors.primary : colors.border}`,
+            background: dragModifier ? '#fff' : colors.surface,
+            border: `1px solid ${dragModifier ? '#000' : dragOverBox ? colors.primary : colors.border}`,
             padding: '10px 20px',
             fontSize: 12,
-            color: altHeld ? '#000' : dragOverBox ? colors.textPrimary : colors.textMuted,
+            color: dragModifier ? '#000' : dragOverBox ? colors.textPrimary : colors.textMuted,
             zIndex: 1000,
-            boxShadow: altHeld ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+            boxShadow: dragModifier ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
             transition: 'all 0.15s ease',
           }}
         >
-          <span style={{ color: altHeld ? '#000' : colors.primary, marginRight: 8 }}>{altHeld ? '⧉' : '↗'}</span>
-          {altHeld
-            ? 'Drop to duplicate note to another section'
-            : dragOverBox
-              ? 'Release to move note'
-              : 'Drag to another section'}
+          <span style={{ color: dragModifier ? '#000' : colors.primary, marginRight: 8 }}>
+            {dragModifier === 'share' ? '🔗' : dragModifier === 'duplicate' ? '⧉' : '↗'}
+          </span>
+          {dragModifier === 'share'
+            ? 'Drop to share note to another section'
+            : dragModifier === 'duplicate'
+              ? 'Drop to duplicate note to another section'
+              : dragOverBox
+                ? 'Release to move note'
+                : 'Drag to another section'}
         </div>
       )}
 

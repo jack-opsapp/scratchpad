@@ -84,7 +84,7 @@ function transformPagesToAppFormat(supabasePages) {
  * @param {Array} supabaseNotes - Notes from Supabase
  * @returns {Array} Notes in app format
  */
-function transformNotesToAppFormat(supabaseNotes) {
+function transformNotesToAppFormat(supabaseNotes, sharedSectionMap = {}) {
   if (!supabaseNotes) return null;
 
   return supabaseNotes.map(note => ({
@@ -98,6 +98,7 @@ function transformNotesToAppFormat(supabaseNotes) {
     tags: note.tags || [],
     createdAt: note.created_at,
     created_by_user_id: note.created_by_user_id || null,
+    sharedSectionIds: sharedSectionMap[note.id] || [],
   }));
 }
 
@@ -513,19 +514,50 @@ export const dataStore = {
       const allSectionIds = [...ownedSectionIds, ...sharedSectionIds];
       if (allSectionIds.length === 0) return [];
 
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .in('section_id', allSectionIds)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+      // Fetch notes and shared note references in parallel
+      const [notesResult, sharedRefsResult] = await Promise.all([
+        supabase
+          .from('notes')
+          .select('*')
+          .in('section_id', allSectionIds)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('note_sections')
+          .select('note_id, section_id')
+          .in('section_id', allSectionIds),
+      ]);
 
-      if (error) {
-        console.error('getNotes error:', error);
+      if (notesResult.error) {
+        console.error('getNotes error:', notesResult.error);
         return null;
       }
 
-      return transformNotesToAppFormat(data);
+      // Build shared section map: { noteId: [sectionId1, sectionId2, ...] }
+      const sharedSectionMap = {};
+      if (sharedRefsResult.data) {
+        for (const ref of sharedRefsResult.data) {
+          if (!sharedSectionMap[ref.note_id]) sharedSectionMap[ref.note_id] = [];
+          sharedSectionMap[ref.note_id].push(ref.section_id);
+        }
+      }
+
+      // Also fetch notes that are shared INTO our sections but owned elsewhere
+      const sharedNoteIds = sharedRefsResult.data
+        ?.map(r => r.note_id)
+        .filter(id => !notesResult.data.some(n => n.id === id)) || [];
+
+      let allNotes = notesResult.data;
+      if (sharedNoteIds.length > 0) {
+        const { data: extraNotes } = await supabase
+          .from('notes')
+          .select('*')
+          .in('id', sharedNoteIds)
+          .is('deleted_at', null);
+        if (extraNotes) allNotes = [...allNotes, ...extraNotes];
+      }
+
+      return transformNotesToAppFormat(allNotes, sharedSectionMap);
     } catch (error) {
       console.error('getNotes error:', error);
       return null;
