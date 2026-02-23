@@ -80,8 +80,9 @@ export default async function handler(req, res) {
   // Extract resource and optional ID from URL path
   const urlPath = req.url.split('?')[0];
   const match = urlPath.match(/\/api\/v1\/([^/]+)(?:\/([^/]+))?/);
-  const resource = match?.[1] || (req.query.path?.[0]) || '';
-  const resourceId = match?.[2] || (req.query.path?.[1]) || null;
+  const pathSegments = Array.isArray(req.query.path) ? req.query.path : [];
+  const resource = match?.[1] || pathSegments[0] || '';
+  const resourceId = match?.[2] || pathSegments[1] || null;
 
   switch (resource) {
     case 'keys':     return handleKeys(req, res);
@@ -124,7 +125,7 @@ async function handleKeys(req, res) {
 
     const { data, error } = await supabase
       .from('api_keys')
-      .insert({ user_id: user.id, key_hash: keyHash, name: name.trim() })
+      .insert({ user_id: user.id, key_hash: keyHash, key_raw: rawKey, name: name.trim() })
       .select('id, name, created_at')
       .single();
 
