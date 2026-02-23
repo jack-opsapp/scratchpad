@@ -3742,6 +3742,15 @@ export function MainApp({ user, onSignOut }) {
           sidebarWidth={isMobile ? 0 : (sidebarOpen ? 240 : 0)}
           isMobile={isMobile}
           isOnline={isOnline}
+          allNotes={notes.map(n => {
+            const pg = pages.find(p => p.sections?.some(s => s.id === n.sectionId));
+            const sec = pg?.sections?.find(s => s.id === n.sectionId);
+            return { ...n, pageName: pg?.name, sectionName: sec?.name };
+          })}
+          onCreateConnection={(targetNoteId) => {
+            // Connection will be created when the note is saved and parsed
+            // For now this is a no-op placeholder; connections are created on note edit
+          }}
         />
       )}
 

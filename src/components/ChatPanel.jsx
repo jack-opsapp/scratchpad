@@ -3,6 +3,8 @@ import { Send, GripHorizontal, Check, X, LayoutGrid, Minus, Maximize2, SkipForwa
 import { colors } from '../styles/theme.js';
 import VoiceInput from './VoiceInput.jsx';
 import MarkdownText from './MarkdownText.jsx';
+import { WikilinkAutocomplete } from './WikilinkAutocomplete.jsx';
+import { buildWikilink } from '../lib/wikilinks.js';
 
 const INPUT_ONLY_HEIGHT = 76; // Just input with padding (input ~40px + padding 20px + border 2px + breathing room)
 const COLLAPSED_HEIGHT = 110; // Input + collapsed indicator bar when there are messages
@@ -37,7 +39,9 @@ const ChatPanel = forwardRef(function ChatPanel({
   onCancelPlan,
   sidebarWidth = 240,
   isMobile = false,
-  isOnline = true
+  isOnline = true,
+  allNotes = [],
+  onCreateConnection,
 }, ref) {
   const [height, setHeight] = useState(isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -61,6 +65,8 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [shimmerActive, setShimmerActive] = useState(false);
   const [isNoteDragOver, setIsNoteDragOver] = useState(false);
   const [referencedNote, setReferencedNote] = useState(null);
+  const [showWikilink, setShowWikilink] = useState(false);
+  const [wikilinkPos, setWikilinkPos] = useState({ top: 0, left: 0 });
   const planContainerRef = useRef(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -1289,12 +1295,30 @@ const ChatPanel = forwardRef(function ChatPanel({
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => {
-                    setInputValue(e.target.value);
+                    const val = e.target.value;
+                    setInputValue(val);
                     // Auto-resize: reset to single row then grow to content
                     e.target.style.height = 'auto';
                     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                    // Detect [[ trigger for wikilink autocomplete
+                    const cursorPos = e.target.selectionStart;
+                    const textBefore = val.substring(0, cursorPos);
+                    if (textBefore.endsWith('[[') && allNotes.length > 0) {
+                      const rect = e.target.getBoundingClientRect();
+                      setWikilinkPos({ top: rect.top - 4, left: rect.left + 16 });
+                      setShowWikilink(true);
+                    } else if (!textBefore.includes('[[') || textBefore.endsWith(']]')) {
+                      setShowWikilink(false);
+                    }
                   }}
-                  onKeyDown={handleKeyDown}
+                  onKeyDown={(e) => {
+                    if (showWikilink && (e.key === 'Escape')) {
+                      e.preventDefault();
+                      setShowWikilink(false);
+                      return;
+                    }
+                    handleKeyDown(e);
+                  }}
                   rows={1}
                   placeholder={isMobile ? "Type or speak..." : (processing ? "Processing... (type next command)" : "Type a command...")}
                   style={{
@@ -1311,6 +1335,26 @@ const ChatPanel = forwardRef(function ChatPanel({
                     padding: 0,
                   }}
                 />
+                {/* Wikilink autocomplete */}
+                {showWikilink && (
+                  <WikilinkAutocomplete
+                    notes={allNotes}
+                    position={{ top: wikilinkPos.top - 330, left: wikilinkPos.left }}
+                    onSelect={(targetNote) => {
+                      const cursorPos = inputRef.current?.selectionStart || inputValue.length;
+                      const textBefore = inputValue.substring(0, cursorPos);
+                      const lastBracket = textBefore.lastIndexOf('[[');
+                      const displayText = targetNote.content?.substring(0, 40) || 'note';
+                      const wikilink = buildWikilink(targetNote.id, displayText);
+                      const newValue = inputValue.substring(0, lastBracket) + wikilink + inputValue.substring(cursorPos);
+                      setInputValue(newValue);
+                      setShowWikilink(false);
+                      onCreateConnection?.(targetNote.id);
+                      inputRef.current?.focus();
+                    }}
+                    onClose={() => setShowWikilink(false)}
+                  />
+                )}
                 {/* Shimmer overlay for prefix recall */}
                 {shimmerActive && !referencedNote && inputValue && (
                   <span
