@@ -3521,6 +3521,32 @@ export function MainApp({ user, onSignOut }) {
                       }
                     : null
                 }
+                onNoteCopy={
+                  viewingPageLevel
+                    ? (note, targetSectionId) => {
+                        const newId = generateId();
+                        const newNote = {
+                          id: newId,
+                          sectionId: targetSectionId,
+                          content: note.content,
+                          tags: note.tags || [],
+                          completed: false,
+                          date: note.date || null,
+                          created_by_user_id: user?.id || null,
+                        };
+                        setNotes(prev => [...prev, newNote]);
+                        supabase.from('notes').insert({
+                          id: newId,
+                          section_id: targetSectionId,
+                          content: note.content,
+                          tags: note.tags || [],
+                          completed: false,
+                          date: note.date || null,
+                          created_by_user_id: user?.id || null,
+                        }).then(({ error }) => { if (error) console.error('Note copy persist failed:', error); });
+                      }
+                    : null
+                }
                 onNoteToggle={handleNoteToggle}
                 onNoteDelete={handleNoteDelete}
                 contextId={getBoxContextId()}

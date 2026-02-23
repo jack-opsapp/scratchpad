@@ -11,6 +11,7 @@ import { colors } from '../styles/theme.js';
  * @param {Array} props.sections - Section definitions (for page-level view)
  * @param {string} props.groupBy - Grouping mode ('status' or 'tag')
  * @param {function} props.onNoteMove - Handler for moving notes between sections
+ * @param {function} props.onNoteCopy - Handler for copying notes to another section (alt+drag)
  * @param {function} props.onNoteToggle - Toggle note completion
  * @param {function} props.onNoteDelete - Delete note handler
  * @param {string} props.contextId - Context identifier for saving box order
@@ -22,6 +23,7 @@ export function BoxesView({
   sections,
   groupBy,
   onNoteMove,
+  onNoteCopy,
   onNoteToggle,
   onNoteDelete,
   contextId,
@@ -169,6 +171,7 @@ export function BoxesView({
     if (!e.dataTransfer.types.includes('text/plain')) return;
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move';
     if (draggingNote) setDragOverBox(boxId);
   };
 
@@ -181,7 +184,11 @@ export function BoxesView({
       return;
     }
     if (draggingNote.sectionId !== targetBoxId) {
-      onNoteMove(draggingNote.id, targetBoxId);
+      if (e.altKey && onNoteCopy) {
+        onNoteCopy(draggingNote, targetBoxId);
+      } else {
+        onNoteMove(draggingNote.id, targetBoxId);
+      }
     }
     setDraggingNote(null);
     setDragOverBox(null);
