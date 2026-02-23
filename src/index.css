@@ -13,6 +13,8 @@ body {
   background: #000000;
   color: #e8e8e8;
   font-family: 'Manrope', 'Inter', 'Helvetica Now', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 450;
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

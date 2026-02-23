@@ -401,7 +401,7 @@ export function NoteCard({
                   +
                 </button>
               )}
-              {connectionCount > 0 && (
+              {onConnectionBadgeClick && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -415,18 +415,24 @@ export function NoteCard({
                     background: 'transparent',
                     border: `1px solid ${colors.border}`,
                     borderRadius: 2,
-                    color: colors.primary,
+                    color: connectionCount > 0 ? colors.primary : colors.textMuted,
                     fontSize: 11,
                     fontFamily: "'Manrope', sans-serif",
                     cursor: 'pointer',
-                    transition: 'border-color 0.15s ease',
+                    transition: 'border-color 0.15s ease, color 0.15s ease',
                   }}
-                  onMouseOver={e => e.currentTarget.style.borderColor = colors.primary}
-                  onMouseOut={e => e.currentTarget.style.borderColor = colors.border}
-                  title={`${connectionCount} connection${connectionCount !== 1 ? 's' : ''}`}
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = colors.primary;
+                    e.currentTarget.style.color = colors.primary;
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = colors.border;
+                    e.currentTarget.style.color = connectionCount > 0 ? colors.primary : colors.textMuted;
+                  }}
+                  title={connectionCount > 0 ? `${connectionCount} connection${connectionCount !== 1 ? 's' : ''}` : 'Find connections'}
                 >
                   <Link2 size={10} />
-                  {connectionCount}
+                  {connectionCount > 0 ? connectionCount : null}
                 </button>
               )}
               {note.date && (
