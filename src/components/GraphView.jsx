@@ -11,6 +11,9 @@ import {
 } from 'd3-force';
 import { select } from 'd3-selection';
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom';
+import { drag as d3Drag } from 'd3-drag';
+
+const SNAP_GRID = 30;
 
 // ─── Monochromatic page tones (opacity-based, brand-aligned) ────────────────
 // Each page gets a different opacity/lightness of the accent family
@@ -65,6 +68,9 @@ export function GraphView({
   const [filterType, setFilterType] = useState('all');
   const [filterPage, setFilterPage] = useState('all');
   const [isReady, setIsReady] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(false);
+  const snapRef = useRef(false);
+  const draggedRef = useRef(false);
 
   // ─── Build page tone map ─────────────────────────────────────────────
   const pageToneMap = useMemo(() => {
@@ -155,6 +161,20 @@ export function GraphView({
 
     return { nodes, links };
   }, [connections, notes, pages, sections, pageToneMap, filterType, filterPage]);
+
+  // Keep ref in sync for D3 callbacks
+  useEffect(() => { snapRef.current = snapEnabled; }, [snapEnabled]);
+
+  // Release all pinned nodes when snap is turned off
+  useEffect(() => {
+    if (!snapEnabled && simulationRef.current) {
+      simulationRef.current.nodes().forEach(n => {
+        n.fx = null;
+        n.fy = null;
+      });
+      simulationRef.current.alpha(0.3).restart();
+    }
+  }, [snapEnabled]);
 
   // ─── Measure container ────────────────────────────────────────────────
   useEffect(() => {
@@ -365,10 +385,37 @@ export function GraphView({
       })
       .on('click', function (event, d) {
         event.stopPropagation();
+        if (draggedRef.current) return; // don't navigate after drag
         if (d.pageId && d.sectionId) {
           onNavigate(d.pageId, d.sectionId);
         }
       });
+
+    // ─── Drag behavior ───────────────────────────────────────────────
+    const dragBehavior = d3Drag()
+      .on('start', function (event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+        draggedRef.current = false;
+      })
+      .on('drag', function (event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+        draggedRef.current = true;
+      })
+      .on('end', function (event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        if (snapRef.current) {
+          d.fx = Math.round(d.fx / SNAP_GRID) * SNAP_GRID;
+          d.fy = Math.round(d.fy / SNAP_GRID) * SNAP_GRID;
+        } else {
+          d.fx = null;
+          d.fy = null;
+        }
+      });
+
+    node.call(dragBehavior);
 
     // ─── Simulation tick ────────────────────────────────────────────
     simulation.on('tick', () => {
@@ -478,6 +525,27 @@ export function GraphView({
             </option>
           ))}
         </select>
+
+        {/* Snap toggle */}
+        <button
+          onClick={() => setSnapEnabled(s => !s)}
+          style={{
+            padding: '4px 8px',
+            background: 'rgba(13, 13, 13, 0.85)',
+            backdropFilter: 'blur(24px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+            border: `1px solid ${snapEnabled ? colors.primary : colors.border}`,
+            borderRadius: 2,
+            color: snapEnabled ? colors.primary : colors.textSecondary,
+            fontSize: 11,
+            fontFamily: "'Manrope', sans-serif",
+            cursor: 'pointer',
+            outline: 'none',
+            transition: 'color 0.15s ease, border-color 0.15s ease',
+          }}
+        >
+          Snap
+        </button>
 
         {/* Page filter */}
         {connectedPages.length > 1 && (
@@ -643,7 +711,7 @@ export function GraphView({
         opacity: 0.5,
         zIndex: 10,
       }}>
-        Scroll to zoom &middot; Drag to pan
+        Scroll to zoom &middot; Drag background to pan &middot; Drag nodes to move
       </div>
     </div>
   );
