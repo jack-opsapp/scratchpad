@@ -521,16 +521,16 @@ const ChatPanel = forwardRef(function ChatPanel({
       e.preventDefault();
       setInputValue(autofillSuggestion);
       setAutofillSuggestion('');
-    } else if (e.key === 'ArrowUp' && inputHistory.length > 0) {
-      // Navigate to previous input in history (only when history exists)
+    } else if (e.key === 'ArrowUp' && !e.shiftKey && inputHistory.length > 0) {
+      // Navigate to previous input in history (only when history exists, not shift)
       e.preventDefault();
       const newIndex = historyIndex === -1
         ? inputHistory.length - 1
         : Math.max(0, historyIndex - 1);
       setHistoryIndex(newIndex);
       setInputValue(inputHistory[newIndex]);
-    } else if (e.key === 'ArrowDown' && historyIndex >= 0) {
-      // Navigate to next input in history (only when navigating history)
+    } else if (e.key === 'ArrowDown' && !e.shiftKey && historyIndex >= 0) {
+      // Navigate to next input in history (only when navigating history, not shift)
       e.preventDefault();
       const newIndex = historyIndex + 1;
       if (newIndex >= inputHistory.length) {

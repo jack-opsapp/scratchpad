@@ -496,7 +496,12 @@ export function MainApp({ user, onSignOut }) {
             starred: false,
             sections: [],
           };
+          // Persist to Supabase
+          supabase.from('pages').insert({
+            id: np.id, name: np.name, starred: false, user_id: user?.id,
+          });
           setPages(pg => [...pg, np]);
+          setOwnedPages(pg => [...pg, np]);
           setExpandedPages(ep => [...ep, np.id]);
           setCurrentPage(np.id);
           setViewingPageLevel(true);
@@ -4528,13 +4533,14 @@ export function MainApp({ user, onSignOut }) {
                           sectionId: ns.id,
                           createdAt: Date.now(),
                         }));
-                      setPages(
-                        pages.map(p =>
-                          p.id === page.id
-                            ? { ...p, sections: [...p.sections, ns] }
-                            : p
-                        )
+                      const addSection = pg => pg.map(p =>
+                        p.id === page.id
+                          ? { ...p, sections: [...p.sections, ns] }
+                          : p
                       );
+                      setPages(addSection);
+                      setOwnedPages(addSection);
+                      setSharedPages(addSection);
                       setNotes([...notes, ...sn]);
                     },
                     visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
@@ -4554,16 +4560,18 @@ export function MainApp({ user, onSignOut }) {
                         )
                       ) {
                         const newNotes = notes.filter(n => n.sectionId !== section.id);
-                        const newPages = pages.map(p =>
+                        const updateSections = pg => pg.map(p =>
                           p.id === page.id
                             ? { ...p, sections: p.sections.filter(s => s.id !== section.id) }
                             : p
                         );
                         // Soft-delete section from Supabase
                         await supabase.from('sections').update({ deleted_at: new Date().toISOString() }).eq('id', section.id);
-                        // Update local state
+                        // Update local state (all three page arrays so sidebar updates)
                         setNotes(newNotes);
-                        setPages(newPages);
+                        setPages(updateSections);
+                        setOwnedPages(updateSections);
+                        setSharedPages(updateSections);
                         if (currentSection === section.id)
                           setViewingPageLevel(true);
                       }
