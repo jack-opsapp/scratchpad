@@ -130,6 +130,7 @@ import {
   PlanModeInterface,
   ChatPanel,
   ConnectionsPopover,
+  WelcomeOnboarding,
 } from '../components/index.js';
 import { TableView } from '../components/TableView.jsx';
 import { parseWikilinks, buildWikilink } from '../lib/wikilinks.js';
@@ -1160,6 +1161,50 @@ export function MainApp({ user, onSignOut }) {
     } catch (err) {
       console.error('Failed to refresh data:', err);
     }
+  };
+
+  // Onboarding: create first page + section + note for new users
+  const handleFirstNote = async (content) => {
+    const pageId = generateId();
+    const sectionId = generateId();
+    const noteId = generateId();
+
+    const newPage = {
+      id: pageId,
+      name: 'General',
+      starred: false,
+      sections: [{ id: sectionId, name: 'General' }],
+    };
+    const newNote = {
+      id: noteId,
+      sectionId,
+      content,
+      tags: [],
+      completed: false,
+      date: null,
+      created_by_user_id: user?.id || null,
+    };
+
+    // Optimistic UI
+    setPages(pg => [...pg, newPage]);
+    setOwnedPages(pg => [...pg, newPage]);
+    setNotes(prev => [...prev, newNote]);
+    setExpandedPages(ep => [...ep, pageId]);
+    setCurrentPage(pageId);
+    setCurrentSection(sectionId);
+    setViewingPageLevel(false);
+
+    // Persist to Supabase
+    await supabase.from('pages').insert({
+      id: pageId, name: 'General', starred: false, user_id: user?.id,
+    });
+    await supabase.from('sections').insert({
+      id: sectionId, page_id: pageId, name: 'General', position: 0,
+    });
+    await supabase.from('notes').insert({
+      id: noteId, section_id: sectionId, content, tags: [], completed: false,
+      date: null, created_by_user_id: user?.id || null,
+    });
   };
 
   // Toggle note completion with direct Supabase persistence
@@ -3514,23 +3559,31 @@ export function MainApp({ user, onSignOut }) {
                 )}
               </>
             ) : !currentPage ? (
-              /* Home view when no page is selected */
-              <HomeView
-                notes={notes}
-                pages={[...ownedPages, ...sharedPages]}
-                allSections={allSections}
-                user={user}
-                newNoteId={newNoteId}
-                onNavigate={(pageId, sectionId) => {
-                  setCurrentPage(pageId);
-                  setCurrentSection(sectionId);
-                  setViewingPageLevel(false);
-                }}
-                onToggle={handleNoteToggle}
-                onEdit={handleNoteEdit}
-                onDelete={handleNoteDelete}
-                onTagClick={(tag) => setFilterTag([tag])}
-              />
+              allPages.length === 0 ? (
+                /* First-time user onboarding */
+                <WelcomeOnboarding
+                  onCreateFirst={handleFirstNote}
+                  userName={getUserDisplayName(user)}
+                />
+              ) : (
+                /* Home view when no page is selected */
+                <HomeView
+                  notes={notes}
+                  pages={[...ownedPages, ...sharedPages]}
+                  allSections={allSections}
+                  user={user}
+                  newNoteId={newNoteId}
+                  onNavigate={(pageId, sectionId) => {
+                    setCurrentPage(pageId);
+                    setCurrentSection(sectionId);
+                    setViewingPageLevel(false);
+                  }}
+                  onToggle={handleNoteToggle}
+                  onEdit={handleNoteEdit}
+                  onDelete={handleNoteDelete}
+                  onTagClick={(tag) => setFilterTag([tag])}
+                />
+              )
             ) : (
               /* Normal view when no agent view is active */
               <>
@@ -3545,6 +3598,58 @@ export function MainApp({ user, onSignOut }) {
                     const snCompleted = sn.filter(n => n.completed);
 
                     const renderSectionNote = (note) => {
+                      // Section break: notes starting with "---" render as labeled dividers
+                      if (note.content?.startsWith('---')) {
+                        const label = note.content.replace(/^-{3,}\s*/, '').trim();
+                        return (
+                          <div
+                            key={note.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 12,
+                              margin: '20px 0 8px',
+                            }}
+                          >
+                            <div style={{ flex: 1, height: 1, background: colors.border }} />
+                            {label && (
+                              <span style={{
+                                color: colors.textMuted,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                letterSpacing: 1.5,
+                                textTransform: 'uppercase',
+                                fontFamily: "'Manrope', sans-serif",
+                                flexShrink: 0,
+                              }}>
+                                {label}
+                              </span>
+                            )}
+                            <div style={{ flex: 1, height: 1, background: colors.border }} />
+                            {['owner', 'team-admin'].includes(myRole) && (
+                              <button
+                                onClick={() => handleNoteDelete(note.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: colors.textMuted,
+                                  cursor: 'pointer',
+                                  padding: 2,
+                                  display: 'flex',
+                                  opacity: 0,
+                                  transition: 'opacity 0.15s ease',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                                onMouseLeave={e => e.currentTarget.style.opacity = '0'}
+                                title="Remove break"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+
                       const isOwnNote = note.created_by_user_id === user.id;
                       const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
@@ -3687,6 +3792,58 @@ export function MainApp({ user, onSignOut }) {
                     const completedNotes = filteredNotes.filter(n => n.completed);
 
                     const renderNote = (note) => {
+                      // Section break: notes starting with "---" render as labeled dividers
+                      if (note.content?.startsWith('---')) {
+                        const label = note.content.replace(/^-{3,}\s*/, '').trim();
+                        return (
+                          <div
+                            key={note.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 12,
+                              margin: '20px 0 8px',
+                            }}
+                          >
+                            <div style={{ flex: 1, height: 1, background: colors.border }} />
+                            {label && (
+                              <span style={{
+                                color: colors.textMuted,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                letterSpacing: 1.5,
+                                textTransform: 'uppercase',
+                                fontFamily: "'Manrope', sans-serif",
+                                flexShrink: 0,
+                              }}>
+                                {label}
+                              </span>
+                            )}
+                            <div style={{ flex: 1, height: 1, background: colors.border }} />
+                            {canManageCurrentPage && (
+                              <button
+                                onClick={() => handleNoteDelete(note.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: colors.textMuted,
+                                  cursor: 'pointer',
+                                  padding: 2,
+                                  display: 'flex',
+                                  opacity: 0,
+                                  transition: 'opacity 0.15s ease',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                                onMouseLeave={e => e.currentTarget.style.opacity = '0'}
+                                title="Remove break"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+
                       const isOwnNote = note.created_by_user_id === user.id;
                       const canEditNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);
                       const canDeleteNote = ['owner', 'team-admin'].includes(myRole) || (myRole === 'team' && isOwnNote);

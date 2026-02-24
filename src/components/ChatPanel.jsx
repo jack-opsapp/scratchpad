@@ -554,14 +554,24 @@ const ChatPanel = forwardRef(function ChatPanel({
     const [, pageFragment, hasSlash, sectionFragment] = dashMatch;
 
     if (!hasSlash) {
-      // Suggest page name: "-scr" → "-scratchpad/"
-      const match = pages.find(p =>
-        p.name.toLowerCase().startsWith(pageFragment.toLowerCase()) && pageFragment.length > 0
-      );
-      if (match && pageFragment.toLowerCase() !== match.name.toLowerCase()) {
-        setAutofillSuggestion(`-${match.name.toLowerCase()}/`);
+      // Suggest page name: "-" → first page, "-scr" → "-scratchpad/"
+      if (pageFragment.length === 0) {
+        // Bare "-" — suggest first page
+        const first = pages[0];
+        if (first) {
+          setAutofillSuggestion(`-${first.name.toLowerCase()}/`);
+        } else {
+          setAutofillSuggestion('');
+        }
       } else {
-        setAutofillSuggestion('');
+        const match = pages.find(p =>
+          p.name.toLowerCase().startsWith(pageFragment.toLowerCase())
+        );
+        if (match && pageFragment.toLowerCase() !== match.name.toLowerCase()) {
+          setAutofillSuggestion(`-${match.name.toLowerCase()}/`);
+        } else {
+          setAutofillSuggestion('');
+        }
       }
     } else {
       // Suggest section name: "-scratchpad/bu" → "-scratchpad/bugs: "

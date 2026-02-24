@@ -31,3 +31,6 @@ export { default as ConnectionsPopover } from './ConnectionsPopover.jsx';
 
 // Settings Components
 export { default as SettingsModal } from './SettingsModal.jsx';
+
+// Onboarding Components
+export { WelcomeOnboarding } from './WelcomeOnboarding.jsx';
