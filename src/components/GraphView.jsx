@@ -3,30 +3,22 @@ import { colors } from '../styles/theme.js';
 import { select } from 'd3-selection';
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom';
 import { drag as d3Drag } from 'd3-drag';
+import {
+  forceSimulation, forceLink, forceManyBody,
+  forceCollide, forceCenter, forceX, forceY,
+} from 'd3-force';
 import { easeCubicInOut } from 'd3-ease';
 
-// ─── Layout constants ────────────────────────────────────────────────────────
-const PAGE_RING_RADIUS = 700;
-const SECTION_RING_RADIUS = 150;
-const NOTE_SPACING = 18;
-const NOTE_RADIUS_BASE = 5;
-const NOTE_RADIUS_MAX = 14;
-
-// ─── Semantic zoom thresholds ────────────────────────────────────────────────
-const ZOOM_SECTION = 1.2;  // k > 1.2: section detail
-const ZOOM_PAGE = 0.5;     // 0.5 < k <= 1.2: page detail
-// k <= 0.5: global view
-
-// ─── Monochromatic page tones (opacity-based, brand-aligned) ─────────────────
+// ─── Monochromatic page tones ────────────────────────────────────────────────
 const PAGE_TONES = [
   { fill: 'rgba(148, 139, 114, 0.85)', stroke: 'rgba(148, 139, 114, 0.4)' },
   { fill: 'rgba(148, 139, 114, 0.60)', stroke: 'rgba(148, 139, 114, 0.3)' },
   { fill: 'rgba(148, 139, 114, 0.40)', stroke: 'rgba(148, 139, 114, 0.2)' },
   { fill: 'rgba(181, 174, 154, 0.70)', stroke: 'rgba(181, 174, 154, 0.3)' },
-  { fill: 'rgba(118, 111, 91, 0.80)',  stroke: 'rgba(118, 111, 91, 0.35)' },
+  { fill: 'rgba(118, 111, 91, 0.80)', stroke: 'rgba(118, 111, 91, 0.35)' },
   { fill: 'rgba(148, 139, 114, 0.50)', stroke: 'rgba(148, 139, 114, 0.25)' },
   { fill: 'rgba(181, 174, 154, 0.50)', stroke: 'rgba(181, 174, 154, 0.25)' },
-  { fill: 'rgba(118, 111, 91, 0.60)',  stroke: 'rgba(118, 111, 91, 0.3)' },
+  { fill: 'rgba(118, 111, 91, 0.60)', stroke: 'rgba(118, 111, 91, 0.3)' },
   { fill: 'rgba(148, 139, 114, 0.35)', stroke: 'rgba(148, 139, 114, 0.2)' },
   { fill: 'rgba(181, 174, 154, 0.45)', stroke: 'rgba(181, 174, 154, 0.2)' },
 ];
@@ -36,23 +28,46 @@ const PAGE_LEGEND_COLORS = [
   '#a89f88', '#c2bba5', '#685f4d', '#b0a78e', '#9e9580',
 ];
 
-const TYPE_COLORS = {
-  related: 'rgba(148, 139, 114, 0.4)',
-  supports: 'rgba(45, 107, 58, 0.5)',
-  contradicts: 'rgba(184, 60, 42, 0.5)',
-  extends: 'rgba(148, 139, 114, 0.6)',
-  source: 'rgba(122, 92, 26, 0.5)',
+// ─── Link styling ────────────────────────────────────────────────────────────
+const LINK_COLORS = {
+  hierarchical: 'rgba(255, 255, 255, 0.06)',
+  wikilink: 'rgba(148, 139, 114, 0.5)',
+  tag: 'rgba(100, 140, 180, 0.35)',
 };
 
-// ─── Compute hierarchical layout ─────────────────────────────────────────────
-function computeLayout(notes, pages, sections, connections, pageToneMap) {
-  const pageLayouts = new Map();
-  const sectionLayouts = new Map();
-  const noteNodes = [];
+const LINK_WIDTHS = {
+  hierarchical: 0.5,
+  wikilink: 1,
+  tag: 1,
+};
 
-  if (!notes?.length || !pages?.length) return { pageLayouts, sectionLayouts, noteNodes };
+// ─── Node sizing ─────────────────────────────────────────────────────────────
+const PAGE_RADIUS = 18;
+const SECTION_RADIUS = 10;
+const NOTE_RADIUS_MIN = 3;
+const NOTE_RADIUS_MAX = 6;
 
-  // Build lookup maps
+// ─── Semantic zoom thresholds ────────────────────────────────────────────────
+const ZOOM_FAR = 0.5;
+const ZOOM_CLOSE = 2.5;
+const ZOOM_ULTRA = 4.0;
+const ZOOM_LABEL_COMPENSATE = 0.3;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Data structures
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildNodes(notes, pages, sections, connections, pageToneMap) {
+  const nodes = [];
+
+  // Connection counts per note (for note radius sizing)
+  const connCountMap = {};
+  (connections || []).forEach(c => {
+    connCountMap[c.source_note_id] = (connCountMap[c.source_note_id] || 0) + 1;
+    connCountMap[c.target_note_id] = (connCountMap[c.target_note_id] || 0) + 1;
+  });
+
+  // Section→page mapping
   const sectionPageMap = {};
   const pageSectionsMap = {};
   (pages || []).forEach(p => {
@@ -63,141 +78,172 @@ function computeLayout(notes, pages, sections, connections, pageToneMap) {
     });
   });
 
+  // Name lookups
   const sectionNameMap = {};
   (sections || []).forEach(s => { sectionNameMap[s.id] = s.name; });
-
   const pageNameMap = {};
   (pages || []).forEach(p => { pageNameMap[p.id] = p.name; });
 
-  // Count connections per note
-  const connCountMap = {};
-  (connections || []).forEach(c => {
-    connCountMap[c.source_note_id] = (connCountMap[c.source_note_id] || 0) + 1;
-    connCountMap[c.target_note_id] = (connCountMap[c.target_note_id] || 0) + 1;
-  });
-
-  // Group notes by page → section
-  const notesBySection = {};
-  const notesByPage = {};
-  notes.forEach(n => {
+  // Note counts per section/page
+  const notesPerSection = {};
+  const notesPerPage = {};
+  (notes || []).forEach(n => {
     const pageId = sectionPageMap[n.sectionId];
     if (!pageId) return;
-    if (!notesBySection[n.sectionId]) notesBySection[n.sectionId] = [];
-    notesBySection[n.sectionId].push(n);
-    if (!notesByPage[pageId]) notesByPage[pageId] = [];
-    notesByPage[pageId].push(n);
+    notesPerSection[n.sectionId] = (notesPerSection[n.sectionId] || 0) + 1;
+    notesPerPage[pageId] = (notesPerPage[pageId] || 0) + 1;
   });
 
-  // Filter pages that have notes
-  const activePages = pages.filter(p => notesByPage[p.id]?.length > 0);
-  const pageCount = activePages.length;
-
-  // Page positioning — ring or horizontal for 1-2
-  activePages.forEach((page, i) => {
-    let cx, cy;
-    if (pageCount <= 2) {
-      const totalWidth = (pageCount - 1) * PAGE_RING_RADIUS;
-      cx = -totalWidth / 2 + i * PAGE_RING_RADIUS;
-      cy = 0;
-    } else {
-      const angle = (2 * Math.PI * i) / pageCount - Math.PI / 2;
-      cx = Math.cos(angle) * PAGE_RING_RADIUS;
-      cy = Math.sin(angle) * PAGE_RING_RADIUS;
-    }
-
-    pageLayouts.set(page.id, { cx, cy, radius: 0, name: page.name });
-
-    // Section positioning within page
-    const pageSectionIds = (pageSectionsMap[page.id] || []).filter(
-      sid => notesBySection[sid]?.length > 0
-    );
-    const sectionCount = pageSectionIds.length;
-
-    pageSectionIds.forEach((sectionId, si) => {
-      let sx, sy;
-      if (sectionCount === 1) {
-        sx = cx;
-        sy = cy;
-      } else if (sectionCount === 2) {
-        sx = cx + (si === 0 ? -SECTION_RING_RADIUS * 0.6 : SECTION_RING_RADIUS * 0.6);
-        sy = cy;
-      } else {
-        const sAngle = (2 * Math.PI * si) / sectionCount - Math.PI / 2;
-        sx = cx + Math.cos(sAngle) * SECTION_RING_RADIUS;
-        sy = cy + Math.sin(sAngle) * SECTION_RING_RADIUS;
-      }
-
-      sectionLayouts.set(sectionId, {
-        cx: sx, cy: sy, radius: 0,
-        name: sectionNameMap[sectionId] || '',
-        pageId: page.id,
-      });
-
-      // Note positioning — spiral pack from section center
-      const sectionNotes = notesBySection[sectionId] || [];
-      sectionNotes.forEach((note, ni) => {
-        const connCount = connCountMap[note.id] || 0;
-        const r = Math.max(NOTE_RADIUS_BASE, Math.min(NOTE_RADIUS_MAX, 4 + connCount * 2));
-        const tone = pageToneMap[page.id] || PAGE_TONES[0];
-
-        // Spiral positioning
-        let nx, ny;
-        if (ni === 0) {
-          nx = sx;
-          ny = sy;
-        } else {
-          const spiralAngle = ni * 0.8;
-          const spiralRadius = NOTE_SPACING * Math.sqrt(ni);
-          nx = sx + Math.cos(spiralAngle) * spiralRadius;
-          ny = sy + Math.sin(spiralAngle) * spiralRadius;
-        }
-
-        noteNodes.push({
-          id: note.id,
-          x: nx,
-          y: ny,
-          r,
-          sectionId: note.sectionId,
-          pageId: page.id,
-          content: note.content,
-          tags: note.tags || [],
-          connectionCount: connCount,
-          pageTone: tone,
-          legendColor: pageToneMap[page.id]?.legend || PAGE_LEGEND_COLORS[0],
-          pageName: page.name,
-          sectionName: sectionNameMap[note.sectionId] || '',
-        });
-      });
-
-      // Update section radius from bounding box of its notes
-      const sNotes = noteNodes.filter(n => n.sectionId === sectionId);
-      if (sNotes.length > 0) {
-        const maxDist = Math.max(...sNotes.map(n =>
-          Math.sqrt((n.x - sx) ** 2 + (n.y - sy) ** 2) + n.r
-        ));
-        sectionLayouts.get(sectionId).radius = maxDist + 20;
-      }
+  // ── Page nodes (only pages with notes) ──
+  (pages || []).forEach((p, i) => {
+    if (!notesPerPage[p.id]) return;
+    const tone = pageToneMap[p.id] || PAGE_TONES[0];
+    const activeSections = (pageSectionsMap[p.id] || []).filter(sid => notesPerSection[sid] > 0);
+    nodes.push({
+      id: `page-${p.id}`,
+      entityId: p.id,
+      type: 'page',
+      label: p.name,
+      radius: PAGE_RADIUS,
+      sectionCount: activeSections.length,
+      noteCount: notesPerPage[p.id] || 0,
+      toneIndex: i % PAGE_TONES.length,
+      tone,
+      legendColor: pageToneMap[p.id]?.legend || PAGE_LEGEND_COLORS[0],
     });
-
-    // Update page radius from bounding box of its sections
-    const pNotes = noteNodes.filter(n => n.pageId === page.id);
-    if (pNotes.length > 0) {
-      const maxDist = Math.max(...pNotes.map(n =>
-        Math.sqrt((n.x - cx) ** 2 + (n.y - cy) ** 2) + n.r
-      ));
-      pageLayouts.get(page.id).radius = maxDist + 32;
-    }
   });
 
-  return { pageLayouts, sectionLayouts, noteNodes };
+  // ── Section nodes (only sections with notes) ──
+  (sections || []).forEach(s => {
+    const pageId = sectionPageMap[s.id];
+    if (!pageId || !notesPerSection[s.id]) return;
+    const pageTone = pageToneMap[pageId] || PAGE_TONES[0];
+    const lighterFill = pageTone.fill.replace(
+      /[\d.]+\)$/, m => `${Math.min(1, parseFloat(m) + 0.15)})`
+    );
+    nodes.push({
+      id: `section-${s.id}`,
+      entityId: s.id,
+      type: 'section',
+      label: s.name,
+      radius: SECTION_RADIUS,
+      parentId: `page-${pageId}`,
+      pageEntityId: pageId,
+      pageName: pageNameMap[pageId],
+      noteCount: notesPerSection[s.id] || 0,
+      tone: { fill: lighterFill, stroke: pageTone.stroke },
+      legendColor: pageToneMap[pageId]?.legend || PAGE_LEGEND_COLORS[0],
+    });
+  });
+
+  // ── Note nodes ──
+  (notes || []).forEach(n => {
+    const pageId = sectionPageMap[n.sectionId];
+    if (!pageId) return;
+    const connCount = connCountMap[n.id] || 0;
+    const radius = Math.max(NOTE_RADIUS_MIN, Math.min(NOTE_RADIUS_MAX, 3 + connCount * 0.5));
+    const tone = pageToneMap[pageId] || PAGE_TONES[0];
+    nodes.push({
+      id: `note-${n.id}`,
+      entityId: n.id,
+      type: 'note',
+      content: n.content,
+      tags: n.tags || [],
+      radius,
+      parentId: `section-${n.sectionId}`,
+      pageEntityId: pageId,
+      sectionEntityId: n.sectionId,
+      pageName: pageNameMap[pageId],
+      sectionName: sectionNameMap[n.sectionId] || '',
+      connectionCount: connCount,
+      tone,
+      legendColor: pageToneMap[pageId]?.legend || PAGE_LEGEND_COLORS[0],
+    });
+  });
+
+  return nodes;
 }
 
-/**
- * Hierarchical spatial graph visualization for note connections.
- *
- * All notes organized by page/section clusters, connection lines overlaid.
- * Opens at appropriate zoom level based on navigation context.
- */
+function buildLinks(nodes, connections) {
+  const links = [];
+  const nodeIdSet = new Set(nodes.map(n => n.id));
+
+  // Hierarchical links: note→section, section→page
+  nodes.forEach(n => {
+    if (n.parentId && nodeIdSet.has(n.parentId)) {
+      links.push({
+        source: n.id,
+        target: n.parentId,
+        linkType: 'hierarchical',
+        strength: n.type === 'note' ? 0.8 : 0.6,
+        distance: n.type === 'note' ? 30 : 80,
+      });
+    }
+  });
+
+  // Wikilink links from connections
+  (connections || []).forEach(c => {
+    const sourceId = `note-${c.source_note_id}`;
+    const targetId = `note-${c.target_note_id}`;
+    if (nodeIdSet.has(sourceId) && nodeIdSet.has(targetId)) {
+      links.push({
+        source: sourceId,
+        target: targetId,
+        linkType: 'wikilink',
+        strength: 0.3,
+        distance: 60,
+      });
+    }
+  });
+
+  // Tag links: chain topology (A→B→C, not clique)
+  const tagNoteMap = {};
+  nodes.forEach(n => {
+    if (n.type === 'note' && n.tags) {
+      n.tags.forEach(tag => {
+        if (!tagNoteMap[tag]) tagNoteMap[tag] = [];
+        tagNoteMap[tag].push(n.id);
+      });
+    }
+  });
+
+  const tagLinkSet = new Set();
+  Object.values(tagNoteMap).forEach(noteIds => {
+    if (noteIds.length < 2) return;
+    for (let i = 0; i < noteIds.length - 1; i++) {
+      const key = [noteIds[i], noteIds[i + 1]].sort().join('|');
+      if (tagLinkSet.has(key)) continue;
+      tagLinkSet.add(key);
+      links.push({
+        source: noteIds[i],
+        target: noteIds[i + 1],
+        linkType: 'tag',
+        strength: 0.1,
+        distance: 100,
+      });
+    }
+  });
+
+  return links;
+}
+
+function buildAdjacencyMap(links) {
+  const adj = new Map();
+  links.forEach(l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    if (!adj.has(sid)) adj.set(sid, new Set());
+    if (!adj.has(tid)) adj.set(tid, new Set());
+    adj.get(sid).add(tid);
+    adj.get(tid).add(sid);
+  });
+  return adj;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GraphView Component
+// ═════════════════════════════════════════════════════════════════════════════
+
 export function GraphView({
   connections,
   notes,
@@ -207,20 +253,30 @@ export function GraphView({
   currentSectionId,
   onNavigate,
 }) {
+  // ─── Refs ──────────────────────────────────────────────────────────────────
   const svgRef = useRef(null);
   const containerRef = useRef(null);
+  const simulationRef = useRef(null);
   const zoomBehaviorRef = useRef(null);
   const mainGroupRef = useRef(null);
+  const nodeSelRef = useRef(null);
+  const linkSelRef = useRef(null);
+  const zoomLevelRef = useRef(0.35);
+  const draggedRef = useRef(false);
+  const selectedNodesRef = useRef(new Set());
+  const applyTogglesRef = useRef(null);
+  const visibilityRef = useRef({ pages: true, sections: true, wikilinks: true, tags: true });
+
+  // ─── State ─────────────────────────────────────────────────────────────────
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredNode, setHoveredNode] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const [filterType, setFilterType] = useState('all');
-  const [showConnectionsOnly, setShowConnectionsOnly] = useState(false);
-  const [currentZoomLevel, setCurrentZoomLevel] = useState(0.35);
-  const draggedRef = useRef(false);
-  const zoomLevelRef = useRef(0.35);
+  const [showPages, setShowPages] = useState(true);
+  const [showSections, setShowSections] = useState(true);
+  const [showWikilinks, setShowWikilinks] = useState(true);
+  const [showTags, setShowTags] = useState(true);
 
-  // ─── Build page tone map ────────────────────────────────────────────────
+  // ─── Derived data ──────────────────────────────────────────────────────────
   const pageToneMap = useMemo(() => {
     const map = {};
     (pages || []).forEach((p, i) => {
@@ -232,69 +288,27 @@ export function GraphView({
     return map;
   }, [pages]);
 
-  // ─── Compute layout ────────────────────────────────────────────────────
-  const layout = useMemo(
-    () => computeLayout(notes, pages, sections, connections, pageToneMap),
+  const graphNodes = useMemo(
+    () => buildNodes(notes, pages, sections, connections, pageToneMap),
     [notes, pages, sections, connections, pageToneMap]
   );
 
-  const { pageLayouts, sectionLayouts, noteNodes } = layout;
+  const graphLinks = useMemo(
+    () => buildLinks(graphNodes, connections),
+    [graphNodes, connections]
+  );
 
-  // ─── Filter connections by type ─────────────────────────────────────────
-  const filteredConnections = useMemo(() => {
-    if (!connections) return [];
-    if (filterType === 'all') return connections;
-    return connections.filter(c => c.connection_type === filterType);
-  }, [connections, filterType]);
+  const adjacencyMap = useMemo(
+    () => buildAdjacencyMap(graphLinks),
+    [graphLinks]
+  );
 
-  // ─── Build note lookup for connection rendering ─────────────────────────
-  const noteNodeMap = useMemo(() => {
-    const map = new Map();
-    noteNodes.forEach(n => map.set(n.id, n));
-    return map;
-  }, [noteNodes]);
-
-  // ─── Connection links (only where both notes exist) ─────────────────────
-  const connectionLinks = useMemo(() => {
-    return filteredConnections
-      .filter(c => noteNodeMap.has(c.source_note_id) && noteNodeMap.has(c.target_note_id))
-      .map(c => ({
-        source: noteNodeMap.get(c.source_note_id),
-        target: noteNodeMap.get(c.target_note_id),
-        type: c.connection_type || 'related',
-        id: c.connection_id,
-      }));
-  }, [filteredConnections, noteNodeMap]);
-
-  // ─── Connected note IDs set ────────────────────────────────────────────
-  const connectedNoteIds = useMemo(() => {
-    const ids = new Set();
-    connectionLinks.forEach(l => {
-      ids.add(l.source.id);
-      ids.add(l.target.id);
-    });
-    return ids;
-  }, [connectionLinks]);
-
-  // ─── Display nodes (filtered if showConnectionsOnly) ───────────────────
-  const displayNodes = useMemo(() => {
-    if (!showConnectionsOnly) return noteNodes;
-    return noteNodes.filter(n => connectedNoteIds.has(n.id));
-  }, [noteNodes, showConnectionsOnly, connectedNoteIds]);
-
-  // ─── Unique connection types for filter ─────────────────────────────────
-  const connectionTypes = useMemo(() => {
-    const types = new Set((connections || []).map(c => c.connection_type).filter(Boolean));
-    return ['all', ...types];
-  }, [connections]);
-
-  // ─── Pages with notes for legend ────────────────────────────────────────
   const pagesWithNotes = useMemo(() => {
-    const pageIds = new Set(noteNodes.map(n => n.pageId));
+    const pageIds = new Set(graphNodes.filter(n => n.type === 'page').map(n => n.entityId));
     return (pages || []).filter(p => pageIds.has(p.id));
-  }, [pages, noteNodes]);
+  }, [pages, graphNodes]);
 
-  // ─── Measure container ─────────────────────────────────────────────────
+  // ─── Measure container ─────────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
       if (containerRef.current) {
@@ -307,415 +321,261 @@ export function GraphView({
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // ─── Apply semantic zoom styling ────────────────────────────────────────
-  const applySemanticZoom = useCallback((g, k, transform) => {
-    zoomLevelRef.current = k;
-    setCurrentZoomLevel(k);
-
-    const isGlobal = k <= ZOOM_PAGE;
-    const isPage = k > ZOOM_PAGE && k <= ZOOM_SECTION;
-    const isSection = k > ZOOM_SECTION;
-
-    // Page boundaries
-    g.selectAll('.page-boundary rect')
-      .attr('stroke-opacity', isGlobal ? 0.08 : isPage ? 0.05 : 0.03);
-    g.selectAll('.page-boundary text')
-      .attr('font-size', isGlobal ? 14 : isPage ? 12 : 10)
-      .attr('opacity', isGlobal ? 0.8 : isPage ? 0.5 : 0.3);
-
-    // Section boundaries
-    g.selectAll('.section-boundary')
-      .attr('opacity', isGlobal ? 0 : 1);
-    g.selectAll('.section-boundary text')
-      .attr('font-size', isSection ? 11 : 10);
-
-    // Notes
-    const noteScale = isGlobal ? 0.4 : isPage ? 0.7 : 1.0;
-    g.selectAll('.note-node .main')
-      .attr('r', d => d.r * noteScale);
-    g.selectAll('.note-node .glow')
-      .attr('r', d => d.r * noteScale + 4)
-      .attr('opacity', isGlobal ? 0 : isPage ? 0.03 : 0.06);
-
-    // Connection lines
-    g.selectAll('.connection-line')
-      .attr('stroke-width', isGlobal ? 0 : isPage ? 0.5 : 1)
-      .attr('opacity', isGlobal ? 0 : isPage ? 0.3 : 1);
-
-    // Section-level focus dimming
-    if (isSection && transform) {
-      const { width, height } = dimensions;
-      // Viewport center in graph coordinates
-      const vcx = (width / 2 - transform.x) / transform.k;
-      const vcy = (height / 2 - transform.y) / transform.k;
-
-      // Find closest section to viewport center
-      let closestSection = null;
-      let closestDist = Infinity;
-      sectionLayouts.forEach((sl, sid) => {
-        const dist = Math.sqrt((sl.cx - vcx) ** 2 + (sl.cy - vcy) ** 2);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestSection = sid;
-        }
-      });
-
-      if (closestSection) {
-        const focusPageId = sectionLayouts.get(closestSection)?.pageId;
-        g.selectAll('.note-node')
-          .attr('opacity', d => {
-            if (d.sectionId === closestSection) return 1.0;
-            const isConnected = connectionLinks.some(
-              l => (l.source.id === d.id && l.target.sectionId === closestSection) ||
-                   (l.target.id === d.id && l.source.sectionId === closestSection)
-            );
-            if (d.pageId === focusPageId) return isConnected ? 0.5 : 0.35;
-            return isConnected ? 0.27 : 0.12;
-          });
-      }
-    } else {
-      g.selectAll('.note-node').attr('opacity', 1);
-    }
-  }, [dimensions, sectionLayouts, connectionLinks]);
-
-  // ─── D3 rendering ──────────────────────────────────────────────────────
+  // ─── Sync visibility refs + apply ──────────────────────────────────────────
   useEffect(() => {
-    if (!svgRef.current) return;
+    visibilityRef.current = { pages: showPages, sections: showSections, wikilinks: showWikilinks, tags: showTags };
+    applyTogglesRef.current?.();
+  }, [showPages, showSections, showWikilinks, showTags]);
+
+  // ─── Main D3 rendering + simulation ────────────────────────────────────────
+  useEffect(() => {
+    if (!svgRef.current || !graphNodes.length) return;
 
     const svg = select(svgRef.current);
     const { width, height } = dimensions;
 
-    // Clear previous render
+    // Fresh SVG setup (only on data/dimension change)
     svg.selectAll('*').remove();
 
-    // Defs for glow filter
+    // ── Defs: glow filters ──
     const defs = svg.append('defs');
 
-    const filter = defs.append('filter').attr('id', 'node-glow');
-    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
-    const feMerge = filter.append('feMerge');
-    feMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+    const glowFilter = defs.append('filter').attr('id', 'glow');
+    glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+    const m1 = glowFilter.append('feMerge');
+    m1.append('feMergeNode').attr('in', 'blur');
+    m1.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    const hoverFilter = defs.append('filter').attr('id', 'node-glow-hover');
-    hoverFilter.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'coloredBlur');
-    const hoverMerge = hoverFilter.append('feMerge');
-    hoverMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    hoverMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+    const glowBright = defs.append('filter').attr('id', 'glow-bright');
+    glowBright.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'blur');
+    const m2 = glowBright.append('feMerge');
+    m2.append('feMergeNode').attr('in', 'blur');
+    m2.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    // Main group for zoom/pan
-    const g = svg.append('g');
+    const glowHover = defs.append('filter').attr('id', 'glow-hover');
+    glowHover.append('feGaussianBlur').attr('stdDeviation', '8').attr('result', 'blur');
+    const m3 = glowHover.append('feMerge');
+    m3.append('feMergeNode').attr('in', 'blur');
+    m3.append('feMergeNode').attr('in', 'SourceGraphic');
+
+    // ── Main group (zoom/pan container) ──
+    const g = svg.append('g').attr('class', 'graph-main');
     mainGroupRef.current = g;
 
-    // ─── Layer 1: Page boundaries ──────────────────────────────────────
-    const pageGroup = g.append('g').attr('class', 'page-boundaries');
-    pageLayouts.forEach((pl, pageId) => {
-      // Compute bounding box from notes in this page
-      const pNotes = displayNodes.filter(n => n.pageId === pageId);
-      if (pNotes.length === 0) return;
-
-      const padding = 32;
-      const minX = Math.min(...pNotes.map(n => n.x - n.r)) - padding;
-      const maxX = Math.max(...pNotes.map(n => n.x + n.r)) + padding;
-      const minY = Math.min(...pNotes.map(n => n.y - n.r)) - padding;
-      const maxY = Math.max(...pNotes.map(n => n.y + n.r)) + padding;
-
-      const pg = pageGroup.append('g').attr('class', 'page-boundary');
-
-      pg.append('rect')
-        .attr('x', minX)
-        .attr('y', minY)
-        .attr('width', maxX - minX)
-        .attr('height', maxY - minY)
-        .attr('rx', 2)
-        .attr('ry', 2)
-        .attr('fill', 'rgba(255, 255, 255, 0.02)')
-        .attr('stroke', 'rgba(255, 255, 255, 0.05)')
-        .attr('stroke-width', 1);
-
-      pg.append('text')
-        .attr('x', minX + 8)
-        .attr('y', minY - 6)
-        .attr('fill', colors.textMuted)
-        .attr('font-size', 11)
-        .attr('font-family', "'Manrope', sans-serif")
-        .attr('font-weight', 600)
-        .attr('letter-spacing', '0.5px')
-        .text(pl.name.toUpperCase())
-        .style('cursor', 'pointer')
-        .on('click', (event) => {
-          event.stopPropagation();
-          onNavigate(pageId, null);
-        });
+    // ── Initial node positions (faster settling) ──
+    const pageNodes = graphNodes.filter(n => n.type === 'page');
+    const pageCount = pageNodes.length;
+    pageNodes.forEach((n, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(pageCount, 1) - Math.PI / 2;
+      n.x = Math.cos(angle) * 300;
+      n.y = Math.sin(angle) * 300;
     });
 
-    // ─── Layer 2: Section boundaries ───────────────────────────────────
-    const sectionGroup = g.append('g').attr('class', 'section-boundaries');
-    sectionLayouts.forEach((sl, sectionId) => {
-      const sNotes = displayNodes.filter(n => n.sectionId === sectionId);
-      if (sNotes.length === 0) return;
+    const pagePos = {};
+    pageNodes.forEach(n => { pagePos[n.id] = { x: n.x, y: n.y }; });
 
-      const padding = 20;
-      const minX = Math.min(...sNotes.map(n => n.x - n.r)) - padding;
-      const maxX = Math.max(...sNotes.map(n => n.x + n.r)) + padding;
-      const minY = Math.min(...sNotes.map(n => n.y - n.r)) - padding;
-      const maxY = Math.max(...sNotes.map(n => n.y + n.r)) + padding;
-
-      const sg = sectionGroup.append('g').attr('class', 'section-boundary');
-
-      sg.append('rect')
-        .attr('x', minX)
-        .attr('y', minY)
-        .attr('width', maxX - minX)
-        .attr('height', maxY - minY)
-        .attr('rx', 2)
-        .attr('ry', 2)
-        .attr('fill', 'rgba(255, 255, 255, 0.015)')
-        .attr('stroke', 'rgba(255, 255, 255, 0.04)')
-        .attr('stroke-width', 1);
-
-      sg.append('text')
-        .attr('x', minX + 6)
-        .attr('y', minY - 4)
-        .attr('fill', colors.textMuted)
-        .attr('font-size', 10)
-        .attr('font-family', "'Manrope', sans-serif")
-        .attr('font-weight', 500)
-        .attr('opacity', 0.6)
-        .text(sl.name)
-        .style('cursor', 'pointer')
-        .on('click', (event) => {
-          event.stopPropagation();
-          onNavigate(sl.pageId, sectionId);
-        });
+    graphNodes.filter(n => n.type === 'section').forEach(n => {
+      const pp = pagePos[n.parentId];
+      if (pp) {
+        n.x = pp.x + (Math.random() - 0.5) * 100;
+        n.y = pp.y + (Math.random() - 0.5) * 100;
+      }
     });
 
-    // ─── Layer 3: Connection lines ─────────────────────────────────────
-    const linkGroup = g.append('g').attr('class', 'connections');
-    connectionLinks.forEach(link => {
-      // Only render if both notes are in displayNodes
-      if (!displayNodes.find(n => n.id === link.source.id)) return;
-      if (!displayNodes.find(n => n.id === link.target.id)) return;
-
-      linkGroup.append('line')
-        .attr('class', 'connection-line')
-        .attr('x1', link.source.x)
-        .attr('y1', link.source.y)
-        .attr('x2', link.target.x)
-        .attr('y2', link.target.y)
-        .attr('stroke', TYPE_COLORS[link.type] || TYPE_COLORS.related)
-        .attr('stroke-width', 1)
-        .attr('stroke-linecap', 'round')
-        .style('opacity', 0)
-        .transition()
-        .delay((d, i) => 200 + i * 15)
-        .duration(400)
-        .style('opacity', 1);
+    const secPos = {};
+    graphNodes.filter(n => n.type === 'section').forEach(n => {
+      secPos[n.id] = { x: n.x || 0, y: n.y || 0 };
     });
 
-    // Re-select for interactions
-    const linkSelection = linkGroup.selectAll('.connection-line');
+    graphNodes.filter(n => n.type === 'note').forEach(n => {
+      const sp = secPos[n.parentId];
+      if (sp) {
+        n.x = sp.x + (Math.random() - 0.5) * 50;
+        n.y = sp.y + (Math.random() - 0.5) * 50;
+      }
+    });
 
-    // ─── Layer 4: Note nodes ───────────────────────────────────────────
-    const nodeGroup = g.append('g').attr('class', 'notes');
-    const node = nodeGroup
-      .selectAll('g')
-      .data(displayNodes, d => d.id)
-      .join('g')
-      .attr('class', 'note-node')
-      .attr('transform', d => `translate(${d.x},${d.y})`)
-      .style('cursor', 'pointer')
-      .style('opacity', 0);
+    // ── Link layer ──
+    const linkGroup = g.append('g').attr('class', 'graph-links');
+    const linkSel = linkGroup.selectAll('line')
+      .data(graphLinks, d => `${d.source}-${d.target}-${d.linkType}`)
+      .join('line')
+      .attr('stroke', d => LINK_COLORS[d.linkType])
+      .attr('stroke-width', d => LINK_WIDTHS[d.linkType])
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-dasharray', d => d.linkType === 'tag' ? '3,3' : null)
+      .attr('opacity', 0);
 
-    // Staggered fade-in
-    node
-      .transition()
-      .delay((d, i) => i * 40)
-      .duration(200)
-      .style('opacity', 1);
+    linkSelRef.current = linkSel;
 
-    // Outer glow circle
-    node
-      .append('circle')
-      .attr('class', 'glow')
-      .attr('r', d => d.r + 4)
-      .attr('fill', d => d.pageTone.fill)
-      .attr('opacity', 0.06)
-      .attr('filter', 'url(#node-glow)');
+    // Fade in links
+    linkSel.transition()
+      .delay((d, i) => 80 + i * 1.5)
+      .duration(300)
+      .attr('opacity', 1);
 
-    // Main node circle
-    node
-      .append('circle')
-      .attr('class', 'main')
-      .attr('r', d => d.r)
-      .attr('fill', d => d.pageTone.fill)
-      .attr('stroke', d => d.pageTone.stroke)
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.4);
+    // ── Node layer ──
+    const nodeGroup = g.append('g').attr('class', 'graph-nodes');
+    const nodeSel = nodeGroup.selectAll('g')
+      .data(graphNodes, d => d.id)
+      .join(
+        enter => {
+          const grp = enter.append('g')
+            .attr('class', d => `graph-node node-${d.type}`)
+            .style('cursor', 'pointer')
+            .style('opacity', 0);
 
-    // ─── Hover interactions ────────────────────────────────────────────
-    node
-      .on('mouseenter', function (event, d) {
-        select(this).select('.main')
-          .transition().duration(150)
-          .attr('r', d.r * 1.2)
-          .attr('stroke-width', 1.5)
-          .attr('stroke-opacity', 0.7);
+          // Selection ring (hidden by default)
+          grp.append('circle')
+            .attr('class', 'selection-ring')
+            .attr('r', d => d.radius + 5)
+            .attr('fill', 'none')
+            .attr('stroke', 'rgba(148, 139, 114, 0.6)')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '3,2')
+            .attr('opacity', 0);
 
-        select(this).select('.glow')
-          .transition().duration(150)
-          .attr('r', d.r * 1.2 + 8)
-          .attr('opacity', 0.15)
-          .attr('filter', 'url(#node-glow-hover)');
+          // Glow (brighter for pages)
+          grp.append('circle')
+            .attr('class', 'glow')
+            .attr('r', d => d.radius + (d.type === 'page' ? 10 : d.type === 'section' ? 6 : 4))
+            .attr('fill', d => d.tone.fill)
+            .attr('opacity', d => d.type === 'page' ? 0.15 : d.type === 'section' ? 0.08 : 0.04)
+            .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
 
-        // Highlight connected links
-        linkSelection
-          .transition().duration(150)
-          .attr('stroke-width', function () {
-            const line = select(this);
-            const x1 = +line.attr('x1'), y1 = +line.attr('y1');
-            const x2 = +line.attr('x2'), y2 = +line.attr('y2');
-            const isConnected = connectionLinks.some(
-              l => (l.source.id === d.id || l.target.id === d.id) &&
-                   ((Math.abs(l.source.x - x1) < 0.1 && Math.abs(l.source.y - y1) < 0.1) ||
-                    (Math.abs(l.target.x - x1) < 0.1 && Math.abs(l.target.y - y1) < 0.1))
-            );
-            return isConnected ? 2 : 0.5;
-          })
-          .style('opacity', function () {
-            const line = select(this);
-            const x1 = +line.attr('x1'), y1 = +line.attr('y1');
-            const isConnected = connectionLinks.some(
-              l => (l.source.id === d.id || l.target.id === d.id) &&
-                   ((Math.abs(l.source.x - x1) < 0.1 && Math.abs(l.source.y - y1) < 0.1) ||
-                    (Math.abs(l.target.x - x1) < 0.1 && Math.abs(l.target.y - y1) < 0.1))
-            );
-            return isConnected ? 1 : 0.1;
-          });
+          // Main circle
+          grp.append('circle')
+            .attr('class', 'main')
+            .attr('r', d => d.radius)
+            .attr('fill', d => d.tone.fill)
+            .attr('stroke', d => d.tone.stroke)
+            .attr('stroke-width', d => d.type === 'page' ? 1.5 : 1)
+            .attr('stroke-opacity', d => d.type === 'page' ? 0.5 : 0.4);
 
-        // Dim unconnected nodes
-        const connectedIds = new Set();
-        connectedIds.add(d.id);
-        connectionLinks.forEach(l => {
-          if (l.source.id === d.id) connectedIds.add(l.target.id);
-          if (l.target.id === d.id) connectedIds.add(l.source.id);
-        });
+          // Page labels (always visible)
+          grp.filter(d => d.type === 'page')
+            .append('text')
+            .attr('class', 'page-label')
+            .attr('text-anchor', 'middle')
+            .attr('y', d => d.radius + 16)
+            .attr('fill', colors.textPrimary)
+            .attr('font-size', 11)
+            .attr('font-family', "'Manrope', sans-serif")
+            .attr('font-weight', 600)
+            .attr('pointer-events', 'none')
+            .text(d => d.label);
 
-        node
-          .transition().duration(150)
-          .style('opacity', n => connectedIds.has(n.id) ? 1 : 0.1);
+          // Staggered entrance
+          grp.transition()
+            .delay((d, i) => i * 12)
+            .duration(300)
+            .style('opacity', 1);
 
-        // Show tooltip
-        const svgRect = svgRef.current.getBoundingClientRect();
-        setHoveredNode(d);
-        setTooltipPos({
-          x: event.clientX - svgRect.left + 16,
-          y: event.clientY - svgRect.top - 10,
-        });
-      })
-      .on('mousemove', function (event) {
-        const svgRect = svgRef.current.getBoundingClientRect();
-        setTooltipPos({
-          x: event.clientX - svgRect.left + 16,
-          y: event.clientY - svgRect.top - 10,
-        });
-      })
-      .on('mouseleave', function () {
-        node.selectAll('.main')
-          .transition().duration(200)
-          .attr('r', d => d.r)
-          .attr('stroke-width', 1)
-          .attr('stroke-opacity', 0.4);
+          return grp;
+        },
+        update => update,
+        exit => exit.transition().duration(200).style('opacity', 0).remove()
+      );
 
-        node.selectAll('.glow')
-          .transition().duration(200)
-          .attr('r', d => d.r + 4)
-          .attr('opacity', 0.06)
-          .attr('filter', 'url(#node-glow)');
+    nodeSelRef.current = nodeSel;
 
-        linkSelection
-          .transition().duration(200)
-          .attr('stroke-width', 1)
-          .style('opacity', 1);
+    // ── Force simulation ──
+    const simulation = forceSimulation(graphNodes)
+      .velocityDecay(0.4)
+      .alpha(1)
+      .alphaDecay(0.01)
+      .force('link', forceLink(graphLinks)
+        .id(d => d.id)
+        .distance(d => d.distance)
+        .strength(d => d.strength)
+        .iterations(2)
+      )
+      .force('charge', forceManyBody()
+        .strength(d => {
+          if (d.type === 'page') return -800;
+          if (d.type === 'section') return -200;
+          return -30;
+        })
+        .distanceMax(500)
+      )
+      .force('collide', forceCollide()
+        .radius(d => d.radius + 2)
+        .strength(0.7)
+        .iterations(2)
+      )
+      .force('center', forceCenter(0, 0).strength(0.05))
+      .force('x', forceX(0).strength(0.02))
+      .force('y', forceY(0).strength(0.02));
 
-        node
-          .transition().duration(200)
-          .style('opacity', 1);
+    simulationRef.current = simulation;
 
-        setHoveredNode(null);
-      })
-      .on('click', function (event, d) {
-        event.stopPropagation();
-        if (draggedRef.current) return;
-        if (d.pageId && d.sectionId) {
-          onNavigate(d.pageId, d.sectionId);
+    // ── Tick handler (position updates only) ──
+    simulation.on('tick', () => {
+      linkSel
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+
+      nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    // ── Semantic zoom ──
+    const applySemanticZoom = (k) => {
+      zoomLevelRef.current = k;
+
+      // Notes shrink at far zoom
+      nodeSel.filter('.node-note').select('.main')
+        .attr('r', d => k < ZOOM_FAR ? d.radius * Math.max(0.3, k / ZOOM_FAR) : d.radius);
+      nodeSel.filter('.node-note').select('.glow')
+        .attr('opacity', k < ZOOM_FAR ? 0 : 0.04);
+
+      // Section/note hierarchical + tag links: hide at far zoom
+      linkSel.each(function (d) {
+        const el = select(this);
+        if (el.attr('display') === 'none') return; // respect visibility toggle
+        if (d.linkType === 'tag') {
+          el.attr('opacity', k < ZOOM_FAR ? 0 : 1);
+        } else if (d.linkType === 'hierarchical') {
+          const srcType = d.source.type || (typeof d.source === 'string' ? null : d.source.type);
+          if (srcType === 'note') {
+            el.attr('opacity', k < ZOOM_FAR ? 0 : 1);
+          }
         }
       });
 
-    // ─── Drag behavior ─────────────────────────────────────────────────
-    const dragBehavior = d3Drag()
-      .on('start', function (event, d) {
-        draggedRef.current = false;
-      })
-      .on('drag', function (event, d) {
-        draggedRef.current = true;
-        d.x = event.x;
-        d.y = event.y;
-        select(this).attr('transform', `translate(${d.x},${d.y})`);
-
-        // Update connected lines
-        linkSelection.each(function () {
-          const line = select(this);
-          connectionLinks.forEach(l => {
-            if (l.source.id === d.id) {
-              if (Math.abs(+line.attr('x1') - l.source.x) < 1 &&
-                  Math.abs(+line.attr('y1') - l.source.y) < 1) {
-                // This won't match after first drag — use data binding instead
-              }
-            }
-          });
-        });
-
-        // Simpler: update all lines connected to this node
-        connectionLinks.forEach(l => {
-          if (l.source.id === d.id) {
-            l.source.x = d.x;
-            l.source.y = d.y;
-          }
-          if (l.target.id === d.id) {
-            l.target.x = d.x;
-            l.target.y = d.y;
-          }
-        });
-
-        // Re-render connection lines positions
-        linkGroup.selectAll('.connection-line').each(function (_, i) {
-          const link = connectionLinks[i];
-          if (link) {
-            select(this)
-              .attr('x1', link.source.x)
-              .attr('y1', link.source.y)
-              .attr('x2', link.target.x)
-              .attr('y2', link.target.y);
-          }
-        });
-      })
-      .on('end', function () {
-        // draggedRef stays set until click handler checks it
+      // Sections fade at close zoom
+      nodeSel.filter('.node-section').each(function (d) {
+        if (select(this).attr('display') === 'none') return;
+        select(this).style('opacity', k > ZOOM_CLOSE
+          ? Math.max(0, 1 - (k - ZOOM_CLOSE) / 1.5)
+          : 1
+        );
       });
 
-    node.call(dragBehavior);
+      // Pages fade at ultra close zoom
+      nodeSel.filter('.node-page').each(function (d) {
+        if (select(this).attr('display') === 'none') return;
+        select(this).style('opacity', k > ZOOM_ULTRA
+          ? Math.max(0, 1 - (k - ZOOM_ULTRA) / 2.0)
+          : 1
+        );
+      });
 
-    // ─── Zoom behavior ─────────────────────────────────────────────────
+      // Page labels: compensate scale at far zoom so they stay readable
+      nodeSel.selectAll('.page-label')
+        .attr('font-size', k < ZOOM_LABEL_COMPENSATE ? 11 * ZOOM_LABEL_COMPENSATE / k : 11);
+    };
+
+    // ── Zoom behavior ──
     let rafId = null;
     const zoomBehavior = d3Zoom()
-      .scaleExtent([0.15, 3])
+      .scaleExtent([0.1, 6])
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
-
         if (rafId) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => {
-          applySemanticZoom(g, event.transform.k, event.transform);
+          applySemanticZoom(event.transform.k);
           rafId = null;
         });
       });
@@ -723,88 +583,334 @@ export function GraphView({
     svg.call(zoomBehavior);
     zoomBehaviorRef.current = zoomBehavior;
 
-    // ─── Initial zoom from navigation context ──────────────────────────
-    let targetCx = 0, targetCy = 0, targetScale = 0.35;
+    // ── Hover interactions ──
+    nodeSel
+      .on('mouseenter', function (event, d) {
+        const connected = adjacencyMap.get(d.id) || new Set();
 
-    if (currentSectionId && sectionLayouts.has(currentSectionId)) {
-      const sl = sectionLayouts.get(currentSectionId);
-      targetCx = sl.cx;
-      targetCy = sl.cy;
-      targetScale = 1.5;
-    } else if (currentPageId && pageLayouts.has(currentPageId)) {
-      const pl = pageLayouts.get(currentPageId);
-      targetCx = pl.cx;
-      targetCy = pl.cy;
-      targetScale = 0.7;
-    }
+        // Highlight hovered + connected, dim rest
+        nodeSel.transition().duration(120)
+          .style('opacity', n => {
+            if (select(nodeGroup.selectAll('.graph-node').nodes().find(el => select(el).datum() === n))?.attr('display') === 'none') return 0;
+            if (n.id === d.id || connected.has(n.id)) return 1;
+            return 0.08;
+          });
 
-    const initialTransform = zoomIdentity
-      .translate(width / 2, height / 2)
-      .scale(targetScale)
-      .translate(-targetCx, -targetCy);
+        linkSel.transition().duration(120)
+          .attr('opacity', l => {
+            if (l.source.id === d.id || l.target.id === d.id) return 1;
+            return 0.08;
+          })
+          .attr('stroke-width', l => {
+            if (l.source.id === d.id || l.target.id === d.id) return 2;
+            return LINK_WIDTHS[l.linkType];
+          });
 
-    svg.transition()
-      .duration(800)
-      .ease(easeCubicInOut)
-      .call(zoomBehavior.transform, initialTransform);
+        // Enlarge hovered node
+        select(this).select('.main')
+          .transition().duration(120)
+          .attr('r', d.radius * 1.3)
+          .attr('stroke-opacity', 0.8);
+        select(this).select('.glow')
+          .transition().duration(120)
+          .attr('r', d.radius * 1.3 + 10)
+          .attr('opacity', 0.2)
+          .attr('filter', 'url(#glow-hover)');
 
-    // Apply initial semantic zoom after animation
+        // Tooltip
+        setHoveredNode(d);
+        const svgRect = svgRef.current.getBoundingClientRect();
+        setTooltipPos({
+          x: Math.min(event.clientX - svgRect.left + 16, svgRect.width - 320),
+          y: Math.min(event.clientY - svgRect.top - 10, svgRect.height - 140),
+        });
+      })
+      .on('mousemove', function (event) {
+        const svgRect = svgRef.current.getBoundingClientRect();
+        setTooltipPos({
+          x: Math.min(event.clientX - svgRect.left + 16, svgRect.width - 320),
+          y: Math.min(event.clientY - svgRect.top - 10, svgRect.height - 140),
+        });
+      })
+      .on('mouseleave', function () {
+        // Restore sizes
+        nodeSel.selectAll('.main')
+          .transition().duration(200)
+          .attr('r', d => d.radius)
+          .attr('stroke-opacity', d => d.type === 'page' ? 0.5 : 0.4);
+        nodeSel.selectAll('.glow')
+          .transition().duration(200)
+          .attr('r', d => d.radius + (d.type === 'page' ? 10 : d.type === 'section' ? 6 : 4))
+          .attr('opacity', d => d.type === 'page' ? 0.15 : d.type === 'section' ? 0.08 : 0.04)
+          .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
+
+        // Restore link widths
+        linkSel.transition().duration(200)
+          .attr('stroke-width', d => LINK_WIDTHS[d.linkType])
+          .attr('opacity', 1);
+
+        // Restore node opacity (respecting semantic zoom)
+        const k = zoomLevelRef.current;
+        nodeSel.transition().duration(200)
+          .style('opacity', d => {
+            if (d.type === 'section' && k > ZOOM_CLOSE) return Math.max(0, 1 - (k - ZOOM_CLOSE) / 1.5);
+            if (d.type === 'page' && k > ZOOM_ULTRA) return Math.max(0, 1 - (k - ZOOM_ULTRA) / 2.0);
+            return 1;
+          });
+
+        // Re-apply semantic zoom for links after transition
+        setTimeout(() => applySemanticZoom(k), 250);
+
+        setHoveredNode(null);
+      })
+      // ── Click ──
+      .on('click', function (event, d) {
+        event.stopPropagation();
+        if (draggedRef.current) {
+          draggedRef.current = false;
+          return;
+        }
+
+        // Shift+click: multi-select
+        if (event.shiftKey) {
+          const sel = selectedNodesRef.current;
+          if (sel.has(d.id)) {
+            sel.delete(d.id);
+            select(this).select('.selection-ring').attr('opacity', 0);
+          } else {
+            sel.add(d.id);
+            select(this).select('.selection-ring').attr('opacity', 1);
+          }
+          return;
+        }
+
+        // Navigate
+        if (d.type === 'page') {
+          onNavigate(d.entityId, null);
+        } else if (d.type === 'section') {
+          onNavigate(d.pageEntityId, d.entityId);
+        } else if (d.type === 'note') {
+          onNavigate(d.pageEntityId, d.sectionEntityId);
+        }
+      });
+
+    // ── Drag behavior ──
+    const dragBehavior = d3Drag()
+      .on('start', function (event, d) {
+        draggedRef.current = false;
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+
+        // Pin all selected nodes for group drag
+        if (selectedNodesRef.current.has(d.id) && selectedNodesRef.current.size > 1) {
+          simulation.nodes().forEach(n => {
+            if (selectedNodesRef.current.has(n.id) && n.id !== d.id) {
+              n.fx = n.x;
+              n.fy = n.y;
+            }
+          });
+        }
+      })
+      .on('drag', function (event, d) {
+        draggedRef.current = true;
+        const dx = event.x - d.fx;
+        const dy = event.y - d.fy;
+        d.fx = event.x;
+        d.fy = event.y;
+
+        // Move all selected together
+        if (selectedNodesRef.current.has(d.id) && selectedNodesRef.current.size > 1) {
+          simulation.nodes().forEach(n => {
+            if (selectedNodesRef.current.has(n.id) && n.id !== d.id) {
+              n.fx += dx;
+              n.fy += dy;
+            }
+          });
+        }
+      })
+      .on('end', function (event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        // Release → spring back
+        d.fx = null;
+        d.fy = null;
+        if (selectedNodesRef.current.size > 0) {
+          simulation.nodes().forEach(n => {
+            if (selectedNodesRef.current.has(n.id)) {
+              n.fx = null;
+              n.fy = null;
+            }
+          });
+        }
+      });
+
+    nodeSel.call(dragBehavior);
+
+    // ── Background click: clear selection ──
+    svg.on('click', () => {
+      if (selectedNodesRef.current.size > 0) {
+        selectedNodesRef.current.clear();
+        nodeSel.selectAll('.selection-ring').attr('opacity', 0);
+      }
+    });
+
+    // ── Visibility toggle helper ──
+    const applyToggles = () => {
+      const v = visibilityRef.current;
+      nodeSel.filter('.node-page').attr('display', v.pages ? null : 'none');
+      nodeSel.filter('.node-section').attr('display', v.sections ? null : 'none');
+      linkSel.each(function (d) {
+        const el = select(this);
+        if (d.linkType === 'wikilink') {
+          el.attr('display', v.wikilinks ? null : 'none');
+        } else if (d.linkType === 'tag') {
+          el.attr('display', v.tags ? null : 'none');
+        } else if (d.linkType === 'hierarchical') {
+          const srcType = d.source.type || d.source;
+          const tgtType = d.target.type || d.target;
+          const vis = (srcType !== 'page' || v.pages) &&
+                      (tgtType !== 'page' || v.pages) &&
+                      (srcType !== 'section' || v.sections) &&
+                      (tgtType !== 'section' || v.sections);
+          el.attr('display', vis ? null : 'none');
+        }
+      });
+    };
+    applyTogglesRef.current = applyToggles;
+    applyToggles(); // apply current state
+
+    // ── Initial zoom (after brief settling) ──
     setTimeout(() => {
-      applySemanticZoom(g, targetScale, initialTransform);
-    }, 850);
+      if (!svgRef.current) return;
+
+      let targetCx = 0, targetCy = 0, targetScale = 0.35;
+
+      if (currentSectionId) {
+        const sNode = graphNodes.find(n => n.entityId === currentSectionId && n.type === 'section');
+        if (sNode) {
+          targetCx = sNode.x || 0;
+          targetCy = sNode.y || 0;
+          targetScale = 1.5;
+        }
+      } else if (currentPageId) {
+        const pNode = graphNodes.find(n => n.entityId === currentPageId && n.type === 'page');
+        if (pNode) {
+          targetCx = pNode.x || 0;
+          targetCy = pNode.y || 0;
+          targetScale = 0.7;
+        }
+      } else {
+        // Fit all
+        const xs = graphNodes.map(n => n.x || 0);
+        const ys = graphNodes.map(n => n.y || 0);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        targetCx = (minX + maxX) / 2;
+        targetCy = (minY + maxY) / 2;
+        const gW = (maxX - minX) || 1;
+        const gH = (maxY - minY) || 1;
+        targetScale = Math.min((width - 120) / gW, (height - 120) / gH, 1.5);
+      }
+
+      const transform = zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(targetScale)
+        .translate(-targetCx, -targetCy);
+
+      select(svgRef.current)
+        .transition()
+        .duration(800)
+        .ease(easeCubicInOut)
+        .call(zoomBehavior.transform, transform);
+
+      setTimeout(() => applySemanticZoom(targetScale), 850);
+    }, 500);
+
+    // ── Verification log ──
+    const byType = { page: 0, section: 0, note: 0 };
+    graphNodes.forEach(n => byType[n.type]++);
+    const byLink = { hierarchical: 0, wikilink: 0, tag: 0 };
+    graphLinks.forEach(l => byLink[l.linkType]++);
+    console.log('[GraphView] Nodes:', byType, '| Links:', byLink);
 
     return () => {
+      simulation.stop();
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [displayNodes, connectionLinks, dimensions, pageLayouts, sectionLayouts,
-      currentPageId, currentSectionId, onNavigate, applySemanticZoom]);
+  }, [graphNodes, graphLinks, adjacencyMap, dimensions, currentPageId, currentSectionId, onNavigate]);
 
-  // ─── Zoom controls ──────────────────────────────────────────────────────
+  // ─── Zoom controls ─────────────────────────────────────────────────────────
   const handleZoomIn = useCallback(() => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
-    const svg = select(svgRef.current);
-    svg.transition().duration(300).call(zoomBehaviorRef.current.scaleBy, 1.5);
+    select(svgRef.current).transition().duration(300)
+      .call(zoomBehaviorRef.current.scaleBy, 1.5);
   }, []);
 
   const handleZoomOut = useCallback(() => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
-    const svg = select(svgRef.current);
-    svg.transition().duration(300).call(zoomBehaviorRef.current.scaleBy, 1 / 1.5);
+    select(svgRef.current).transition().duration(300)
+      .call(zoomBehaviorRef.current.scaleBy, 1 / 1.5);
   }, []);
 
-  const handleFitAll = useCallback(() => {
-    if (!svgRef.current || !zoomBehaviorRef.current || displayNodes.length === 0) return;
-
+  const handleFit = useCallback(() => {
+    if (!svgRef.current || !zoomBehaviorRef.current || !graphNodes.length) return;
     const { width, height } = dimensions;
-    const padding = 60;
-
-    const minX = Math.min(...displayNodes.map(n => n.x));
-    const maxX = Math.max(...displayNodes.map(n => n.x));
-    const minY = Math.min(...displayNodes.map(n => n.y));
-    const maxY = Math.max(...displayNodes.map(n => n.y));
-
-    const graphWidth = maxX - minX || 1;
-    const graphHeight = maxY - minY || 1;
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-
-    const scale = Math.min(
-      (width - padding * 2) / graphWidth,
-      (height - padding * 2) / graphHeight,
-      2
-    );
+    const xs = graphNodes.map(n => n.x || 0);
+    const ys = graphNodes.map(n => n.y || 0);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const gW = (maxX - minX) || 1, gH = (maxY - minY) || 1;
+    const scale = Math.min((width - 80) / gW, (height - 80) / gH, 2);
 
     const transform = zoomIdentity
       .translate(width / 2, height / 2)
       .scale(scale)
       .translate(-cx, -cy);
 
-    const svg = select(svgRef.current);
-    svg.transition().duration(600).ease(easeCubicInOut)
+    select(svgRef.current).transition().duration(600).ease(easeCubicInOut)
       .call(zoomBehaviorRef.current.transform, transform);
-  }, [displayNodes, dimensions]);
+  }, [graphNodes, dimensions]);
 
-  // ─── Frosted glass control style ────────────────────────────────────────
+  const handleReset = useCallback(() => {
+    if (!simulationRef.current) return;
+    simulationRef.current.alpha(1).restart();
+  }, []);
+
+  const handleCluster = useCallback(() => {
+    if (!simulationRef.current) return;
+    const sim = simulationRef.current;
+
+    // Temporarily tighten hierarchical forces, weaken charge
+    sim.force('link')
+      .distance(d => d.linkType === 'hierarchical' ? d.distance * 0.4 : d.distance)
+      .strength(d => d.linkType === 'hierarchical' ? d.strength * 2.0 : d.strength);
+    sim.force('charge')
+      .strength(d => {
+        if (d.type === 'page') return -400;
+        if (d.type === 'section') return -100;
+        return -15;
+      });
+
+    sim.alpha(0.8).restart();
+
+    // Restore after 3 seconds
+    setTimeout(() => {
+      if (!simulationRef.current) return;
+      sim.force('link')
+        .distance(d => d.distance)
+        .strength(d => d.strength);
+      sim.force('charge')
+        .strength(d => {
+          if (d.type === 'page') return -800;
+          if (d.type === 'section') return -200;
+          return -30;
+        });
+      sim.alpha(0.3).restart();
+    }, 3000);
+  }, []);
+
+  // ─── Styles ────────────────────────────────────────────────────────────────
   const controlStyle = {
     background: 'rgba(13, 13, 13, 0.85)',
     backdropFilter: 'blur(24px) saturate(150%)',
@@ -818,7 +924,28 @@ export function GraphView({
     outline: 'none',
   };
 
-  // ─── Empty state ───────────────────────────────────────────────────────
+  const toggleBtnStyle = (active) => ({
+    ...controlStyle,
+    padding: '4px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    border: `1px solid ${active ? 'rgba(148, 139, 114, 0.4)' : colors.border}`,
+    color: active ? colors.textPrimary : colors.textMuted,
+    transition: 'color 0.15s ease, border-color 0.15s ease',
+  });
+
+  const zoomBtnStyle = {
+    ...controlStyle,
+    padding: 0,
+    width: 28,
+    height: 28,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  // ─── Empty state ───────────────────────────────────────────────────────────
   if (!notes || notes.length === 0) {
     return (
       <div style={{
@@ -837,6 +964,7 @@ export function GraphView({
     );
   }
 
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div
       ref={containerRef}
@@ -849,44 +977,39 @@ export function GraphView({
         overflow: 'hidden',
       }}
     >
-      {/* ─── Filter controls (top-left) ──────────────────────────────────── */}
+      {/* ─── Visibility toggles (top-left) ──────────────────────────────── */}
       <div style={{
         position: 'absolute',
         top: 12,
         left: 12,
         display: 'flex',
-        gap: 8,
+        flexDirection: 'column',
+        gap: 4,
         zIndex: 10,
       }}>
-        {/* Type filter */}
-        <select
-          value={filterType}
-          onChange={e => setFilterType(e.target.value)}
-          style={{ ...controlStyle, padding: '4px 8px' }}
-        >
-          {connectionTypes.map(t => (
-            <option key={t} value={t}>
-              {t === 'all' ? 'All types' : t}
-            </option>
-          ))}
-        </select>
-
-        {/* Show connections only toggle */}
-        <button
-          onClick={() => setShowConnectionsOnly(s => !s)}
-          style={{
-            ...controlStyle,
-            padding: '4px 8px',
-            border: `1px solid ${showConnectionsOnly ? colors.primary : colors.border}`,
-            color: showConnectionsOnly ? colors.primary : colors.textSecondary,
-            transition: 'color 0.15s ease, border-color 0.15s ease',
-          }}
-        >
-          Connections only
+        <button onClick={() => setShowPages(v => !v)} style={toggleBtnStyle(showPages)}>
+          Pages
+        </button>
+        <button onClick={() => setShowSections(v => !v)} style={toggleBtnStyle(showSections)}>
+          Sections
+        </button>
+        <button onClick={() => setShowWikilinks(v => !v)} style={toggleBtnStyle(showWikilinks)}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: LINK_COLORS.wikilink, flexShrink: 0,
+          }} />
+          Wikilinks
+        </button>
+        <button onClick={() => setShowTags(v => !v)} style={toggleBtnStyle(showTags)}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: LINK_COLORS.tag, flexShrink: 0,
+          }} />
+          Tags
         </button>
       </div>
 
-      {/* ─── Zoom controls (top-right) ───────────────────────────────────── */}
+      {/* ─── Zoom + arrange controls (top-right) ─────────────────────── */}
       <div style={{
         position: 'absolute',
         top: 12,
@@ -896,12 +1019,17 @@ export function GraphView({
         gap: 4,
         zIndex: 10,
       }}>
-        <button onClick={handleZoomIn} style={{ ...controlStyle, padding: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-        <button onClick={handleZoomOut} style={{ ...controlStyle, padding: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&minus;</button>
-        <button onClick={handleFitAll} style={{ ...controlStyle, padding: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9 }}>Fit</button>
+        <button onClick={handleZoomIn} style={zoomBtnStyle}>+</button>
+        <button onClick={handleZoomOut} style={zoomBtnStyle}>&minus;</button>
+        <button onClick={handleFit} style={{ ...zoomBtnStyle, fontSize: 9 }}>Fit</button>
+        <div style={{ height: 4 }} />
+        <button onClick={handleReset} style={{ ...zoomBtnStyle, fontSize: 8 }}>Reset</button>
+        <button onClick={handleCluster} style={{ ...zoomBtnStyle, fontSize: 7, letterSpacing: '0.3px' }}>
+          Cluster
+        </button>
       </div>
 
-      {/* ─── SVG canvas ────────────────────────────────────────────────────── */}
+      {/* ─── SVG canvas ──────────────────────────────────────────────── */}
       <svg
         ref={svgRef}
         width={dimensions.width}
@@ -909,7 +1037,7 @@ export function GraphView({
         style={{ display: 'block', background: 'transparent' }}
       />
 
-      {/* ─── Hover tooltip (frosted glass) ──────────────────────────────── */}
+      {/* ─── Hover tooltip (frosted glass) ───────────────────────────── */}
       {hoveredNode && (
         <div
           style={{
@@ -917,23 +1045,14 @@ export function GraphView({
             top: tooltipPos.y,
             left: tooltipPos.x,
             maxWidth: 300,
-            padding: '10px 12px',
+            padding: '10px 14px',
             ...controlStyle,
             cursor: 'default',
             pointerEvents: 'none',
             zIndex: 20,
           }}
         >
-          {currentZoomLevel <= ZOOM_PAGE ? (
-            // Global zoom: page name + note count
-            <div style={{
-              color: colors.textPrimary,
-              fontSize: 12,
-              fontFamily: "'Manrope', sans-serif",
-            }}>
-              {hoveredNode.pageName} &middot; {hoveredNode.connectionCount} connection{hoveredNode.connectionCount === 1 ? '' : 's'}
-            </div>
-          ) : (
+          {hoveredNode.type === 'note' && (
             <>
               <div style={{
                 color: colors.textPrimary,
@@ -948,7 +1067,7 @@ export function GraphView({
               }}>
                 {hoveredNode.content?.substring(0, 150)}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                 <span style={{
                   width: 6, height: 6, borderRadius: '50%',
                   background: hoveredNode.legendColor, flexShrink: 0,
@@ -960,18 +1079,56 @@ export function GraphView({
                   {hoveredNode.pageName}{hoveredNode.sectionName ? ` / ${hoveredNode.sectionName}` : ''}
                 </span>
               </div>
+              {hoveredNode.tags?.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+                  {hoveredNode.tags.slice(0, 3).map(tag => (
+                    <span key={tag} style={{
+                      fontSize: 9,
+                      padding: '1px 5px',
+                      borderRadius: 2,
+                      background: 'rgba(100, 140, 180, 0.15)',
+                      color: 'rgba(100, 140, 180, 0.8)',
+                      fontFamily: "'Manrope', sans-serif",
+                    }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{
                 color: colors.textMuted, fontSize: 10,
-                fontFamily: "'Manrope', sans-serif", marginTop: 4,
+                fontFamily: "'Manrope', sans-serif",
               }}>
-                {hoveredNode.connectionCount} connection{hoveredNode.connectionCount === 1 ? '' : 's'} &middot; Click to navigate
+                {hoveredNode.connectionCount} connection{hoveredNode.connectionCount === 1 ? '' : 's'}
               </div>
             </>
+          )}
+
+          {hoveredNode.type === 'section' && (
+            <div style={{ fontFamily: "'Manrope', sans-serif" }}>
+              <div style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                {hoveredNode.label}
+              </div>
+              <div style={{ color: colors.textMuted, fontSize: 11 }}>
+                {hoveredNode.noteCount} note{hoveredNode.noteCount === 1 ? '' : 's'} &middot; {hoveredNode.pageName}
+              </div>
+            </div>
+          )}
+
+          {hoveredNode.type === 'page' && (
+            <div style={{ fontFamily: "'Manrope', sans-serif" }}>
+              <div style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                {hoveredNode.label}
+              </div>
+              <div style={{ color: colors.textMuted, fontSize: 11 }}>
+                {hoveredNode.sectionCount} section{hoveredNode.sectionCount === 1 ? '' : 's'} &middot; {hoveredNode.noteCount} note{hoveredNode.noteCount === 1 ? '' : 's'}
+              </div>
+            </div>
           )}
         </div>
       )}
 
-      {/* ─── Page legend (bottom-left) ───────────────────────────────────── */}
+      {/* ─── Page legend (bottom-left) ────────────────────────────────── */}
       {pagesWithNotes.length > 0 && (
         <div style={{
           position: 'absolute',
@@ -1002,7 +1159,7 @@ export function GraphView({
         </div>
       )}
 
-      {/* ─── Stats (bottom-right) ────────────────────────────────────────── */}
+      {/* ─── Stats (bottom-right) ─────────────────────────────────────── */}
       <div style={{
         position: 'absolute',
         bottom: 12,
@@ -1013,7 +1170,8 @@ export function GraphView({
         opacity: 0.5,
         zIndex: 10,
       }}>
-        {displayNodes.length} notes &middot; {connectionLinks.length} connections
+        {graphNodes.filter(n => n.type === 'note').length} notes &middot;{' '}
+        {graphLinks.filter(l => l.linkType !== 'hierarchical').length} connections
       </div>
     </div>
   );
