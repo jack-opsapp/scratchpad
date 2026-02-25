@@ -4067,16 +4067,15 @@ export function MainApp({ user, onSignOut }) {
             {viewMode === 'graph' && (
               <GraphView
                 connections={connections}
-                notes={viewingPageLevel
-                  ? notes.filter(n => currentPageData?.sections.some(s => s.id === n.sectionId))
-                  : notes
-                }
+                notes={notes}
                 pages={allPages}
                 sections={allSections}
+                currentPageId={currentPage}
+                currentSectionId={currentSection}
                 onNavigate={(pageId, sectionId) => {
                   setCurrentPage(pageId);
                   setCurrentSection(sectionId);
-                  setViewingPageLevel(false);
+                  setViewingPageLevel(!sectionId);
                   setViewMode('list');
                 }}
               />
