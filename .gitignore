@@ -27,3 +27,6 @@ npm-debug.log*
 .cache/
 .eslintcache
 .vercel
+
+# Worktrees
+.worktrees/
