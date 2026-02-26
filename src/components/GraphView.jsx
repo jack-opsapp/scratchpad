@@ -30,22 +30,22 @@ const PAGE_LEGEND_COLORS = [
 
 // ─── Link styling ────────────────────────────────────────────────────────────
 const LINK_COLORS = {
-  hierarchical: 'rgba(255, 255, 255, 0.06)',
-  wikilink: 'rgba(148, 139, 114, 0.5)',
-  tag: 'rgba(100, 140, 180, 0.35)',
+  hierarchical: 'rgba(255, 255, 255, 0.08)',
+  wikilink: 'rgba(90, 130, 200, 0.45)',
+  tag: 'rgba(255, 255, 255, 0.06)',
 };
 
 const LINK_WIDTHS = {
-  hierarchical: 0.5,
-  wikilink: 1,
-  tag: 1,
+  hierarchical: 0.4,
+  wikilink: 0.6,
+  tag: 0.3,
 };
 
 // ─── Node sizing ─────────────────────────────────────────────────────────────
-const PAGE_RADIUS = 18;
-const SECTION_RADIUS = 10;
-const NOTE_RADIUS_MIN = 3;
-const NOTE_RADIUS_MAX = 6;
+const PAGE_RADIUS = 6;
+const SECTION_RADIUS = 3.5;
+const NOTE_RADIUS_MIN = 1.5;
+const NOTE_RADIUS_MAX = 3;
 
 // ─── Semantic zoom thresholds ────────────────────────────────────────────────
 const ZOOM_FAR = 0.5;
@@ -403,7 +403,6 @@ export function GraphView({
       .attr('stroke', d => LINK_COLORS[d.linkType])
       .attr('stroke-width', d => LINK_WIDTHS[d.linkType])
       .attr('stroke-linecap', 'round')
-      .attr('stroke-dasharray', d => d.linkType === 'tag' ? '3,3' : null)
       .attr('opacity', 0);
 
     linkSelRef.current = linkSel;
@@ -428,36 +427,33 @@ export function GraphView({
           // Selection ring (hidden by default)
           grp.append('circle')
             .attr('class', 'selection-ring')
-            .attr('r', d => d.radius + 5)
+            .attr('r', d => d.radius + 3)
             .attr('fill', 'none')
-            .attr('stroke', 'rgba(148, 139, 114, 0.6)')
-            .attr('stroke-width', 2)
-            .attr('stroke-dasharray', '3,2')
+            .attr('stroke', 'rgba(148, 139, 114, 0.5)')
+            .attr('stroke-width', 1)
             .attr('opacity', 0);
 
-          // Glow (brighter for pages)
+          // Glow
           grp.append('circle')
             .attr('class', 'glow')
-            .attr('r', d => d.radius + (d.type === 'page' ? 10 : d.type === 'section' ? 6 : 4))
+            .attr('r', d => d.radius + (d.type === 'page' ? 5 : 3))
             .attr('fill', d => d.tone.fill)
-            .attr('opacity', d => d.type === 'page' ? 0.15 : d.type === 'section' ? 0.08 : 0.04)
+            .attr('opacity', d => d.type === 'page' ? 0.12 : 0.05)
             .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
 
-          // Main circle
+          // Main circle (point-like, no stroke)
           grp.append('circle')
             .attr('class', 'main')
             .attr('r', d => d.radius)
             .attr('fill', d => d.tone.fill)
-            .attr('stroke', d => d.tone.stroke)
-            .attr('stroke-width', d => d.type === 'page' ? 1.5 : 1)
-            .attr('stroke-opacity', d => d.type === 'page' ? 0.5 : 0.4);
+            .attr('stroke', 'none');
 
           // Page labels (always visible)
           grp.filter(d => d.type === 'page')
             .append('text')
             .attr('class', 'page-label')
             .attr('text-anchor', 'middle')
-            .attr('y', d => d.radius + 16)
+            .attr('y', d => d.radius + 12)
             .attr('fill', colors.textPrimary)
             .attr('font-size', 11)
             .attr('font-family', "'Manrope', sans-serif")
@@ -499,7 +495,7 @@ export function GraphView({
         .distanceMax(500)
       )
       .force('collide', forceCollide()
-        .radius(d => d.radius + 2)
+        .radius(d => d.radius + 1)
         .strength(0.7)
         .iterations(2)
       )
@@ -609,11 +605,10 @@ export function GraphView({
         // Enlarge hovered node
         select(this).select('.main')
           .transition().duration(120)
-          .attr('r', d.radius * 1.3)
-          .attr('stroke-opacity', 0.8);
+          .attr('r', d.radius * 1.8);
         select(this).select('.glow')
           .transition().duration(120)
-          .attr('r', d.radius * 1.3 + 10)
+          .attr('r', d.radius * 1.8 + 6)
           .attr('opacity', 0.2)
           .attr('filter', 'url(#glow-hover)');
 
@@ -636,12 +631,11 @@ export function GraphView({
         // Restore sizes
         nodeSel.selectAll('.main')
           .transition().duration(200)
-          .attr('r', d => d.radius)
-          .attr('stroke-opacity', d => d.type === 'page' ? 0.5 : 0.4);
+          .attr('r', d => d.radius);
         nodeSel.selectAll('.glow')
           .transition().duration(200)
-          .attr('r', d => d.radius + (d.type === 'page' ? 10 : d.type === 'section' ? 6 : 4))
-          .attr('opacity', d => d.type === 'page' ? 0.15 : d.type === 'section' ? 0.08 : 0.04)
+          .attr('r', d => d.radius + (d.type === 'page' ? 5 : 3))
+          .attr('opacity', d => d.type === 'page' ? 0.12 : 0.05)
           .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
 
         // Restore link widths
@@ -912,10 +906,10 @@ export function GraphView({
 
   // ─── Styles ────────────────────────────────────────────────────────────────
   const controlStyle = {
-    background: 'rgba(13, 13, 13, 0.85)',
+    background: 'rgba(13, 13, 13, 0.7)',
     backdropFilter: 'blur(24px) saturate(150%)',
     WebkitBackdropFilter: 'blur(24px) saturate(150%)',
-    border: `1px solid ${colors.border}`,
+    border: 'none',
     borderRadius: 2,
     color: colors.textSecondary,
     fontSize: 11,
@@ -930,7 +924,7 @@ export function GraphView({
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    border: `1px solid ${active ? 'rgba(148, 139, 114, 0.4)' : colors.border}`,
+    border: 'none',
     color: active ? colors.textPrimary : colors.textMuted,
     transition: 'color 0.15s ease, border-color 0.15s ease',
   });
