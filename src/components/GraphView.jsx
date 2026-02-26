@@ -30,22 +30,40 @@ const PAGE_LEGEND_COLORS = [
 
 // ─── Link styling ────────────────────────────────────────────────────────────
 const LINK_COLORS = {
-  hierarchical: 'rgba(255, 255, 255, 0.08)',
-  wikilink: 'rgba(90, 130, 200, 0.45)',
-  tag: 'rgba(255, 255, 255, 0.06)',
+  hierarchical: 'rgba(255, 255, 255, 0.12)',
+  wikilink: 'rgba(120, 160, 230, 0.5)',
+  tag: 'rgba(255, 255, 255, 0.08)',
+};
+
+// Brighter versions for hover (color change, not opacity)
+const LINK_COLORS_HOVER = {
+  hierarchical: 'rgba(255, 255, 255, 0.5)',
+  wikilink: 'rgba(150, 185, 255, 0.9)',
+  tag: 'rgba(255, 255, 255, 0.4)',
 };
 
 const LINK_WIDTHS = {
-  hierarchical: 0.4,
-  wikilink: 0.6,
+  hierarchical: 0.3,
+  wikilink: 0.5,
   tag: 0.3,
 };
 
-// ─── Node sizing ─────────────────────────────────────────────────────────────
-const PAGE_RADIUS = 6;
-const SECTION_RADIUS = 3.5;
-const NOTE_RADIUS_MIN = 1.5;
-const NOTE_RADIUS_MAX = 3;
+// ─── Node styling ────────────────────────────────────────────────────────────
+const NODE_RADIUS = 2;
+
+// Base colors: pages white, sections light grey, notes darker grey
+const NODE_COLORS = {
+  page: 'rgba(255, 255, 255, 0.9)',
+  section: 'rgba(255, 255, 255, 0.4)',
+  note: 'rgba(255, 255, 255, 0.18)',
+};
+
+// Zoomed-in colors: sections → white, notes → light grey
+const NODE_COLORS_ZOOMED = {
+  page: 'rgba(255, 255, 255, 0.9)',
+  section: 'rgba(255, 255, 255, 0.85)',
+  note: 'rgba(255, 255, 255, 0.45)',
+};
 
 // ─── Semantic zoom thresholds ────────────────────────────────────────────────
 const ZOOM_FAR = 0.5;
@@ -97,18 +115,16 @@ function buildNodes(notes, pages, sections, connections, pageToneMap) {
   // ── Page nodes (only pages with notes) ──
   (pages || []).forEach((p, i) => {
     if (!notesPerPage[p.id]) return;
-    const tone = pageToneMap[p.id] || PAGE_TONES[0];
     const activeSections = (pageSectionsMap[p.id] || []).filter(sid => notesPerSection[sid] > 0);
     nodes.push({
       id: `page-${p.id}`,
       entityId: p.id,
       type: 'page',
       label: p.name,
-      radius: PAGE_RADIUS,
+      radius: NODE_RADIUS,
       sectionCount: activeSections.length,
       noteCount: notesPerPage[p.id] || 0,
       toneIndex: i % PAGE_TONES.length,
-      tone,
       legendColor: pageToneMap[p.id]?.legend || PAGE_LEGEND_COLORS[0],
     });
   });
@@ -117,21 +133,16 @@ function buildNodes(notes, pages, sections, connections, pageToneMap) {
   (sections || []).forEach(s => {
     const pageId = sectionPageMap[s.id];
     if (!pageId || !notesPerSection[s.id]) return;
-    const pageTone = pageToneMap[pageId] || PAGE_TONES[0];
-    const lighterFill = pageTone.fill.replace(
-      /[\d.]+\)$/, m => `${Math.min(1, parseFloat(m) + 0.15)})`
-    );
     nodes.push({
       id: `section-${s.id}`,
       entityId: s.id,
       type: 'section',
       label: s.name,
-      radius: SECTION_RADIUS,
+      radius: NODE_RADIUS,
       parentId: `page-${pageId}`,
       pageEntityId: pageId,
       pageName: pageNameMap[pageId],
       noteCount: notesPerSection[s.id] || 0,
-      tone: { fill: lighterFill, stroke: pageTone.stroke },
       legendColor: pageToneMap[pageId]?.legend || PAGE_LEGEND_COLORS[0],
     });
   });
@@ -141,22 +152,19 @@ function buildNodes(notes, pages, sections, connections, pageToneMap) {
     const pageId = sectionPageMap[n.sectionId];
     if (!pageId) return;
     const connCount = connCountMap[n.id] || 0;
-    const radius = Math.max(NOTE_RADIUS_MIN, Math.min(NOTE_RADIUS_MAX, 3 + connCount * 0.5));
-    const tone = pageToneMap[pageId] || PAGE_TONES[0];
     nodes.push({
       id: `note-${n.id}`,
       entityId: n.id,
       type: 'note',
       content: n.content,
       tags: n.tags || [],
-      radius,
+      radius: NODE_RADIUS,
       parentId: `section-${n.sectionId}`,
       pageEntityId: pageId,
       sectionEntityId: n.sectionId,
       pageName: pageNameMap[pageId],
       sectionName: sectionNameMap[n.sectionId] || '',
       connectionCount: connCount,
-      tone,
       legendColor: pageToneMap[pageId]?.legend || PAGE_LEGEND_COLORS[0],
     });
   });
@@ -308,13 +316,10 @@ export function GraphView({
     return (pages || []).filter(p => pageIds.has(p.id));
   }, [pages, graphNodes]);
 
-  // ─── Measure container ─────────────────────────────────────────────────────
+  // ─── Measure container (full viewport) ───────────────────────────────────
   useEffect(() => {
     const measure = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setDimensions({ width: rect.width || 800, height: rect.height || 600 });
-      }
+      setDimensions({ width: window.innerWidth, height: window.innerHeight });
     };
     measure();
     window.addEventListener('resize', measure);
@@ -429,23 +434,23 @@ export function GraphView({
             .attr('class', 'selection-ring')
             .attr('r', d => d.radius + 3)
             .attr('fill', 'none')
-            .attr('stroke', 'rgba(148, 139, 114, 0.5)')
+            .attr('stroke', 'rgba(255, 255, 255, 0.5)')
             .attr('stroke-width', 1)
             .attr('opacity', 0);
 
           // Glow
           grp.append('circle')
             .attr('class', 'glow')
-            .attr('r', d => d.radius + (d.type === 'page' ? 5 : 3))
-            .attr('fill', d => d.tone.fill)
-            .attr('opacity', d => d.type === 'page' ? 0.12 : 0.05)
-            .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
+            .attr('r', d => d.radius + 4)
+            .attr('fill', d => NODE_COLORS[d.type])
+            .attr('opacity', d => d.type === 'page' ? 0.15 : 0.06)
+            .attr('filter', 'url(#glow)');
 
           // Main circle (point-like, no stroke)
           grp.append('circle')
             .attr('class', 'main')
             .attr('r', d => d.radius)
-            .attr('fill', d => d.tone.fill)
+            .attr('fill', d => NODE_COLORS[d.type])
             .attr('stroke', 'none');
 
           // Page labels (always visible)
@@ -453,7 +458,7 @@ export function GraphView({
             .append('text')
             .attr('class', 'page-label')
             .attr('text-anchor', 'middle')
-            .attr('y', d => d.radius + 12)
+            .attr('y', d => d.radius + 10)
             .attr('fill', colors.textPrimary)
             .attr('font-size', 11)
             .attr('font-family', "'Manrope', sans-serif")
@@ -520,42 +525,17 @@ export function GraphView({
     const applySemanticZoom = (k) => {
       zoomLevelRef.current = k;
 
-      // Notes shrink at far zoom
-      nodeSel.filter('.node-note').select('.main')
-        .attr('r', d => k < ZOOM_FAR ? d.radius * Math.max(0.3, k / ZOOM_FAR) : d.radius);
-      nodeSel.filter('.node-note').select('.glow')
-        .attr('opacity', k < ZOOM_FAR ? 0 : 0.04);
-
-      // Section/note hierarchical + tag links: hide at far zoom
-      linkSel.each(function (d) {
-        const el = select(this);
-        if (el.attr('display') === 'none') return; // respect visibility toggle
-        if (d.linkType === 'tag') {
-          el.attr('opacity', k < ZOOM_FAR ? 0 : 1);
-        } else if (d.linkType === 'hierarchical') {
-          const srcType = d.source.type || (typeof d.source === 'string' ? null : d.source.type);
-          if (srcType === 'note') {
-            el.attr('opacity', k < ZOOM_FAR ? 0 : 1);
-          }
-        }
-      });
-
-      // Sections fade at close zoom
-      nodeSel.filter('.node-section').each(function (d) {
+      // Interpolate node colors: as user zooms in, sections→white, notes→lighter
+      const zoomT = Math.min(1, Math.max(0, (k - ZOOM_FAR) / (ZOOM_CLOSE - ZOOM_FAR)));
+      nodeSel.each(function (d) {
         if (select(this).attr('display') === 'none') return;
-        select(this).style('opacity', k > ZOOM_CLOSE
-          ? Math.max(0, 1 - (k - ZOOM_CLOSE) / 1.5)
-          : 1
-        );
-      });
-
-      // Pages fade at ultra close zoom
-      nodeSel.filter('.node-page').each(function (d) {
-        if (select(this).attr('display') === 'none') return;
-        select(this).style('opacity', k > ZOOM_ULTRA
-          ? Math.max(0, 1 - (k - ZOOM_ULTRA) / 2.0)
-          : 1
-        );
+        const base = NODE_COLORS[d.type];
+        const zoomed = NODE_COLORS_ZOOMED[d.type];
+        const fill = zoomT > 0.01 ? zoomed : base;
+        // Smooth transition: use zoomed colors when zoomed in past midpoint
+        const useZoomed = k > 1.0;
+        select(this).select('.main').attr('fill', useZoomed ? zoomed : base);
+        select(this).select('.glow').attr('fill', useZoomed ? zoomed : base);
       });
 
       // Page labels: compensate scale at far zoom so they stay readable
@@ -584,32 +564,35 @@ export function GraphView({
       .on('mouseenter', function (event, d) {
         const connected = adjacencyMap.get(d.id) || new Set();
 
-        // Highlight hovered + connected, dim rest
-        nodeSel.transition().duration(120)
-          .style('opacity', n => {
-            if (select(nodeGroup.selectAll('.graph-node').nodes().find(el => select(el).datum() === n))?.attr('display') === 'none') return 0;
-            if (n.id === d.id || connected.has(n.id)) return 1;
-            return 0.08;
-          });
+        // Dim unconnected nodes, brighten connected (color change, no opacity)
+        nodeSel.each(function (n) {
+          const el = select(this);
+          if (el.attr('display') === 'none') return;
+          const isActive = n.id === d.id || connected.has(n.id);
+          el.select('.main').transition().duration(120)
+            .attr('fill', isActive ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.04)');
+          el.select('.glow').transition().duration(120)
+            .attr('fill', isActive ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.02)');
+        });
 
-        linkSel.transition().duration(120)
-          .attr('opacity', l => {
-            if (l.source.id === d.id || l.target.id === d.id) return 1;
-            return 0.08;
-          })
-          .attr('stroke-width', l => {
-            if (l.source.id === d.id || l.target.id === d.id) return 2;
-            return LINK_WIDTHS[l.linkType];
-          });
+        // Brighten connected links, dim rest (color change, not opacity)
+        linkSel.each(function (l) {
+          const el = select(this);
+          if (el.attr('display') === 'none') return;
+          const isActive = l.source.id === d.id || l.target.id === d.id;
+          el.transition().duration(120)
+            .attr('stroke', isActive ? LINK_COLORS_HOVER[l.linkType] : 'rgba(255, 255, 255, 0.03)')
+            .attr('stroke-width', isActive ? 1 : LINK_WIDTHS[l.linkType]);
+        });
 
         // Enlarge hovered node
         select(this).select('.main')
           .transition().duration(120)
-          .attr('r', d.radius * 1.8);
+          .attr('r', d.radius * 2);
         select(this).select('.glow')
           .transition().duration(120)
-          .attr('r', d.radius * 1.8 + 6)
-          .attr('opacity', 0.2)
+          .attr('r', d.radius * 2 + 5)
+          .attr('opacity', 0.25)
           .attr('filter', 'url(#glow-hover)');
 
         // Tooltip
@@ -628,32 +611,29 @@ export function GraphView({
         });
       })
       .on('mouseleave', function () {
-        // Restore sizes
+        const k = zoomLevelRef.current;
+        const useZoomed = k > 1.0;
+
+        // Restore node colors
+        nodeSel.each(function (d) {
+          const el = select(this);
+          const colors = useZoomed ? NODE_COLORS_ZOOMED : NODE_COLORS;
+          el.select('.main').transition().duration(200).attr('fill', colors[d.type]);
+          el.select('.glow').transition().duration(200).attr('fill', colors[d.type]);
+        });
         nodeSel.selectAll('.main')
           .transition().duration(200)
           .attr('r', d => d.radius);
         nodeSel.selectAll('.glow')
           .transition().duration(200)
-          .attr('r', d => d.radius + (d.type === 'page' ? 5 : 3))
-          .attr('opacity', d => d.type === 'page' ? 0.12 : 0.05)
-          .attr('filter', d => d.type === 'page' ? 'url(#glow-bright)' : 'url(#glow)');
+          .attr('r', d => d.radius + 4)
+          .attr('opacity', d => d.type === 'page' ? 0.15 : 0.06)
+          .attr('filter', 'url(#glow)');
 
-        // Restore link widths
+        // Restore link colors
         linkSel.transition().duration(200)
-          .attr('stroke-width', d => LINK_WIDTHS[d.linkType])
-          .attr('opacity', 1);
-
-        // Restore node opacity (respecting semantic zoom)
-        const k = zoomLevelRef.current;
-        nodeSel.transition().duration(200)
-          .style('opacity', d => {
-            if (d.type === 'section' && k > ZOOM_CLOSE) return Math.max(0, 1 - (k - ZOOM_CLOSE) / 1.5);
-            if (d.type === 'page' && k > ZOOM_ULTRA) return Math.max(0, 1 - (k - ZOOM_ULTRA) / 2.0);
-            return 1;
-          });
-
-        // Re-apply semantic zoom for links after transition
-        setTimeout(() => applySemanticZoom(k), 250);
+          .attr('stroke', d => LINK_COLORS[d.linkType])
+          .attr('stroke-width', d => LINK_WIDTHS[d.linkType]);
 
         setHoveredNode(null);
       })
@@ -906,11 +886,11 @@ export function GraphView({
 
   // ─── Styles ────────────────────────────────────────────────────────────────
   const controlStyle = {
-    background: 'rgba(13, 13, 13, 0.7)',
-    backdropFilter: 'blur(24px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(24px) saturate(150%)',
-    border: 'none',
-    borderRadius: 2,
+    background: 'rgba(28, 28, 30, 0.46)',
+    backdropFilter: 'blur(50px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(50px) saturate(180%)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: 6,
     color: colors.textSecondary,
     fontSize: 11,
     fontFamily: "'Manrope', sans-serif",
@@ -924,7 +904,7 @@ export function GraphView({
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    border: 'none',
+    border: `1px solid rgba(255, 255, 255, ${active ? '0.15' : '0.08'})`,
     color: active ? colors.textPrimary : colors.textMuted,
     transition: 'color 0.15s ease, border-color 0.15s ease',
   });
@@ -943,12 +923,14 @@ export function GraphView({
   if (!notes || notes.length === 0) {
     return (
       <div style={{
+        position: 'fixed',
+        inset: 0,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '100%',
-        minHeight: 400,
+        background: colors.bg,
+        zIndex: 2,
         gap: 16,
         color: colors.textMuted,
         fontFamily: "'Manrope', sans-serif",
@@ -963,12 +945,11 @@ export function GraphView({
     <div
       ref={containerRef}
       style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        minHeight: 500,
+        position: 'fixed',
+        inset: 0,
         background: colors.bg,
         overflow: 'hidden',
+        zIndex: 2,
       }}
     >
       {/* ─── Visibility toggles (top-left) ──────────────────────────────── */}

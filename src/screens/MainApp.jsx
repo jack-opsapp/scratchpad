@@ -1639,15 +1639,16 @@ export function MainApp({ user, onSignOut }) {
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative', zIndex: viewMode === 'graph' ? 3 : 1 }}>
         {/* Desktop Sidebar - hide on mobile */}
         {!isMobile && (
           <div
             style={{
               width: sidebarOpen ? 240 : 56,
-              background: `${colors.surface}ee`,
-              backdropFilter: 'blur(20px)',
-              borderRight: `1px solid ${colors.border}`,
+              background: viewMode === 'graph' ? 'rgba(13, 13, 13, 0.82)' : `${colors.surface}ee`,
+              backdropFilter: viewMode === 'graph' ? 'blur(50px) saturate(180%)' : 'blur(20px)',
+              WebkitBackdropFilter: viewMode === 'graph' ? 'blur(50px) saturate(180%)' : 'blur(20px)',
+              borderRight: viewMode === 'graph' ? '1px solid rgba(255,255,255,0.06)' : `1px solid ${colors.border}`,
               transition: 'width 0.2s',
               display: 'flex',
               flexDirection: 'column',
@@ -2790,6 +2791,7 @@ export function MainApp({ user, onSignOut }) {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            pointerEvents: viewMode === 'graph' ? 'none' : undefined,
           }}
         >
           {/* Toolbar - hide on mobile and home view, MobileHeader handles navigation */}
@@ -3373,9 +3375,9 @@ export function MainApp({ user, onSignOut }) {
             ref={zoomRef}
             style={{
               flex: 1,
-              overflowY: 'auto',
+              overflowY: viewMode === 'graph' ? 'hidden' : 'auto',
               overflowX: 'hidden',
-              padding: isMobile ? '0 16px calc(240px + env(safe-area-inset-bottom))' : '0 40px 200px',
+              padding: viewMode === 'graph' ? 0 : (isMobile ? '0 16px calc(240px + env(safe-area-inset-bottom))' : '0 40px 200px'),
               opacity: contentVisible ? 1 : 0,
               transition: 'opacity 0.25s',
             }}
@@ -4588,7 +4590,7 @@ export function MainApp({ user, onSignOut }) {
                     const name = prompt('Section name:');
                     if (name) {
                       const newSection = { id: generateId(), name };
-                      setPages(prev =>
+                      const updatePageSections = prev =>
                         prev.map(p =>
                           p.id === page.id
                             ? {
@@ -4599,8 +4601,10 @@ export function MainApp({ user, onSignOut }) {
                                 ],
                               }
                             : p
-                        )
-                      );
+                        );
+                      setPages(updatePageSections);
+                      setOwnedPages(updatePageSections);
+                      setSharedPages(updatePageSections);
                       // Direct Supabase persist
                       supabase.from('sections').upsert({
                         id: newSection.id,
