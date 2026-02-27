@@ -1639,16 +1639,16 @@ export function MainApp({ user, onSignOut }) {
         />
       )}
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative', zIndex: viewMode === 'graph' ? 3 : 1 }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Desktop Sidebar - hide on mobile */}
         {!isMobile && (
           <div
             style={{
               width: sidebarOpen ? 240 : 56,
-              background: viewMode === 'graph' ? 'rgba(13, 13, 13, 0.82)' : `${colors.surface}ee`,
-              backdropFilter: viewMode === 'graph' ? 'blur(50px) saturate(180%)' : 'blur(20px)',
-              WebkitBackdropFilter: viewMode === 'graph' ? 'blur(50px) saturate(180%)' : 'blur(20px)',
-              borderRight: viewMode === 'graph' ? '1px solid rgba(255,255,255,0.06)' : `1px solid ${colors.border}`,
+              background: `${colors.surface}ee`,
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              borderRight: `1px solid ${colors.border}`,
               transition: 'width 0.2s',
               display: 'flex',
               flexDirection: 'column',
@@ -2791,7 +2791,6 @@ export function MainApp({ user, onSignOut }) {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            pointerEvents: viewMode === 'graph' ? 'none' : undefined,
           }}
         >
           {/* Toolbar - hide on mobile and home view, MobileHeader handles navigation */}
