@@ -55,7 +55,10 @@ export const DEFAULT_SETTINGS = {
 
   // Team
   defaultMemberPermission: 'team',
-  requireInviteApproval: false
+  requireInviteApproval: false,
+
+  // Onboarding
+  demoComplete: false
 };
 
 // =============================================================================
@@ -93,7 +96,8 @@ const SETTING_TO_COLUMN = {
   customOpenAIKey: 'custom_openai_key',
   customOpenAIModel: 'custom_openai_model',
   defaultMemberPermission: 'default_member_permission',
-  requireInviteApproval: 'require_invite_approval'
+  requireInviteApproval: 'require_invite_approval',
+  demoComplete: 'demo_complete'
 };
 
 /**

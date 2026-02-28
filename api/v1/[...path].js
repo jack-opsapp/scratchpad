@@ -16,6 +16,10 @@
  *   PATCH  /api/v1/notes/:id
  *   DELETE /api/v1/notes/:id
  *   GET    /api/v1/tags
+ *   GET    /api/v1/connections
+ *   GET    /api/v1/connections?note_id=
+ *   POST   /api/v1/connections
+ *   DELETE /api/v1/connections/:id
  *
  * All data endpoints use X-API-Key header auth.
  */
@@ -90,6 +94,7 @@ export default async function handler(req, res) {
     case 'sections': return handleSections(req, res, resourceId);
     case 'notes':    return handleNotes(req, res, resourceId);
     case 'tags':     return handleTags(req, res);
+    case 'connections': return handleConnections(req, res, resourceId);
     default:
       return res.status(404).json({ error: `Unknown resource: ${resource || '(empty)'}` });
   }
@@ -620,6 +625,86 @@ async function handleTags(req, res) {
     return res.json({ tags: allTags });
   } catch (err) {
     console.error('Tags error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ============ /connections ============
+
+const VALID_CONNECTION_TYPES = ['related', 'supports', 'contradicts', 'extends', 'source'];
+
+async function handleConnections(req, res, resourceId) {
+  // Method guard: DELETE requires resourceId; GET/POST must not have one
+  if (resourceId) {
+    if (req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  } else {
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const auth = await authenticateApiKey(req, res);
+  if (!auth) return;
+  const { userId, supabase } = auth;
+
+  try {
+    if (req.method === 'GET') {
+      const { note_id } = req.query;
+
+      if (note_id) {
+        // Get connections for a specific note
+        const { data, error } = await supabase.rpc('get_note_connections', { p_note_id: note_id });
+        if (error) return res.status(500).json({ error: 'Failed to fetch connections' });
+        return res.json({ connections: data || [] });
+      } else {
+        // Get all connections for the user
+        const { data, error } = await supabase.rpc('get_all_connections', { p_user_id: userId });
+        if (error) return res.status(500).json({ error: 'Failed to fetch connections' });
+        return res.json({ connections: data || [] });
+      }
+    }
+
+    if (req.method === 'POST') {
+      const { source_note_id, target_note_id, connection_type, label } = req.body || {};
+
+      if (!source_note_id) return res.status(400).json({ error: 'source_note_id is required' });
+      if (!target_note_id) return res.status(400).json({ error: 'target_note_id is required' });
+
+      const connType = connection_type || 'related';
+      if (!VALID_CONNECTION_TYPES.includes(connType)) {
+        return res.status(400).json({ error: `connection_type must be one of: ${VALID_CONNECTION_TYPES.join(', ')}` });
+      }
+
+      const row = {
+        source_note_id,
+        target_note_id,
+        connection_type: connType,
+        created_by_user_id: userId,
+      };
+      if (label) row.label = label;
+
+      const { data, error } = await supabase
+        .from('note_connections')
+        .insert(row)
+        .select('*')
+        .single();
+
+      if (error) return res.status(500).json({ error: 'Failed to create connection' });
+      return res.status(201).json({ connection: data });
+    }
+
+    if (req.method === 'DELETE') {
+      const { data, error } = await supabase
+        .from('note_connections')
+        .delete()
+        .eq('id', resourceId)
+        .eq('created_by_user_id', userId)
+        .select('id')
+        .single();
+
+      if (error || !data) return res.status(404).json({ error: 'Connection not found' });
+      return res.json({ deleted: true, id: data.id });
+    }
+  } catch (err) {
+    console.error('Connections error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
