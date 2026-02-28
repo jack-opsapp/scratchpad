@@ -562,7 +562,7 @@ export function MainApp({ user, onSignOut }) {
   )
     .filter(n => !filterIncomplete || !n.completed)
     .filter(
-      n => filterTag.length === 0 || filterTag.some(t => n.tags?.includes(t))
+      n => filterTag.length === 0 || filterTag.every(t => n.tags?.includes(t))
     )
     .sort((a, b) => {
       if (sortBy === 'custom') {
@@ -3374,6 +3374,8 @@ export function MainApp({ user, onSignOut }) {
             ref={zoomRef}
             style={{
               flex: 1,
+              display: viewMode === 'graph' ? 'flex' : undefined,
+              flexDirection: viewMode === 'graph' ? 'column' : undefined,
               overflowY: viewMode === 'graph' ? 'hidden' : 'auto',
               overflowX: 'hidden',
               padding: viewMode === 'graph' ? 0 : (isMobile ? '0 16px calc(240px + env(safe-area-inset-bottom))' : '0 40px 200px'),
@@ -3385,6 +3387,8 @@ export function MainApp({ user, onSignOut }) {
             transform: zoomScale !== 1 ? `scale(${zoomScale})` : undefined,
             transformOrigin: 'top left',
             width: zoomScale !== 1 ? `${100 / zoomScale}%` : '100%',
+            flex: viewMode === 'graph' ? 1 : undefined,
+            minHeight: viewMode === 'graph' ? 0 : undefined,
             transition: 'transform 0.1s ease',
           }}>
             {/* Agent View - when active, takes over the content area */}
@@ -4415,6 +4419,12 @@ export function MainApp({ user, onSignOut }) {
               { keys: 'Ctrl ?', desc: 'Show shortcuts' },
               { keys: 'Esc', desc: 'Close modal / blur' },
               { keys: 'Ctrl Scroll', desc: 'Zoom in / out' },
+              { keys: 'Enter', desc: 'Submit message' },
+              { keys: 'Shift Enter', desc: 'New line in input' },
+              { keys: 'Tab', desc: 'Accept autocomplete suggestion' },
+              { keys: '↑ / ↓', desc: 'Navigate message history' },
+              { keys: 'Shift ↑ / ↓', desc: 'Cycle context prefix' },
+              { keys: '← / →', desc: 'Navigate action buttons' },
             ].map(({ keys, desc }) => (
               <div
                 key={keys}

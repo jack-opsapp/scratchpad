@@ -440,7 +440,8 @@ export default async function handler(req, res) {
     const frontendActions = []; // Collect navigation/filter actions
     let finalResponse = null;
     let iterations = 0;
-    let noteCreated = false; // Track if create_note was called
+    let noteCreated = false; // Track if create_note was called specifically
+    let dataActionExecuted = false; // Track if any data mutation was executed
 
     // Detect whether message is a COMMAND (not a note)
     const isCommandRequest = (msg) => {
@@ -701,6 +702,17 @@ export default async function handler(req, res) {
         if (functionName === 'create_note' && result.id) {
           noteCreated = true;
         }
+        // Track any data mutation (update, delete, complete, tag, move, etc.)
+        const MUTATION_FUNCTIONS = [
+          'create_note', 'update_note', 'delete_note', 'complete_note',
+          'bulk_complete_notes', 'bulk_delete_notes', 'bulk_tag_notes',
+          'move_note', 'bulk_move_notes', 'create_page', 'delete_page',
+          'create_section', 'delete_section', 'rename_page', 'rename_section',
+          'restore_from_trash', 'empty_trash'
+        ];
+        if (MUTATION_FUNCTIONS.includes(functionName) && !result.error) {
+          dataActionExecuted = true;
+        }
 
         messages.push({
           role: 'tool',
@@ -729,14 +741,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // Safeguard: If message looked like note creation but no note was created, warn user
-    console.log('Safeguard check:', { expectsNoteCreation, noteCreated, responseType: finalResponse?.type });
-    if (expectsNoteCreation && !noteCreated && finalResponse.type === 'response') {
-      console.warn('Note creation pattern detected but create_note was not called');
+    // Safeguard: If message looked like note creation but no data action was executed, warn user
+    console.log('Safeguard check:', { expectsNoteCreation, noteCreated, dataActionExecuted, responseType: finalResponse?.type });
+    if (expectsNoteCreation && !dataActionExecuted && finalResponse.type === 'response') {
+      console.warn('Note creation pattern detected but no data action was executed');
       finalResponse = {
         type: 'error',
         message: 'Failed to create note. Please try again.',
-        _debug: 'Note pattern detected but create_note not called'
+        _debug: 'Note pattern detected but no data mutation was executed'
       };
     }
 

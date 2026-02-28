@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Check, Trash2, Link2 } from 'lucide-react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors } from '../styles/theme.js';
@@ -170,6 +170,14 @@ export function NoteCard({
   const inputRef = useRef(null);
   const typewriter = useTypewriter(note.content, 20, 0, isNew);
 
+  // Auto-resize textarea to fit content when editing starts
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
+    }
+  }, [editing]);
+
   const handleDragStart = (e) => {
     e.dataTransfer.setData('text/plain', `note:${note.id}`);
     e.dataTransfer.setData('application/x-note-content', note.content);
@@ -250,12 +258,16 @@ export function NoteCard({
         <div style={{ flex: 1 }}>
           {editing && canEdit ? (
             <div style={{ position: 'relative' }}>
-              <input
+              <textarea
                 ref={inputRef}
                 value={content}
+                rows={1}
                 onChange={e => {
                   const val = e.target.value;
                   setContent(val);
+                  // Auto-resize to fit content
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
                   // Detect [[ trigger for wikilink autocomplete
                   const cursorPos = e.target.selectionStart;
                   const textBefore = val.substring(0, cursorPos);
@@ -277,7 +289,8 @@ export function NoteCard({
                   }, 150);
                 }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !showAutocomplete) {
+                  if (e.key === 'Enter' && !e.shiftKey && !showAutocomplete) {
+                    e.preventDefault();
                     onEdit(note.id, content);
                     setEditing(false);
                   }
@@ -295,6 +308,12 @@ export function NoteCard({
                   fontSize: 14,
                   fontFamily: "'Manrope', sans-serif",
                   outline: 'none',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  lineHeight: 1.5,
+                  padding: 0,
+                  margin: 0,
+                  display: 'block',
                 }}
               />
               {showAutocomplete && (

@@ -316,10 +316,13 @@ export function GraphView({
     return (pages || []).filter(p => pageIds.has(p.id));
   }, [pages, graphNodes]);
 
-  // ─── Measure container (full viewport) ───────────────────────────────────
+  // ─── Measure container ─────────────────────────────────────────────────────
   useEffect(() => {
     const measure = () => {
-      setDimensions({ width: window.innerWidth, height: window.innerHeight });
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setDimensions({ width: rect.width || 800, height: rect.height || 600 });
+      }
     };
     measure();
     window.addEventListener('resize', measure);
@@ -484,7 +487,7 @@ export function GraphView({
     const simulation = forceSimulation(graphNodes)
       .velocityDecay(0.4)
       .alpha(1)
-      .alphaDecay(0.01)
+      .alphaDecay(0.05)
       .force('link', forceLink(graphLinks)
         .id(d => d.id)
         .distance(d => d.distance)
@@ -519,6 +522,11 @@ export function GraphView({
         .attr('y2', d => d.target.y);
 
       nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    // Stop simulation once it has settled — nodes stay in place until user drags them
+    simulation.on('end', () => {
+      simulation.stop();
     });
 
     // ── Semantic zoom ──
@@ -705,14 +713,14 @@ export function GraphView({
       })
       .on('end', function (event, d) {
         if (!event.active) simulation.alphaTarget(0);
-        // Release → spring back
-        d.fx = null;
-        d.fy = null;
+        // Keep node pinned at dropped position (no spring-back)
+        d.fx = d.x;
+        d.fy = d.y;
         if (selectedNodesRef.current.size > 0) {
           simulation.nodes().forEach(n => {
             if (selectedNodesRef.current.has(n.id)) {
-              n.fx = null;
-              n.fy = null;
+              n.fx = n.x;
+              n.fy = n.y;
             }
           });
         }
@@ -923,14 +931,12 @@ export function GraphView({
   if (!notes || notes.length === 0) {
     return (
       <div style={{
-        position: 'fixed',
-        inset: 0,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: colors.bg,
-        zIndex: 2,
+        width: '100%',
+        height: '100%',
         gap: 16,
         color: colors.textMuted,
         fontFamily: "'Manrope', sans-serif",
@@ -945,11 +951,11 @@ export function GraphView({
     <div
       ref={containerRef}
       style={{
-        position: 'fixed',
-        inset: 0,
+        position: 'relative',
+        width: '100%',
+        height: '100%',
         background: colors.bg,
         overflow: 'hidden',
-        zIndex: 2,
       }}
     >
       {/* ─── Visibility toggles (top-left) ──────────────────────────────── */}

@@ -65,6 +65,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [lastPrefix, setLastPrefix] = useState('');
   const [prefixHistory, setPrefixHistory] = useState([]);
   const [prefixIndex, setPrefixIndex] = useState(-1);
+  const prefixIndexRef = useRef(-1);
   const [shimmerActive, setShimmerActive] = useState(false);
   const [autofillSuggestion, setAutofillSuggestion] = useState('');
   const [isNoteDragOver, setIsNoteDragOver] = useState(false);
@@ -81,6 +82,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const buttonRefs = useRef([]);
   const lastEscTime = useRef(0);
   const prefixBaseContent = useRef('');
+  const isSubmittingRef = useRef(false); // Prevents duplicate submissions from touch+click on mobile
 
   // Find the last unresponded message that needs action buttons
   const pendingMessage = messages.slice().reverse().find(
@@ -454,6 +456,11 @@ const ChatPanel = forwardRef(function ChatPanel({
     e?.preventDefault();
     if (!inputValue.trim()) return;
 
+    // Prevent duplicate submissions from simultaneous touch + click events on mobile
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setTimeout(() => { isSubmittingRef.current = false; }, 300);
+
     // Extract prefix (e.g. "scratchpad/bugs: ") before clearing
     const prefixMatch = inputValue.match(/^([\w/.-]+:\s*)/);
     if (prefixMatch) {
@@ -463,6 +470,7 @@ const ChatPanel = forwardRef(function ChatPanel({
         const filtered = prev.filter(p => p !== prefix);
         return [...filtered, prefix];
       });
+      prefixIndexRef.current = -1;
       setPrefixIndex(-1);
     }
 
@@ -486,6 +494,17 @@ const ChatPanel = forwardRef(function ChatPanel({
   };
 
   const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      const now = Date.now();
+      if (now - lastEscTime.current < 300) {
+        e.preventDefault();
+        setInputValue('');
+        lastEscTime.current = 0;
+      } else {
+        lastEscTime.current = now;
+      }
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -493,25 +512,29 @@ const ChatPanel = forwardRef(function ChatPanel({
       // Shift+Up/Down: cycle through previous section/page prefixes only
       // Does NOT change the user's typed content — only the prefix ahead of it
       e.preventDefault();
+      // Use ref for current index to avoid stale closure issues
+      const currentPrefixIndex = prefixIndexRef.current;
       let newIndex;
       if (e.key === 'ArrowUp') {
-        newIndex = prefixIndex === -1
+        newIndex = currentPrefixIndex === -1
           ? prefixHistory.length - 1
-          : Math.max(0, prefixIndex - 1);
+          : Math.max(0, currentPrefixIndex - 1);
       } else {
-        if (prefixIndex === -1) return;
-        newIndex = prefixIndex + 1;
+        if (currentPrefixIndex === -1) return;
+        newIndex = currentPrefixIndex + 1;
         if (newIndex >= prefixHistory.length) {
           // Cycled past end — remove prefix, restore original input
+          prefixIndexRef.current = -1;
           setPrefixIndex(-1);
           setInputValue(prefixBaseContent.current);
           return;
         }
       }
       // On first cycle, save the current input content (without any prefix) as the base
-      if (prefixIndex === -1) {
+      if (currentPrefixIndex === -1) {
         prefixBaseContent.current = inputValue.replace(/^-?[\w/.-]+:\s*/, '');
       }
+      prefixIndexRef.current = newIndex;
       setPrefixIndex(newIndex);
       setInputValue(prefixHistory[newIndex] + prefixBaseContent.current);
       setShimmerActive(true);
