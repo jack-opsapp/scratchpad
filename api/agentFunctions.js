@@ -569,7 +569,21 @@ async function createNote(supabase, userId, args) {
     .single();
 
   if (error) throw error;
-  return { id: data.id, content: data.content };
+
+  // If additional shared sections were specified, insert into note_sections junction table
+  if (args.shared_section_names && args.shared_section_names.length > 0) {
+    const sharedIds = [];
+    for (const name of args.shared_section_names) {
+      const sid = await resolveSectionId(supabase, userId, { section_name: name });
+      if (sid && sid !== sectionId) sharedIds.push(sid);
+    }
+    if (sharedIds.length > 0) {
+      const rows = sharedIds.map(sid => ({ note_id: data.id, section_id: sid }));
+      await supabase.from('note_sections').insert(rows);
+    }
+  }
+
+  return { id: data.id, content: data.content, shared_sections: args.shared_section_names || [] };
 }
 
 async function updateNote(supabase, userId, args) {

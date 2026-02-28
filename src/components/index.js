@@ -34,3 +34,6 @@ export { default as SettingsModal } from './SettingsModal.jsx';
 
 // Onboarding Components
 export { WelcomeOnboarding } from './WelcomeOnboarding.jsx';
+
+// Rich Text Editor
+export { default as RichTextEditor } from './RichTextEditor.jsx';

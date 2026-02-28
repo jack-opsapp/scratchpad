@@ -132,13 +132,22 @@ When a message contains "page/section:" pattern, parse it as a targeted note:
 - "marketing/campaigns: launch email sequence" → create note in marketing/campaigns
 - The format is: page_name/section_name: note_content
 
+SHARED SECTIONS (//):
+When the section part contains "//" separators, the note should appear in ALL listed sections (shared, not duplicated):
+- "ops/app//bugs//backlog: fix the login bug" → create note "fix the login bug" in "ops/app", ALSO shared into "bugs" and "backlog"
+- "work/tasks//personal: buy printer ink" → create note in "work/tasks", also shared into "personal"
+- The FIRST section (before the first //) is the primary section_name; the rest go in shared_section_names
+- Call create_note(page_name: "...", section_name: "app", content: "...", shared_section_names: ["bugs", "backlog"])
+- The note exists ONCE but appears in all specified sections. Editing it anywhere updates it everywhere.
+
 CRITICAL: You MUST call create_note() to actually create the note. Do NOT just respond with "Got it" - you must make the function call first. If you respond without calling create_note, the note will NOT be created.
 
 Steps when you see this pattern:
 1. Parse the path (before colon) and content (after colon)
-2. Call create_note(page_name: "...", section_name: "...", content: "...")
-3. Then call respond_to_user with confirmation
-4. If section not found, tell the user and offer to create it
+2. Split the section part on "//" to get primary section and any shared sections
+3. Call create_note(page_name: "...", section_name: "...", content: "...", shared_section_names: [...])
+4. Then call respond_to_user with confirmation
+5. If section not found, tell the user and offer to create it
 
 MATCHING EXISTING PAGES/SECTIONS (CRITICAL):
 - When a user references a page or section name, ALWAYS try to match an existing one first

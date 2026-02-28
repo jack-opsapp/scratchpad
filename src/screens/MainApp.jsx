@@ -30,6 +30,8 @@ import {
   ZoomOut,
   RotateCcw,
   Network,
+  FileText,
+  ListTree,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
@@ -131,6 +133,7 @@ import {
   ChatPanel,
   ConnectionsPopover,
   WelcomeOnboarding,
+  RichTextEditor,
 } from '../components/index.js';
 import { TableView } from '../components/TableView.jsx';
 import { parseWikilinks, buildWikilink } from '../lib/wikilinks.js';
@@ -152,6 +155,8 @@ function generateId() {
 
 // Track whether current drag is a section (can't read data during dragover)
 let draggingSection = false;
+// Track the dragged section's ID for same-page reorder
+let draggingSectionId = null;
 
 /**
  * Get user display name from user object
@@ -2011,19 +2016,30 @@ export function MainApp({ user, onSignOut }) {
                       </div>
 
                       {expandedPages.includes(page.id) &&
-                        page.sections.map(section => (
+                        [...page.sections].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map(section => (
                           <div
                             key={section.id}
+                            data-section-item="true"
                             draggable
                             onDragStart={e => {
                               e.dataTransfer.setData('text/plain', `section:${section.id}`);
                               e.dataTransfer.effectAllowed = 'move';
                               e.currentTarget.style.opacity = '0.4';
                               draggingSection = true;
+                              draggingSectionId = section.id;
                             }}
                             onDragEnd={e => {
                               e.currentTarget.style.opacity = '1';
                               draggingSection = false;
+                              draggingSectionId = null;
+                              // Clear any drop indicators left on sibling items
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                parent.querySelectorAll('[data-section-item]').forEach(el => {
+                                  el.style.borderTop = '';
+                                  el.style.borderBottom = '';
+                                });
+                              }
                             }}
                             onClick={() => {
                               setCurrentPage(page.id);
@@ -2032,13 +2048,29 @@ export function MainApp({ user, onSignOut }) {
                               setAgentView(null);
                             }}
                             onDragOver={e => {
-                              if (e.dataTransfer.types.includes('text/plain')) {
-                                e.preventDefault();
+                              if (!e.dataTransfer.types.includes('text/plain')) return;
+                              e.preventDefault();
+                              if (draggingSection && draggingSectionId !== section.id && page.sections.some(s => s.id === draggingSectionId)) {
+                                // Section-to-section reorder within same page: show top/bottom drop line
+                                e.dataTransfer.dropEffect = 'move';
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const midY = rect.top + rect.height / 2;
+                                if (e.clientY < midY) {
+                                  e.currentTarget.style.borderTop = `2px solid ${colors.primary}`;
+                                  e.currentTarget.style.borderBottom = '';
+                                } else {
+                                  e.currentTarget.style.borderTop = '';
+                                  e.currentTarget.style.borderBottom = `2px solid ${colors.primary}`;
+                                }
+                              } else if (!draggingSection) {
+                                // Note drop: show left highlight
                                 e.currentTarget.style.borderLeft = `1px solid ${colors.primary}`;
                                 e.currentTarget.style.color = colors.primary;
                               }
                             }}
                             onDragLeave={e => {
+                              e.currentTarget.style.borderTop = '';
+                              e.currentTarget.style.borderBottom = '';
                               e.currentTarget.style.borderLeft = currentSection === section.id
                                 ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
                               e.currentTarget.style.color = currentSection === section.id
@@ -2046,7 +2078,40 @@ export function MainApp({ user, onSignOut }) {
                             }}
                             onDrop={e => {
                               e.preventDefault();
+                              // Clear all drop indicators
+                              e.currentTarget.style.borderTop = '';
+                              e.currentTarget.style.borderBottom = '';
+                              e.currentTarget.style.borderLeft = currentSection === section.id
+                                ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
+                              e.currentTarget.style.color = currentSection === section.id
+                                ? colors.textPrimary : colors.textMuted;
+
                               const data = e.dataTransfer.getData('text/plain');
+
+                              // Section-to-section reorder within same page
+                              const sectionMatch = data.match(/^section:(.+)$/);
+                              if (sectionMatch) {
+                                const draggedId = sectionMatch[1];
+                                if (draggedId === section.id) return;
+                                if (!page.sections.some(s => s.id === draggedId)) return; // cross-page move handled by page header
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const insertAfter = e.clientY >= rect.top + rect.height / 2;
+                                const reordered = page.sections.filter(s => s.id !== draggedId);
+                                const targetIdx = reordered.findIndex(s => s.id === section.id);
+                                const insertIdx = insertAfter ? targetIdx + 1 : targetIdx;
+                                const draggedSection = page.sections.find(s => s.id === draggedId);
+                                reordered.splice(insertIdx, 0, draggedSection);
+                                const withPositions = reordered.map((s, i) => ({ ...s, position: i }));
+                                const updateSections = pg =>
+                                  pg.map(p => p.id === page.id ? { ...p, sections: withPositions } : p);
+                                setPages(updateSections);
+                                setOwnedPages(updateSections);
+                                withPositions.forEach(s => {
+                                  supabase.from('sections').update({ position: s.position }).eq('id', s.id);
+                                });
+                                return;
+                              }
+
                               const noteMatch = data.match(/^note:(.+)$/);
                               if (noteMatch) {
                                 const noteId = noteMatch[1];
@@ -2092,11 +2157,6 @@ export function MainApp({ user, onSignOut }) {
                                   supabase.from('notes').update({ section_id: section.id }).eq('id', noteId);
                                 }
                               }
-                              // Reset styles
-                              e.currentTarget.style.borderLeft = currentSection === section.id
-                                ? `1px solid ${colors.textPrimary}` : '1px solid transparent';
-                              e.currentTarget.style.color = currentSection === section.id
-                                ? colors.textPrimary : colors.textMuted;
                             }}
                             onMouseEnter={e => {
                               if (currentSection !== section.id) {
@@ -2112,7 +2172,7 @@ export function MainApp({ user, onSignOut }) {
                               display: 'flex',
                               alignItems: 'center',
                               padding: '8px 0 8px 20px',
-                              cursor: 'pointer',
+                              cursor: 'grab',
                               color:
                                 currentSection === section.id
                                   ? colors.textPrimary
@@ -2184,7 +2244,7 @@ export function MainApp({ user, onSignOut }) {
                                   color: colors.textMuted,
                                   opacity: 0.6,
                                 }}>
-                                  {notes.filter(n => n.sectionId === section.id && !n.completed).length || ''}
+                                  {notes.filter(n => (n.sectionId === section.id || n.sharedSectionIds?.includes(section.id)) && !n.completed).length || ''}
                                 </span>
                               </span>
                             )}
@@ -3249,7 +3309,24 @@ export function MainApp({ user, onSignOut }) {
                       setShowHeaderMenu(!showHeaderMenu);
                     }}
                   />
-                  {currentSection && !viewingPageLevel && (
+                  {currentSection && !viewingPageLevel && currentSectionData?.section_type === 'richtext' && (
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      color: colors.textMuted,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: 1,
+                      marginLeft: 8,
+                      padding: '2px 6px',
+                      border: `1px solid ${colors.border}`,
+                      textTransform: 'uppercase',
+                    }}>
+                      <FileText size={10} /> Doc
+                    </span>
+                  )}
+                  {currentSection && !viewingPageLevel && currentSectionData?.section_type !== 'richtext' && (
                     <span style={{
                       color: colors.textMuted,
                       fontSize: 12,
@@ -3259,7 +3336,7 @@ export function MainApp({ user, onSignOut }) {
                       {filteredNotes.filter(n => !n.completed).length}
                     </span>
                   )}
-                  {currentSection && !viewingPageLevel && filteredNotes.some(n => !n.completed) && (
+                  {currentSection && !viewingPageLevel && currentSectionData?.section_type !== 'richtext' && filteredNotes.some(n => !n.completed) && (
                     <button
                       onClick={handleCompleteAll}
                       title="Complete all notes in this section"
@@ -3594,7 +3671,7 @@ export function MainApp({ user, onSignOut }) {
               <>
             {viewMode === 'list' &&
               (viewingPageLevel
-                ? currentPageData?.sections.map(section => {
+                ? [...(currentPageData?.sections || [])].sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0)).map(section => {
                     const sn = filteredNotes.filter(
                       n => n.sectionId === section.id || n.sharedSectionIds?.includes(section.id)
                     );
@@ -3792,7 +3869,32 @@ export function MainApp({ user, onSignOut }) {
                       </div>
                     );
                   })
-                : filteredNotes.length ? (() => {
+                : currentSectionData?.section_type === 'richtext' ? (
+                  /* Rich text editor for richtext sections */
+                  <RichTextEditor
+                    key={currentSection}
+                    content={currentSectionData?.rich_content || ''}
+                    readOnly={!canManageCurrentPage}
+                    onChange={(newContent) => {
+                      // Optimistic local update
+                      const updateSectionContent = pg => pg.map(p =>
+                        p.id === currentPage
+                          ? { ...p, sections: p.sections.map(s =>
+                              s.id === currentSection ? { ...s, rich_content: newContent } : s
+                            )}
+                          : p
+                      );
+                      setPages(updateSectionContent);
+                      setOwnedPages(updateSectionContent);
+                      setSharedPages(updateSectionContent);
+                      // Persist to Supabase
+                      supabase.from('sections')
+                        .update({ rich_content: newContent })
+                        .eq('id', currentSection)
+                        .then(({ error }) => { if (error) console.error('rich_content save error:', error); });
+                    }}
+                  />
+                ) : filteredNotes.length ? (() => {
                     const incompleteNotes = filteredNotes.filter(n => !n.completed);
                     const completedNotes = filteredNotes.filter(n => n.completed);
 
@@ -3952,9 +4054,9 @@ export function MainApp({ user, onSignOut }) {
                 notes={
                   viewingPageLevel
                     ? notes.filter(n =>
-                        currentPageData?.sections.some(s => s.id === n.sectionId)
+                        currentPageData?.sections.some(s => s.id === n.sectionId || n.sharedSectionIds?.includes(s.id))
                       )
-                    : notes.filter(n => n.sectionId === currentSection)
+                    : notes.filter(n => n.sectionId === currentSection || n.sharedSectionIds?.includes(currentSection))
                 }
                 currentMonth={currentMonth}
                 onMonthChange={d =>
@@ -4424,6 +4526,7 @@ export function MainApp({ user, onSignOut }) {
               { keys: 'Tab', desc: 'Accept autocomplete suggestion' },
               { keys: '↑ / ↓', desc: 'Navigate message history' },
               { keys: 'Shift ↑ / ↓', desc: 'Cycle context prefix' },
+              { keys: 'Alt ↑ / ↓', desc: 'Browse recent notes into input' },
               { keys: '← / →', desc: 'Navigate action buttons' },
             ].map(({ keys, desc }) => (
               <div
@@ -4713,6 +4816,58 @@ export function MainApp({ user, onSignOut }) {
                       setNotes([...notes, ...sn]);
                     },
                     visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
+                  },
+                  {
+                    label: section.starred ? 'Unstar section' : 'Star section',
+                    icon: Star,
+                    action: async () => {
+                      const newStarred = !section.starred;
+                      const updateSections = pg => pg.map(p =>
+                        p.id === page.id
+                          ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, starred: newStarred } : s) }
+                          : p
+                      );
+                      setPages(updateSections);
+                      setOwnedPages(updateSections);
+                      setSharedPages(updateSections);
+                      await supabase.from('sections').update({ starred: newStarred }).eq('id', section.id);
+                    },
+                    visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
+                  },
+                  { divider: true },
+                  {
+                    label: 'Convert to Rich Text',
+                    icon: FileText,
+                    action: async () => {
+                      if (!confirm(`Convert "${section.name}" to a rich text document? The notes list will be hidden while in rich text mode.`)) return;
+                      const updateSections = pg => pg.map(p =>
+                        p.id === page.id
+                          ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, section_type: 'richtext' } : s) }
+                          : p
+                      );
+                      setPages(updateSections);
+                      setOwnedPages(updateSections);
+                      setSharedPages(updateSections);
+                      await supabase.from('sections').update({ section_type: 'richtext' }).eq('id', section.id);
+                    },
+                    visible: ['owner', 'team-admin'].includes(pageRoles[page.id]) && (section.section_type || 'notes') === 'notes',
+                  },
+                  {
+                    label: 'Convert to Notes',
+                    icon: ListTree,
+                    action: async () => {
+                      if (!confirm(`Convert "${section.name}" back to a notes list? The rich text content will be preserved in the document but notes will be shown instead.`)) return;
+                      const updateSections = pg => pg.map(p =>
+                        p.id === page.id
+                          ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, section_type: 'notes' } : s) }
+                          : p
+                      );
+                      setPages(updateSections);
+                      setOwnedPages(updateSections);
+                      setSharedPages(updateSections);
+                      await supabase.from('sections').update({ section_type: 'notes' }).eq('id', section.id);
+                    },
+                    visible: ['owner', 'team-admin'].includes(pageRoles[page.id]) && (section.section_type || 'notes') === 'richtext',
                   },
                   { divider: true },
                   {

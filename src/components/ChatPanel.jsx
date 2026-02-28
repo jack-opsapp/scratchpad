@@ -66,6 +66,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const [prefixHistory, setPrefixHistory] = useState([]);
   const [prefixIndex, setPrefixIndex] = useState(-1);
   const prefixIndexRef = useRef(-1);
+  const noteIndexRef = useRef(-1);
   const [shimmerActive, setShimmerActive] = useState(false);
   const [autofillSuggestion, setAutofillSuggestion] = useState('');
   const [isNoteDragOver, setIsNoteDragOver] = useState(false);
@@ -563,6 +564,31 @@ const ChatPanel = forwardRef(function ChatPanel({
         setHistoryIndex(newIndex);
         setInputValue(inputHistory[newIndex]);
       }
+    } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Alt+Up/Down: index through recently created notes (most recent first)
+      e.preventDefault();
+      const sortedNotes = [...allNotes].sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
+      if (sortedNotes.length === 0) return;
+      const currentIndex = noteIndexRef.current;
+      if (e.key === 'ArrowUp') {
+        const newIndex = currentIndex === -1 ? 0 : Math.min(sortedNotes.length - 1, currentIndex + 1);
+        noteIndexRef.current = newIndex;
+        setInputValue(sortedNotes[newIndex].content || '');
+      } else {
+        // ArrowDown: go toward more recent / back to empty
+        if (currentIndex <= 0) {
+          noteIndexRef.current = -1;
+          setInputValue('');
+        } else {
+          const newIndex = currentIndex - 1;
+          noteIndexRef.current = newIndex;
+          setInputValue(sortedNotes[newIndex].content || '');
+        }
+      }
     }
   };
 
@@ -570,11 +596,11 @@ const ChatPanel = forwardRef(function ChatPanel({
   useEffect(() => {
     if (!inputValue) { setAutofillSuggestion(''); return; }
 
-    // Match "-" or "-pagename" or "-pagename/"
+    // Match "-" or "-pagename" or "-pagename/..."
     const dashMatch = inputValue.match(/^-(\w*)(\/?)(.*)/);
     if (!dashMatch) { setAutofillSuggestion(''); return; }
 
-    const [, pageFragment, hasSlash, sectionFragment] = dashMatch;
+    const [, pageFragment, hasSlash, afterSlash] = dashMatch;
 
     if (!hasSlash) {
       // Suggest page name: "-" → first page, "-scr" → "-scratchpad/"
@@ -597,19 +623,28 @@ const ChatPanel = forwardRef(function ChatPanel({
         }
       }
     } else {
-      // Suggest section name: "-scratchpad/bu" → "-scratchpad/bugs: "
-      const page = pages.find(p => p.name.toLowerCase() === pageFragment.toLowerCase());
-      if (page && page.sections) {
-        const secMatch = page.sections.find(s =>
-          s.name.toLowerCase().startsWith(sectionFragment.toLowerCase()) && sectionFragment.length > 0
+      // afterSlash may contain "//"-separated section names + optional trailing content after ": "
+      // Detect if we are in a shared-section fragment (after a "//")
+      const doubleSlashIdx = afterSlash.lastIndexOf('//');
+
+      if (doubleSlashIdx !== -1) {
+        // User is typing after at least one "//": suggest section names
+        const prefixBeforeFragment = afterSlash.substring(0, doubleSlashIdx + 2); // up to and including the last "//"
+        const sharedFragment = afterSlash.substring(doubleSlashIdx + 2);
+
+        // Collect all section names from all pages for autofill
+        const allSections = pages.flatMap(p => p.sections || []);
+        const secMatch = allSections.find(s =>
+          s.name.toLowerCase().startsWith(sharedFragment.toLowerCase()) && sharedFragment.length > 0
         );
-        if (secMatch && sectionFragment.toLowerCase() !== secMatch.name.toLowerCase()) {
-          setAutofillSuggestion(`-${pageFragment}/${secMatch.name.toLowerCase()}: `);
-        } else if (!sectionFragment) {
-          // Show first section as suggestion
-          const firstSec = page.sections[0];
-          if (firstSec) {
-            setAutofillSuggestion(`-${pageFragment}/${firstSec.name.toLowerCase()}: `);
+        if (secMatch && sharedFragment.toLowerCase() !== secMatch.name.toLowerCase()) {
+          setAutofillSuggestion(`-${pageFragment}/${prefixBeforeFragment}${secMatch.name.toLowerCase()}: `);
+        } else if (!sharedFragment) {
+          // Just typed "//", suggest first section that isn't already listed
+          const listed = prefixBeforeFragment.replace(/\/\/$/, '').split('//').map(s => s.toLowerCase());
+          const firstAvail = allSections.find(s => !listed.includes(s.name.toLowerCase()));
+          if (firstAvail) {
+            setAutofillSuggestion(`-${pageFragment}/${prefixBeforeFragment}${firstAvail.name.toLowerCase()}: `);
           } else {
             setAutofillSuggestion('');
           }
@@ -617,7 +652,29 @@ const ChatPanel = forwardRef(function ChatPanel({
           setAutofillSuggestion('');
         }
       } else {
-        setAutofillSuggestion('');
+        // Normal single-section suggestion: "-scratchpad/bu" → "-scratchpad/bugs: "
+        const sectionFragment = afterSlash;
+        const page = pages.find(p => p.name.toLowerCase() === pageFragment.toLowerCase());
+        if (page && page.sections) {
+          const secMatch = page.sections.find(s =>
+            s.name.toLowerCase().startsWith(sectionFragment.toLowerCase()) && sectionFragment.length > 0
+          );
+          if (secMatch && sectionFragment.toLowerCase() !== secMatch.name.toLowerCase()) {
+            setAutofillSuggestion(`-${pageFragment}/${secMatch.name.toLowerCase()}: `);
+          } else if (!sectionFragment) {
+            // Show first section as suggestion
+            const firstSec = page.sections[0];
+            if (firstSec) {
+              setAutofillSuggestion(`-${pageFragment}/${firstSec.name.toLowerCase()}: `);
+            } else {
+              setAutofillSuggestion('');
+            }
+          } else {
+            setAutofillSuggestion('');
+          }
+        } else {
+          setAutofillSuggestion('');
+        }
       }
     }
   }, [inputValue, pages]);
@@ -1429,6 +1486,8 @@ const ChatPanel = forwardRef(function ChatPanel({
                   onChange={(e) => {
                     const val = e.target.value;
                     setInputValue(val);
+                    // Reset note index when user types manually
+                    noteIndexRef.current = -1;
                     // Auto-resize: reset to single row then grow to content
                     e.target.style.height = 'auto';
                     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';

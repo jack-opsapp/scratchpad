@@ -196,7 +196,7 @@ export const functionDefinitions = [
     type: 'function',
     function: {
       name: 'create_note',
-      description: 'Create a new note in a section',
+      description: 'Create a new note in a section, optionally shared into additional sections',
       parameters: {
         type: 'object',
         properties: {
@@ -205,7 +205,12 @@ export const functionDefinitions = [
           section_name: { type: 'string' },
           page_name: { type: 'string', description: 'Page name to disambiguate section' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags to apply' },
-          date: { type: 'string', description: 'Date string like "Feb 15"' }
+          date: { type: 'string', description: 'Date string like "Feb 15"' },
+          shared_section_names: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Additional section names the note should appear in (shared, not duplicated). Used when user writes page/section1//section2.'
+          }
         },
         required: ['content']
       }

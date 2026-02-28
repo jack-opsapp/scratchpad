@@ -75,6 +75,9 @@ function transformPagesToAppFormat(supabasePages) {
       .map(section => ({
         id: section.id,
         name: section.name,
+        starred: section.starred || false,
+        section_type: section.section_type || 'notes',
+        rich_content: section.rich_content || '',
       })),
   }));
 }
@@ -418,6 +421,9 @@ export const dataStore = {
               page_id: page.id,
               name: section.name,
               position: j,
+              starred: section.starred || false,
+              section_type: section.section_type || 'notes',
+              rich_content: section.rich_content || null,
             };
 
             const { error: sectionError } = await supabase
