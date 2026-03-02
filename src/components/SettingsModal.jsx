@@ -910,6 +910,7 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
   const [exporting, setExporting] = useState(null);
   const [clearingMemory, setClearingMemory] = useState(false);
   const [memoryCleared, setMemoryCleared] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const handleExport = async (type) => {
     setExporting(type);
@@ -1179,12 +1180,31 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
           Permanently delete your account and all associated data. This cannot be undone.
         </p>
         <button
-          onClick={() => {
-            if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-              if (confirm('This will permanently delete ALL your data. Type DELETE to confirm.')) {
-                // Would trigger account deletion
-                alert('Account deletion not yet implemented.');
+          disabled={deletingAccount}
+          onClick={async () => {
+            if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) return;
+
+            const input = prompt('This will permanently delete ALL your data. Type DELETE to confirm.');
+            if (input !== 'DELETE') {
+              if (input !== null) alert('Account not deleted. You must type DELETE exactly to confirm.');
+              return;
+            }
+
+            setDeletingAccount(true);
+            try {
+              const { error } = await supabase.functions.invoke('delete-account');
+
+              if (error) {
+                alert('Failed to delete account. Please try again.');
+                return;
               }
+
+              await supabase.auth.signOut();
+              window.location.reload();
+            } catch {
+              alert('Failed to delete account. Please try again.');
+            } finally {
+              setDeletingAccount(false);
             }
           }}
           style={{
@@ -1193,14 +1213,15 @@ function DataPrivacyTab({ settings, onChange, user, onOpenTrash }) {
             border: `1px solid ${colors.danger}`,
             color: colors.danger,
             fontSize: 14,
-            cursor: 'pointer',
+            cursor: deletingAccount ? 'wait' : 'pointer',
+            opacity: deletingAccount ? 0.5 : 1,
             display: 'flex',
             alignItems: 'center',
             gap: 8
           }}
         >
           <Trash2 size={16} />
-          Delete Account
+          {deletingAccount ? 'Deleting...' : 'Delete Account'}
         </button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors, transitions } from '../styles/theme.js';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
+import { signInWithEmail, signUpWithEmail } from '../config/supabase.js';
 
 /**
  * Landing/sign-in screen with animated branding
@@ -17,6 +18,13 @@ export function SignedOutScreen({ onSignIn, error }) {
   const [signingIn, setSigningIn] = useState(false);
   const { isMobile } = useMediaQuery();
 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState(null);
+  const [confirmationSent, setConfirmationSent] = useState(false);
+
   useEffect(() => {
     if (subtitle.done) {
       setTimeout(() => setShowContent(true), 150);
@@ -27,11 +35,36 @@ export function SignedOutScreen({ onSignIn, error }) {
     setSigningIn(true);
     try {
       await onSignIn();
-      // Note: Page will redirect to Google OAuth
-      // If we're still here after a delay, something may have gone wrong
     } catch (err) {
       console.error('Sign-in error:', err);
       setSigningIn(false);
+    }
+  };
+
+  const handleEmailSubmit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) return;
+
+    setEmailLoading(true);
+    setEmailError(null);
+
+    if (isSignUp) {
+      const { data, error: signUpError } = await signUpWithEmail(email.trim(), password);
+      if (signUpError) {
+        setEmailError(signUpError.message);
+        setEmailLoading(false);
+      } else if (!data.session) {
+        setConfirmationSent(true);
+        setEmailLoading(false);
+      } else {
+        setEmailLoading(false);
+      }
+    } else {
+      const { error: signInError } = await signInWithEmail(email.trim(), password);
+      if (signInError) {
+        setEmailError(signInError.message);
+      }
+      setEmailLoading(false);
     }
   };
 
@@ -139,7 +172,7 @@ export function SignedOutScreen({ onSignIn, error }) {
           </p>
 
           {/* Error message */}
-          {error && (
+          {(error || emailError) && (
             <div
               style={{
                 marginBottom: 16,
@@ -151,11 +184,128 @@ export function SignedOutScreen({ onSignIn, error }) {
                 maxWidth: 360,
               }}
             >
-              {error}
+              {error || emailError}
             </div>
           )}
 
-          {/* Sign in button */}
+          {/* Confirmation message */}
+          {confirmationSent && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 16px',
+                border: `1px solid ${colors.success}`,
+                color: colors.success,
+                fontSize: 13,
+                maxWidth: 360,
+              }}
+            >
+              Check your email to confirm your account.
+            </div>
+          )}
+
+          {/* Email / Password form */}
+          <form onSubmit={handleEmailSubmit} style={{ maxWidth: 360 }}>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={emailLoading}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                background: colors.surface,
+                border: `1px solid ${colors.border}`,
+                color: colors.textPrimary,
+                fontSize: 14,
+                fontFamily: "'Manrope', sans-serif",
+                outline: 'none',
+                marginBottom: 8,
+                boxSizing: 'border-box',
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={emailLoading}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                background: colors.surface,
+                border: `1px solid ${colors.border}`,
+                color: colors.textPrimary,
+                fontSize: 14,
+                fontFamily: "'Manrope', sans-serif",
+                outline: 'none',
+                marginBottom: 12,
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={emailLoading || !email.trim() || !password.trim()}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                background: colors.primary,
+                border: 'none',
+                color: '#000',
+                fontSize: 14,
+                fontWeight: 500,
+                fontFamily: "'Manrope', sans-serif",
+                letterSpacing: 1.5,
+                cursor: emailLoading || !email.trim() || !password.trim() ? 'not-allowed' : 'pointer',
+                opacity: emailLoading || !email.trim() || !password.trim() ? 0.5 : 1,
+                transition: 'opacity 0.2s ease',
+                boxSizing: 'border-box',
+              }}
+            >
+              {emailLoading ? 'Loading...' : isSignUp ? 'SIGN UP' : 'SIGN IN'}
+            </button>
+            <div
+              onClick={() => { setIsSignUp(!isSignUp); setEmailError(null); setConfirmationSent(false); }}
+              style={{
+                color: colors.textMuted,
+                fontSize: 12,
+                textAlign: 'center',
+                marginTop: 8,
+                cursor: 'pointer',
+              }}
+            >
+              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+            </div>
+          </form>
+
+          {/* Divider */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              maxWidth: 360,
+              width: '100%',
+              margin: '24px 0',
+            }}
+          >
+            <div style={{ flex: 1, height: 1, background: colors.border }} />
+            <span
+              style={{
+                color: colors.textMuted,
+                fontSize: 11,
+                fontFamily: "'Manrope', sans-serif",
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                margin: '0 16px',
+              }}
+            >
+              or
+            </span>
+            <div style={{ flex: 1, height: 1, background: colors.border }} />
+          </div>
+
+          {/* Google sign in button */}
           <button
             onClick={handleSignIn}
             disabled={signingIn}
