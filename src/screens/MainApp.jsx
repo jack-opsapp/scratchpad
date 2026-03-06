@@ -1259,55 +1259,31 @@ export function MainApp({ user, onSignOut }) {
   };
 
   // Toggle note completion with direct Supabase persistence
-  const handleNoteToggle = async (id) => {
-    let updateData = null;
+  const handleNoteToggle = (id) => {
     // Record previous state for undo before toggling
     const prevNote = notes.find(n => n.id === id);
     if (prevNote) pushUndo({ type: 'toggle_note', noteId: id, previousCompleted: prevNote.completed });
-    // Use functional updater to read latest state (avoids stale closure)
-    setNotes(prev => {
-      const note = prev.find(n => n.id === id);
-      if (!note) return prev;
-      const newCompleted = !note.completed;
-      const completed_by_user_id = newCompleted ? user.id : null;
-      const completed_at = newCompleted ? new Date().toISOString() : null;
-      updateData = { completed: newCompleted, completed_by_user_id, completed_at };
-      return prev.map(n =>
-        n.id === id ? { ...n, ...updateData } : n
-      );
-    });
 
-    // Persist to Supabase - try update first, fall back to upsert
-    if (updateData) {
-      const { error, count } = await supabase
-        .from('notes')
-        .update(updateData)
-        .eq('id', id)
-        .select('id');
-      if (error) {
-        console.error('Toggle update failed, retrying with upsert:', error);
-        // Retry: fetch the full note from state and upsert
-        setNotes(prev => {
-          const note = prev.find(n => n.id === id);
-          if (note) {
-            supabase.from('notes').upsert({
-              id: note.id,
-              section_id: note.sectionId,
-              content: note.content,
-              completed: note.completed,
-              completed_by_user_id: note.completed_by_user_id,
-              completed_at: note.completed_at,
-              date: note.date || null,
-              tags: note.tags || [],
-              created_by_user_id: note.created_by_user_id || user.id,
-            }, { onConflict: 'id' }).then(({ error: e2 }) => {
-              if (e2) console.error('Toggle upsert also failed:', e2);
-            });
-          }
-          return prev; // No state change
-        });
-      }
-    }
+    // Compute update data outside setNotes to guarantee it's available for Supabase call
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    const newCompleted = !note.completed;
+    const updateData = {
+      completed: newCompleted,
+      completed_by_user_id: newCompleted ? user.id : null,
+      completed_at: newCompleted ? new Date().toISOString() : null,
+    };
+
+    // Optimistic UI update
+    setNotes(prev => prev.map(n =>
+      n.id === id ? { ...n, ...updateData } : n
+    ));
+
+    // Persist to Supabase
+    supabase.from('notes').update(updateData).eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('Toggle persist failed:', error);
+      });
   };
 
   // Complete all visible notes
