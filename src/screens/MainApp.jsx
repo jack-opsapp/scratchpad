@@ -39,6 +39,7 @@ import { usePinchZoom } from '../hooks/usePinchZoom.js';
 import usePlanState from '../hooks/usePlanState.js';
 import { useMediaQuery, useOnlineStatus } from '../hooks/useMediaQuery.js';
 import { useSettings } from '../hooks/useSettings.js';
+import { useUndoRedo } from '../hooks/useUndoRedo.js';
 import { syncOfflineQueue, getPendingSyncCount, offlineParser, queueChatMessage } from '../lib/offlineHandler.js';
 import { getTheme, applyTheme, applyFontSize, applyChatStyling } from '../lib/themes.js';
 
@@ -144,6 +145,7 @@ import CollaboratorBadge from '../components/CollaboratorBadge.jsx';
 import MobileSidebar from '../components/MobileSidebar.jsx';
 import MobileHeader from '../components/MobileHeader.jsx';
 import MobileNoteCard from '../components/MobileNoteCard.jsx';
+import RichTextConvertModal from '../components/RichTextConvertModal.jsx';
 
 /**
  * Generate a UUID v4
@@ -157,6 +159,9 @@ function generateId() {
 let draggingSection = false;
 // Track the dragged section's ID for same-page reorder
 let draggingSectionId = null;
+// Track whether current drag is a note reorder (can't read data during dragover)
+let draggingNote = false;
+let draggingNoteId = null;
 
 /**
  * Get user display name from user object
@@ -213,6 +218,14 @@ export function MainApp({ user, onSignOut }) {
   const [connections, setConnections] = useState([]);
   const [connectionsPopover, setConnectionsPopover] = useState(null); // { noteId, top, left }
 
+  // Undo/redo for note operations
+  const { pushUndo, undo, redo, canUndo, canRedo } = useUndoRedo({
+    supabase,
+    setNotes,
+    setInputValue: (val) => chatPanelRef.current?.setInputValue(val),
+    user,
+  });
+
   // Animation state - track newly created items for typewriter effect
   const [animatingItems, setAnimatingItems] = useState(new Set());
 
@@ -230,12 +243,15 @@ export function MainApp({ user, onSignOut }) {
   const { settings } = useSettings();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showTrashModal, setShowTrashModal] = useState(false);
+  const [showRichTextConvertModal, setShowRichTextConvertModal] = useState(false);
+  const [richTextConvertTarget, setRichTextConvertTarget] = useState(null); // { pageId, sectionId, sectionName }
 
   // Navigation state
   const [currentPage, setCurrentPage] = useState(null);
   const [currentSection, setCurrentSection] = useState(null);
   const [viewingPageLevel, setViewingPageLevel] = useState(false);
   const [expandedPages, setExpandedPages] = useState([]);
+  const [sectionNavHistory, setSectionNavHistory] = useState([]); // Recently navigated page/section prefixes
 
   // Agent custom view state
   // { title: string, viewType: 'list'|'boxes'|'calendar', filter: object, groupBy?: string }
@@ -256,6 +272,26 @@ export function MainApp({ user, onSignOut }) {
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
   const [showCompleted, setShowCompleted] = useState(false); // Collapsible completed notes section
   const [collapsedSections, setCollapsedSections] = useState(new Set()); // Per-section collapse in page-level view
+
+  // Default all sections collapsed when entering page-level view
+  useEffect(() => {
+    if (viewingPageLevel && currentPageData?.sections?.length) {
+      setCollapsedSections(new Set(currentPageData.sections.map(s => s.id)));
+    }
+  }, [viewingPageLevel, currentPage]);
+
+  // Track section navigation history for Shift+Up/Down cycling
+  useEffect(() => {
+    if (!currentSection || !currentPage) return;
+    const page = pages.find(p => p.id === currentPage);
+    const section = page?.sections?.find(s => s.id === currentSection);
+    if (!page || !section) return;
+    const prefix = `${page.name.toLowerCase()}/${section.name.toLowerCase()}: `;
+    setSectionNavHistory(prev => {
+      const filtered = prev.filter(p => p !== prefix);
+      return [...filtered, prefix];
+    });
+  }, [currentSection]);
 
   // Pinch-to-zoom for notes area
   const { containerRef: zoomRef, scale: zoomScale, resetZoom, setScale: setZoomScale } = usePinchZoom({ minScale: 0.5, maxScale: 2.0 });
@@ -512,6 +548,12 @@ export function MainApp({ user, onSignOut }) {
           setCurrentPage(np.id);
           setViewingPageLevel(true);
         }
+      } else if (mod && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        redo();
+      } else if (mod && e.key === 'z') {
+        e.preventDefault();
+        undo();
       } else if (mod && e.key === 's') {
         e.preventDefault();
         if (currentPage) {
@@ -582,6 +624,8 @@ export function MainApp({ user, onSignOut }) {
           if (bIdx === -1) return -1;
           return aIdx - bIdx;
         }
+        // Fall back to position-based ordering (drag-to-reorder)
+        return (a.position || 0) - (b.position || 0);
       }
       if (sortBy === 'status') {
         // Incomplete first, then by created date
@@ -802,6 +846,7 @@ export function MainApp({ user, onSignOut }) {
   // Note submission with plan mode support
   const handleSubmit = async () => {
     if (!inputValue.trim() || processing) return;
+    const originalMessage = inputValue.trim();
     setProcessing(true);
 
     try {
@@ -858,7 +903,7 @@ export function MainApp({ user, onSignOut }) {
           }
 
           if (parsed) {
-            addNote(parsed, result.response);
+            addNote(parsed, result.response, originalMessage);
           }
           break;
       }
@@ -874,7 +919,7 @@ export function MainApp({ user, onSignOut }) {
     }
   };
 
-  const addNote = (parsed, response) => {
+  const addNote = (parsed, response, originalMessage = '') => {
     let targetSection = currentSection;
 
     if (parsed.section) {
@@ -912,6 +957,7 @@ export function MainApp({ user, onSignOut }) {
       created_by_user_id: user?.id || null,
     };
     setNotes(prev => [...prev, newNote]);
+    pushUndo({ type: 'create_note', noteId, note: newNote, inputMessage: originalMessage });
 
     // Direct Supabase persist
     supabase.from('notes').upsert({
@@ -1215,6 +1261,9 @@ export function MainApp({ user, onSignOut }) {
   // Toggle note completion with direct Supabase persistence
   const handleNoteToggle = async (id) => {
     let updateData = null;
+    // Record previous state for undo before toggling
+    const prevNote = notes.find(n => n.id === id);
+    if (prevNote) pushUndo({ type: 'toggle_note', noteId: id, previousCompleted: prevNote.completed });
     // Use functional updater to read latest state (avoids stale closure)
     setNotes(prev => {
       const note = prev.find(n => n.id === id);
@@ -1287,6 +1336,10 @@ export function MainApp({ user, onSignOut }) {
 
   // Edit note content with direct Supabase persistence
   const handleNoteEdit = (id, content) => {
+    const prevNote = notes.find(n => n.id === id);
+    if (prevNote && prevNote.content !== content) {
+      pushUndo({ type: 'edit_note', noteId: id, previousContent: prevNote.content, newContent: content });
+    }
     // Optimistic UI update
     setNotes(prev => prev.map(n =>
       n.id === id ? { ...n, content } : n
@@ -1299,6 +1352,8 @@ export function MainApp({ user, onSignOut }) {
 
   // Delete note with direct Supabase persistence (soft delete)
   const handleNoteDelete = (id) => {
+    const deletedNote = notes.find(n => n.id === id);
+    if (deletedNote) pushUndo({ type: 'delete_note', noteId: id, note: { ...deletedNote } });
     setNotes(prev => prev.filter(n => n.id !== id));
     supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
@@ -1319,6 +1374,30 @@ export function MainApp({ user, onSignOut }) {
       .then(({ error }) => { if (error) console.error('Add tag persist failed:', error); });
 
     if (!tags.includes(tag)) setTags(prev => [...prev, tag]);
+  };
+
+  // Note reorder handler (drag-to-reorder within a section)
+  const handleNoteReorder = (sectionId, draggedId, targetId, insertAfter) => {
+    const sectionNotes = notes.filter(n => n.sectionId === sectionId);
+    const otherNotes = notes.filter(n => n.sectionId !== sectionId);
+    const reordered = sectionNotes.filter(n => n.id !== draggedId);
+    const targetIdx = reordered.findIndex(n => n.id === targetId);
+    const insertIdx = insertAfter ? targetIdx + 1 : targetIdx;
+    const draggedNote = sectionNotes.find(n => n.id === draggedId);
+    if (!draggedNote) return;
+    reordered.splice(insertIdx, 0, draggedNote);
+    const withPositions = reordered.map((n, i) => ({ ...n, position: i }));
+    setNotes([...otherNotes, ...withPositions]);
+    // Update customSortOrder to reflect manual ordering
+    const contextKey = `section-${sectionId}`;
+    setCustomSortOrder(prev => ({
+      ...prev,
+      [contextKey]: { ids: withPositions.map(n => n.id), criteria: 'manual' },
+    }));
+    // Persist each note's position to Supabase
+    withPositions.forEach(n => {
+      supabase.from('notes').update({ position: n.position }).eq('id', n.id);
+    });
   };
 
   // Connection handlers
@@ -1865,7 +1944,7 @@ export function MainApp({ user, onSignOut }) {
                     </button>
                   </div>
 
-                  {ownedPages.map(page => (
+                  {[...ownedPages].sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0)).map(page => (
                     <div key={page.id}>
                       <div
                         onDragOver={e => {
@@ -2141,6 +2220,7 @@ export function MainApp({ user, onSignOut }) {
                                       created_by_user_id: user?.id || null,
                                     };
                                     setNotes(prev => [...prev, newNote]);
+                                    pushUndo({ type: 'copy_note', noteId: newId, note: newNote });
                                     supabase.from('notes').insert({
                                       id: newId,
                                       section_id: section.id,
@@ -2153,6 +2233,8 @@ export function MainApp({ user, onSignOut }) {
                                   }
                                 } else {
                                   // Plain drop: move note to this section
+                                  const movedNote = notes.find(n => n.id === noteId);
+                                  if (movedNote) pushUndo({ type: 'move_note', noteId, previousSectionId: movedNote.sectionId, newSectionId: section.id });
                                   setNotes(notes.map(n => n.id === noteId ? { ...n, sectionId: section.id } : n));
                                   supabase.from('notes').update({ section_id: section.id }).eq('id', noteId);
                                 }
@@ -2782,6 +2864,39 @@ export function MainApp({ user, onSignOut }) {
                         {p.name}
                       </p>
                     ))}
+                  {/* Starred sections */}
+                  {pages.flatMap(p =>
+                    (p.sections || [])
+                      .filter(s => s.starred)
+                      .map(s => (
+                        <p
+                          key={s.id}
+                          onClick={() => {
+                            setCurrentPage(p.id);
+                            setCurrentSection(s.id);
+                            setViewingPageLevel(false);
+                          }}
+                          style={{
+                            color: colors.textMuted,
+                            fontSize: 12,
+                            fontFamily: "'Manrope', sans-serif",
+                            margin: '6px 0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            cursor: 'pointer',
+                            paddingLeft: 4,
+                          }}
+                        >
+                          <Star
+                            size={10}
+                            fill={colors.primary}
+                            color={colors.primary}
+                          />
+                          <span style={{ opacity: 0.5 }}>{p.name} /</span> {s.name}
+                        </p>
+                      ))
+                  )}
                 </div>
               </div>
 
@@ -3512,6 +3627,10 @@ export function MainApp({ user, onSignOut }) {
                             onDelete={handleNoteDelete}
                             onTagClick={(tag) => setFilterTag([tag])}
                             onAddTag={handleAddTag}
+                            sharedSectionNames={(note.sharedSectionIds || [])
+                              .filter(sid => sid !== note.sectionId)
+                              .map(sid => allSections.find(s => s.id === sid)?.name)
+                              .filter(Boolean)}
                           />
                         </div>
                       );
@@ -3739,7 +3858,8 @@ export function MainApp({ user, onSignOut }) {
                       const noteConns = connections.filter(
                         c => c.source_note_id === note.id || c.target_note_id === note.id
                       ).length;
-                      return (
+                      const isCustomSort = sortBy === 'custom';
+                      const noteCard = (
                         <NoteCard
                           key={note.id}
                           note={note}
@@ -3750,6 +3870,8 @@ export function MainApp({ user, onSignOut }) {
                           canToggle={canToggleNote}
                           compact={compactMode}
                           draggable={true}
+                          reorderDraggable={isCustomSort}
+                          onReorderDragStart={(id) => { draggingNote = true; draggingNoteId = id; }}
                           onToggle={handleNoteToggle}
                           onEdit={handleNoteEdit}
                           onDelete={handleNoteDelete}
@@ -3775,8 +3897,60 @@ export function MainApp({ user, onSignOut }) {
                             const rect = e.currentTarget.getBoundingClientRect();
                             setConnectionsPopover({ noteId, top: rect.bottom + 4, left: rect.left });
                           }}
+                          sharedSectionNames={(note.sharedSectionIds || [])
+                            .filter(sid => sid !== section.id)
+                            .map(sid => {
+                              const sec = page.sections?.find(s => s.id === sid);
+                              return sec?.name;
+                            })
+                            .filter(Boolean)}
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
+                      );
+                      if (!isCustomSort) return noteCard;
+                      return (
+                        <div
+                          key={note.id}
+                          onDragOver={e => {
+                            if (!draggingNote || draggingNoteId === note.id) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const midY = rect.top + rect.height / 2;
+                            if (e.clientY < midY) {
+                              e.currentTarget.style.borderTop = `2px solid ${colors.primary}`;
+                              e.currentTarget.style.borderBottom = '';
+                            } else {
+                              e.currentTarget.style.borderTop = '';
+                              e.currentTarget.style.borderBottom = `2px solid ${colors.primary}`;
+                            }
+                          }}
+                          onDragLeave={e => {
+                            e.currentTarget.style.borderTop = '';
+                            e.currentTarget.style.borderBottom = '';
+                          }}
+                          onDragEnd={() => {
+                            draggingNote = false;
+                            draggingNoteId = null;
+                          }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            e.currentTarget.style.borderTop = '';
+                            e.currentTarget.style.borderBottom = '';
+                            const data = e.dataTransfer.getData('text/plain');
+                            const match = data.match(/^reorder-note:(.+)$/);
+                            if (!match) return;
+                            const draggedId = match[1];
+                            if (draggedId === note.id) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const insertAfter = e.clientY >= rect.top + rect.height / 2;
+                            handleNoteReorder(note.sectionId, draggedId, note.id, insertAfter);
+                            draggingNote = false;
+                            draggingNoteId = null;
+                          }}
+                        >
+                          {noteCard}
+                        </div>
                       );
                     };
 
@@ -3958,7 +4132,8 @@ export function MainApp({ user, onSignOut }) {
                       const noteConnectionCount = connections.filter(
                         c => c.source_note_id === note.id || c.target_note_id === note.id
                       ).length;
-                      return (
+                      const isCustomSort = sortBy === 'custom';
+                      const noteCard = (
                         <NoteCard
                           key={note.id}
                           note={note}
@@ -3969,6 +4144,8 @@ export function MainApp({ user, onSignOut }) {
                           canToggle={canToggleNote}
                           compact={compactMode}
                           draggable={true}
+                          reorderDraggable={isCustomSort}
+                          onReorderDragStart={(id) => { draggingNote = true; draggingNoteId = id; }}
                           onToggle={handleNoteToggle}
                           onEdit={handleNoteEdit}
                           onDelete={handleNoteDelete}
@@ -3994,8 +4171,57 @@ export function MainApp({ user, onSignOut }) {
                             const rect = e.currentTarget.getBoundingClientRect();
                             setConnectionsPopover({ noteId, top: rect.bottom + 4, left: rect.left });
                           }}
+                          sharedSectionNames={(note.sharedSectionIds || [])
+                            .filter(sid => sid !== currentSection)
+                            .map(sid => allSections.find(s => s.id === sid)?.name)
+                            .filter(Boolean)}
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
+                      );
+                      if (!isCustomSort) return noteCard;
+                      return (
+                        <div
+                          key={note.id}
+                          onDragOver={e => {
+                            if (!draggingNote || draggingNoteId === note.id) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const midY = rect.top + rect.height / 2;
+                            if (e.clientY < midY) {
+                              e.currentTarget.style.borderTop = `2px solid ${colors.primary}`;
+                              e.currentTarget.style.borderBottom = '';
+                            } else {
+                              e.currentTarget.style.borderTop = '';
+                              e.currentTarget.style.borderBottom = `2px solid ${colors.primary}`;
+                            }
+                          }}
+                          onDragLeave={e => {
+                            e.currentTarget.style.borderTop = '';
+                            e.currentTarget.style.borderBottom = '';
+                          }}
+                          onDragEnd={() => {
+                            draggingNote = false;
+                            draggingNoteId = null;
+                          }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            e.currentTarget.style.borderTop = '';
+                            e.currentTarget.style.borderBottom = '';
+                            const data = e.dataTransfer.getData('text/plain');
+                            const match = data.match(/^reorder-note:(.+)$/);
+                            if (!match) return;
+                            const draggedId = match[1];
+                            if (draggedId === note.id) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const insertAfter = e.clientY >= rect.top + rect.height / 2;
+                            handleNoteReorder(note.sectionId, draggedId, note.id, insertAfter);
+                            draggingNote = false;
+                            draggingNoteId = null;
+                          }}
+                        >
+                          {noteCard}
+                        </div>
                       );
                     };
 
@@ -4091,6 +4317,8 @@ export function MainApp({ user, onSignOut }) {
                 onNoteMove={
                   viewingPageLevel
                     ? (id, sid) => {
+                        const movedNote = notes.find(n => n.id === id);
+                        if (movedNote) pushUndo({ type: 'move_note', noteId: id, previousSectionId: movedNote.sectionId, newSectionId: sid });
                         setNotes(
                           notes.map(n =>
                             n.id === id ? { ...n, sectionId: sid } : n
@@ -4115,6 +4343,7 @@ export function MainApp({ user, onSignOut }) {
                           created_by_user_id: user?.id || null,
                         };
                         setNotes(prev => [...prev, newNote]);
+                        pushUndo({ type: 'copy_note', noteId: newId, note: newNote });
                         supabase.from('notes').insert({
                           id: newId,
                           section_id: targetSectionId,
@@ -4252,6 +4481,7 @@ export function MainApp({ user, onSignOut }) {
             return { ...n, pageName: pg?.name, sectionName: sec?.name };
           })}
           pages={allPages}
+          sectionNavHistory={sectionNavHistory}
           onCreateConnection={(targetNoteId) => {
             // Connection will be created when the note is saved and parsed
             // For now this is a no-op placeholder; connections are created on note edit
@@ -4516,6 +4746,8 @@ export function MainApp({ user, onSignOut }) {
             {[
               { keys: 'Ctrl /', desc: 'Focus input' },
               { keys: 'Ctrl K', desc: 'Search' },
+              { keys: 'Ctrl Z', desc: 'Undo' },
+              { keys: 'Ctrl Shift Z', desc: 'Redo' },
               { keys: 'Ctrl P', desc: 'New page' },
               { keys: 'Ctrl S', desc: 'New section' },
               { keys: 'Ctrl ?', desc: 'Show shortcuts' },
@@ -4575,10 +4807,11 @@ export function MainApp({ user, onSignOut }) {
             { label: 'Incomplete first', action: () => setSortBy('status') },
             { label: 'Date created', action: () => setSortBy('created') },
             { label: 'Alphabetical', action: () => setSortBy('alpha') },
+            { label: 'Custom order', action: () => setSortBy('custom') },
             ...((() => {
               const contextKey = viewingPageLevel ? `page-${currentPage}` : `section-${currentSection}`;
               const savedSort = customSortOrder[contextKey];
-              return savedSort ? [{ label: `Custom: ${savedSort.criteria}`, action: () => setSortBy('custom') }] : [];
+              return savedSort ? [{ label: `AI: ${savedSort.criteria}`, action: () => setSortBy('custom') }] : [];
             })()),
           ]}
         />
@@ -4839,7 +5072,16 @@ export function MainApp({ user, onSignOut }) {
                     label: 'Convert to Rich Text',
                     icon: FileText,
                     action: async () => {
-                      if (!confirm(`Convert "${section.name}" to a rich text document? The notes list will be hidden while in rich text mode.`)) return;
+                      const sectionNotes = notes.filter(n => n.sectionId === section.id);
+                      if (sectionNotes.length > 0) {
+                        // Has notes — open tag-mapping modal
+                        setRichTextConvertTarget({ pageId: page.id, sectionId: section.id, sectionName: section.name });
+                        setShowRichTextConvertModal(true);
+                        setContextMenu(null);
+                        return;
+                      }
+                      // No notes — convert directly
+                      if (!confirm(`Convert "${section.name}" to a rich text document?`)) return;
                       const updateSections = pg => pg.map(p =>
                         p.id === page.id
                           ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, section_type: 'richtext' } : s) }
@@ -4955,6 +5197,29 @@ export function MainApp({ user, onSignOut }) {
           onClose={() => setShowTrashModal(false)}
           onRestore={() => refreshData()}
           userId={user?.id}
+        />
+      )}
+
+      {/* Rich Text Convert Modal */}
+      {showRichTextConvertModal && richTextConvertTarget && (
+        <RichTextConvertModal
+          sectionName={richTextConvertTarget.sectionName}
+          notes={notes.filter(n => n.sectionId === richTextConvertTarget.sectionId)}
+          onClose={() => { setShowRichTextConvertModal(false); setRichTextConvertTarget(null); }}
+          onConvert={async (markdown) => {
+            const { pageId, sectionId } = richTextConvertTarget;
+            const updateSections = pg => pg.map(p =>
+              p.id === pageId
+                ? { ...p, sections: p.sections.map(s => s.id === sectionId ? { ...s, section_type: 'richtext', rich_content: markdown } : s) }
+                : p
+            );
+            setPages(updateSections);
+            setOwnedPages(updateSections);
+            setSharedPages(updateSections);
+            setShowRichTextConvertModal(false);
+            setRichTextConvertTarget(null);
+            await supabase.from('sections').update({ section_type: 'richtext', rich_content: markdown }).eq('id', sectionId);
+          }}
         />
       )}
 

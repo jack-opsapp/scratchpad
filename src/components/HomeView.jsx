@@ -35,8 +35,13 @@ export function HomeView({
     grouped[pageId][section.id].push(note);
   }
 
-  // Sort pages by most recent note
+  // Sort pages: starred first, then by most recent note
   const pageOrder = Object.keys(grouped).sort((a, b) => {
+    const aPage = pages.find(p => p.id === a);
+    const bPage = pages.find(p => p.id === b);
+    const aStarred = aPage?.starred ? 1 : 0;
+    const bStarred = bPage?.starred ? 1 : 0;
+    if (aStarred !== bStarred) return bStarred - aStarred;
     const aMax = Math.max(...Object.values(grouped[a]).flat().map(n => n.createdAt || new Date(n.created_at || 0).getTime() || 0));
     const bMax = Math.max(...Object.values(grouped[b]).flat().map(n => n.createdAt || new Date(n.created_at || 0).getTime() || 0));
     return bMax - aMax;

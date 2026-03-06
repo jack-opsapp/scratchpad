@@ -43,6 +43,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   allNotes = [],
   onCreateConnection,
   pages = [],
+  sectionNavHistory = [],
 }, ref) {
   const [height, setHeight] = useState(isMobile ? MOBILE_HEIGHTS.inputOnly : COLLAPSED_HEIGHT);
   const [isDragging, setIsDragging] = useState(false);
@@ -83,6 +84,7 @@ const ChatPanel = forwardRef(function ChatPanel({
   const buttonRefs = useRef([]);
   const lastEscTime = useRef(0);
   const prefixBaseContent = useRef('');
+  const draftBeforeHistory = useRef('');
   const isSubmittingRef = useRef(false); // Prevents duplicate submissions from touch+click on mobile
 
   // Find the last unresponded message that needs action buttons
@@ -275,7 +277,8 @@ const ChatPanel = forwardRef(function ChatPanel({
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
     openPlanUI,
-    closePlanUI
+    closePlanUI,
+    setInputValue: (val) => { setInputValue(val); inputRef.current?.focus(); },
   }));
 
   useEffect(() => {
@@ -509,21 +512,23 @@ const ChatPanel = forwardRef(function ChatPanel({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-    } else if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && prefixHistory.length > 0) {
-      // Shift+Up/Down: cycle through previous section/page prefixes only
+    } else if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Shift+Up/Down: cycle through recently used section/page prefixes
+      // Merges navigation history (sidebar clicks) with typed prefix history
       // Does NOT change the user's typed content — only the prefix ahead of it
+      const merged = [...new Set([...sectionNavHistory, ...prefixHistory])];
+      if (merged.length === 0) return;
       e.preventDefault();
-      // Use ref for current index to avoid stale closure issues
       const currentPrefixIndex = prefixIndexRef.current;
       let newIndex;
       if (e.key === 'ArrowUp') {
         newIndex = currentPrefixIndex === -1
-          ? prefixHistory.length - 1
+          ? merged.length - 1
           : Math.max(0, currentPrefixIndex - 1);
       } else {
         if (currentPrefixIndex === -1) return;
         newIndex = currentPrefixIndex + 1;
-        if (newIndex >= prefixHistory.length) {
+        if (newIndex >= merged.length) {
           // Cycled past end — remove prefix, restore original input
           prefixIndexRef.current = -1;
           setPrefixIndex(-1);
@@ -537,7 +542,7 @@ const ChatPanel = forwardRef(function ChatPanel({
       }
       prefixIndexRef.current = newIndex;
       setPrefixIndex(newIndex);
-      setInputValue(prefixHistory[newIndex] + prefixBaseContent.current);
+      setInputValue(merged[newIndex] + prefixBaseContent.current);
       setShimmerActive(true);
       setTimeout(() => setShimmerActive(false), 600);
     } else if (e.key === 'Tab' && autofillSuggestion) {
@@ -548,6 +553,10 @@ const ChatPanel = forwardRef(function ChatPanel({
     } else if (e.key === 'ArrowUp' && !e.shiftKey && inputHistory.length > 0) {
       // Navigate to previous input in history (only when history exists, not shift)
       e.preventDefault();
+      if (historyIndex === -1) {
+        // Save current typed text before entering history
+        draftBeforeHistory.current = inputValue;
+      }
       const newIndex = historyIndex === -1
         ? inputHistory.length - 1
         : Math.max(0, historyIndex - 1);
@@ -559,7 +568,7 @@ const ChatPanel = forwardRef(function ChatPanel({
       const newIndex = historyIndex + 1;
       if (newIndex >= inputHistory.length) {
         setHistoryIndex(-1);
-        setInputValue('');
+        setInputValue(draftBeforeHistory.current);
       } else {
         setHistoryIndex(newIndex);
         setInputValue(inputHistory[newIndex]);
