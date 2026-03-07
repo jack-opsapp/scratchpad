@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -265,6 +265,7 @@ export function MainApp({ user, onSignOut }) {
   const [editingHeaderItem, setEditingHeaderItem] = useState(null);
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterTag, setFilterTag] = useState([]);
+  const [tagScope, setTagScope] = useState('all'); // 'all' | 'page' | 'section'
   const [sortBy, setSortBy] = useState('status'); // Default: incomplete first
   const [customSortOrder, setCustomSortOrder] = useState({}); // { [contextKey]: { ids: string[], criteria: string } }
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -272,6 +273,7 @@ export function MainApp({ user, onSignOut }) {
   const [compactMode, setCompactMode] = useState(false); // Hide tags, dates, avatars
   const [showCompleted, setShowCompleted] = useState(false); // Collapsible completed notes section
   const [collapsedSections, setCollapsedSections] = useState(new Set()); // Per-section collapse in page-level view
+  const [completingNotes, setCompletingNotes] = useState(new Set()); // Notes currently animating completion
 
   // Default all sections collapsed when entering page-level view
   useEffect(() => {
@@ -1274,10 +1276,21 @@ export function MainApp({ user, onSignOut }) {
       completed_at: newCompleted ? new Date().toISOString() : null,
     };
 
-    // Optimistic UI update
-    setNotes(prev => prev.map(n =>
-      n.id === id ? { ...n, ...updateData } : n
-    ));
+    if (newCompleted) {
+      // Animate: strikethrough + collapse, then update state
+      setCompletingNotes(prev => new Set(prev).add(id));
+      setTimeout(() => {
+        setCompletingNotes(prev => { const next = new Set(prev); next.delete(id); return next; });
+        setNotes(prev => prev.map(n =>
+          n.id === id ? { ...n, ...updateData } : n
+        ));
+      }, 600);
+    } else {
+      // Uncompleting: instant
+      setNotes(prev => prev.map(n =>
+        n.id === id ? { ...n, ...updateData } : n
+      ));
+    }
 
     // Persist to Supabase
     supabase.from('notes').update(updateData).eq('id', id)
@@ -1291,6 +1304,8 @@ export function MainApp({ user, onSignOut }) {
     const visibleNotes = agentView ? agentFilteredNotes : filteredNotes;
     const incompleteNotes = visibleNotes.filter(n => !n.completed);
     if (!incompleteNotes.length) return;
+
+    if (!window.confirm(`Complete all ${incompleteNotes.length} note${incompleteNotes.length === 1 ? '' : 's'}?`)) return;
 
     const now = new Date().toISOString();
     const ids = incompleteNotes.map(n => n.id);
@@ -2482,19 +2497,51 @@ export function MainApp({ user, onSignOut }) {
 
                 {/* Tags section */}
                 <div style={{ marginBottom: 32 }}>
-                  <p
-                    style={{
-                      color: colors.textMuted,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: 1.5,
-                      marginBottom: 12,
-                    }}
-                  >
-                    TAGS
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <p
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      TAGS
+                    </p>
+                    {(currentPage || currentSection) && (
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        {['all', 'page', 'section'].filter(s => s !== 'section' || (currentSection && !viewingPageLevel)).map(scope => (
+                          <button
+                            key={scope}
+                            onClick={() => setTagScope(scope)}
+                            style={{
+                              padding: '1px 6px',
+                              background: tagScope === scope ? colors.primary : 'transparent',
+                              border: `1px solid ${tagScope === scope ? colors.primary : colors.border}`,
+                              color: tagScope === scope ? colors.surface : colors.textMuted,
+                              fontSize: 9,
+                              fontWeight: 600,
+                              letterSpacing: 0.5,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {scope === 'all' ? 'ALL' : scope === 'page' ? 'PAGE' : 'SECTION'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {(() => {
+                    const scopedNotes = tagScope === 'section' && currentSection && !viewingPageLevel
+                      ? notes.filter(n => n.sectionId === currentSection)
+                      : tagScope === 'page' && currentPage
+                        ? notes.filter(n => currentPageData?.sections?.some(s => s.id === n.sectionId))
+                        : notes;
+                    const scopedTags = tagScope === 'all' ? tags : [...new Set(scopedNotes.flatMap(n => n.tags || []).filter(Boolean))];
+                    return (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {(tagsExpanded ? tags : tags.slice(0, 4)).map(tag => (
+                    {(tagsExpanded ? scopedTags : scopedTags.slice(0, 4)).map(tag => (
                       <TagPill
                         key={tag}
                         tag={tag}
@@ -2518,7 +2565,7 @@ export function MainApp({ user, onSignOut }) {
                         }
                       />
                     ))}
-                    {!tagsExpanded && tags.length > 4 && (
+                    {!tagsExpanded && scopedTags.length > 4 && (
                       <button
                         onClick={() => setTagsExpanded(true)}
                         style={{
@@ -2583,6 +2630,8 @@ export function MainApp({ user, onSignOut }) {
                       )
                     )}
                   </div>
+                    );
+                  })()}
 
                   {/* Tag management UI */}
                   {!tagManageMode ? (
@@ -3883,7 +3932,7 @@ export function MainApp({ user, onSignOut }) {
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
-                      if (!isCustomSort) return noteCard;
+                      const isCompleting = completingNotes.has(note.id); const animatedCard = isCompleting ? React.createElement("div", { key: `completing-${note.id}`, style: { textDecoration: "line-through", opacity: 0, transform: "scaleY(0)", transformOrigin: "top", transition: "transform 0.3s ease 0.25s, opacity 0.25s ease", overflow: "hidden" } }, noteCard) : noteCard; if (!isCustomSort) return animatedCard;
                       return (
                         <div
                           key={note.id}
@@ -3925,7 +3974,7 @@ export function MainApp({ user, onSignOut }) {
                             draggingNoteId = null;
                           }}
                         >
-                          {noteCard}
+                          {animatedCard}
                         </div>
                       );
                     };
@@ -4013,7 +4062,7 @@ export function MainApp({ user, onSignOut }) {
                               />
                               COMPLETED ({snCompleted.length})
                             </button>
-                            {showCompleted && snCompleted.map(renderSectionNote)}
+                            {showCompleted && [...snCompleted].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0)).map(renderSectionNote)}
                           </>
                         )}
                       </div>
@@ -4154,7 +4203,7 @@ export function MainApp({ user, onSignOut }) {
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
-                      if (!isCustomSort) return noteCard;
+                      const isCompleting2 = completingNotes.has(note.id); const animatedCard2 = isCompleting2 ? React.createElement("div", { key: `completing-${note.id}`, style: { textDecoration: "line-through", opacity: 0, transform: "scaleY(0)", transformOrigin: "top", transition: "transform 0.3s ease 0.25s, opacity 0.25s ease", overflow: "hidden" } }, noteCard) : noteCard; if (!isCustomSort) return animatedCard2;
                       return (
                         <div
                           key={note.id}
@@ -4196,7 +4245,7 @@ export function MainApp({ user, onSignOut }) {
                             draggingNoteId = null;
                           }}
                         >
-                          {noteCard}
+                          {animatedCard2}
                         </div>
                       );
                     };
@@ -4233,7 +4282,7 @@ export function MainApp({ user, onSignOut }) {
                               />
                               COMPLETED ({completedNotes.length})
                             </button>
-                            {showCompleted && completedNotes.map(renderNote)}
+                            {showCompleted && [...completedNotes].sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0)).map(renderNote)}
                           </>
                         )}
                       </>
