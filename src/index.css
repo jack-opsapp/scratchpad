@@ -91,6 +91,30 @@ button:not(:disabled):hover {
   }
 }
 
+/* Note completion animation — strikethrough then vertical collapse */
+@keyframes noteComplete {
+  0% {
+    opacity: 1;
+    transform: scaleY(1);
+    text-decoration: none;
+  }
+  40% {
+    opacity: 0.5;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+}
+
+.note-completing {
+  text-decoration: line-through;
+  transform-origin: top;
+  overflow: hidden;
+  animation: noteComplete 0.5s ease forwards;
+}
+
 .shimmer-text {
   background-image: linear-gradient(
     110deg,

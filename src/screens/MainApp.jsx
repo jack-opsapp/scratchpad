@@ -1284,7 +1284,7 @@ export function MainApp({ user, onSignOut }) {
         setNotes(prev => prev.map(n =>
           n.id === id ? { ...n, ...updateData } : n
         ));
-      }, 600);
+      }, 500);
     } else {
       // Uncompleting: instant
       setNotes(prev => prev.map(n =>
@@ -3932,7 +3932,7 @@ export function MainApp({ user, onSignOut }) {
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
-                      const isCompleting = completingNotes.has(note.id); const animatedCard = isCompleting ? React.createElement("div", { key: `completing-${note.id}`, style: { textDecoration: "line-through", opacity: 0, transform: "scaleY(0)", transformOrigin: "top", transition: "transform 0.3s ease 0.25s, opacity 0.25s ease", overflow: "hidden" } }, noteCard) : noteCard; if (!isCustomSort) return animatedCard;
+                      const isCompleting = completingNotes.has(note.id); const animatedCard = isCompleting ? React.createElement("div", { key: `completing-${note.id}`, className: "note-completing" }, noteCard) : noteCard; if (!isCustomSort) return animatedCard;
                       return (
                         <div
                           key={note.id}
@@ -4203,7 +4203,7 @@ export function MainApp({ user, onSignOut }) {
                           onCreateConnection={(sourceId, targetId) => handleCreateConnection(sourceId, targetId)}
                         />
                       );
-                      const isCompleting2 = completingNotes.has(note.id); const animatedCard2 = isCompleting2 ? React.createElement("div", { key: `completing-${note.id}`, style: { textDecoration: "line-through", opacity: 0, transform: "scaleY(0)", transformOrigin: "top", transition: "transform 0.3s ease 0.25s, opacity 0.25s ease", overflow: "hidden" } }, noteCard) : noteCard; if (!isCustomSort) return animatedCard2;
+                      const isCompleting2 = completingNotes.has(note.id); const animatedCard2 = isCompleting2 ? React.createElement("div", { key: `completing-${note.id}`, className: "note-completing" }, noteCard) : noteCard; if (!isCustomSort) return animatedCard2;
                       return (
                         <div
                           key={note.id}
