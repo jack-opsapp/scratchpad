@@ -1284,7 +1284,7 @@ export function MainApp({ user, onSignOut }) {
         setNotes(prev => prev.map(n =>
           n.id === id ? { ...n, ...updateData } : n
         ));
-      }, 500);
+      }, 650);
     } else {
       // Uncompleting: instant
       setNotes(prev => prev.map(n =>

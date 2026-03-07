@@ -91,20 +91,21 @@ button:not(:disabled):hover {
   }
 }
 
-/* Note completion animation — strikethrough then vertical collapse */
+/* Note completion animation — strikethrough, pause, then fade up and out */
 @keyframes noteComplete {
   0% {
     opacity: 1;
-    transform: scaleY(1);
-    text-decoration: none;
+    transform: translateY(0) scaleY(1);
   }
-  40% {
-    opacity: 0.5;
-    transform: scaleY(1);
+  /* Strikethrough visible, hold */
+  45% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
   }
+  /* Fade up and out */
   100% {
     opacity: 0;
-    transform: scaleY(0);
+    transform: translateY(-10px) scaleY(0.8);
   }
 }
 
@@ -112,7 +113,7 @@ button:not(:disabled):hover {
   text-decoration: line-through;
   transform-origin: top;
   overflow: hidden;
-  animation: noteComplete 0.5s ease forwards;
+  animation: noteComplete 0.65s ease forwards;
 }
 
 .shimmer-text {
