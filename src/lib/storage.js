@@ -78,6 +78,7 @@ function transformPagesToAppFormat(supabasePages) {
         starred: section.starred || false,
         section_type: section.section_type || 'notes',
         rich_content: section.rich_content || '',
+        closed_at: section.closed_at || null,
       })),
   }));
 }
@@ -102,6 +103,7 @@ function transformNotesToAppFormat(supabaseNotes, sharedSectionMap = {}) {
     createdAt: note.created_at,
     created_by_user_id: note.created_by_user_id || null,
     sharedSectionIds: sharedSectionMap[note.id] || [],
+    position: note.position ?? 0,
   }));
 }
 
@@ -424,6 +426,7 @@ export const dataStore = {
               starred: section.starred || false,
               section_type: section.section_type || 'notes',
               rich_content: section.rich_content || null,
+              closed_at: section.closed_at || null,
             };
 
             const { error: sectionError } = await supabase

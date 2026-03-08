@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Check, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Check, ChevronDown, ChevronUp, ArrowUpDown, Plus, X } from 'lucide-react';
 import { colors } from '../styles/theme.js';
 import { TagPill } from './TagPill.jsx';
 
@@ -15,7 +15,10 @@ import { TagPill } from './TagPill.jsx';
  * @param {function} props.onDelete - Delete note
  * @param {function} props.onTagClick - Filter by tag
  * @param {function} props.onNavigate - Navigate to page/section
+ * @param {function} props.onDateChange - Update note date
+ * @param {function} props.onTagsChange - Update note tags
  * @param {string} props.currentUserId - Current user ID
+ * @param {Array} props.allTags - All available tags for autocomplete
  */
 export function TableView({
   notes,
@@ -26,20 +29,26 @@ export function TableView({
   onDelete,
   onTagClick,
   onNavigate,
+  onDateChange,
+  onTagsChange,
   currentUserId,
+  allTags = [],
 }) {
   const [sortColumn, setSortColumn] = useState('created');
   const [sortDir, setSortDir] = useState('desc');
   const [editingCell, setEditingCell] = useState(null); // { noteId, field }
   const [editValue, setEditValue] = useState('');
+  const [addingTagForNote, setAddingTagForNote] = useState(null); // noteId
+  const [newTagValue, setNewTagValue] = useState('');
+  const tagInputRef = useRef(null);
 
   // Column definitions
   const columns = [
     { key: 'status', label: '', width: 40 },
     { key: 'content', label: 'Note', flex: 1, minWidth: 200 },
-    { key: 'tags', label: 'Tags', width: 180 },
+    { key: 'tags', label: 'Tags', width: 200 },
     { key: 'location', label: 'Page / Section', width: 180 },
-    { key: 'date', label: 'Date', width: 100 },
+    { key: 'date', label: 'Date', width: 120 },
     { key: 'created', label: 'Created', width: 110 },
   ];
 
@@ -100,11 +109,35 @@ export function TableView({
   };
 
   const handleEditCommit = () => {
-    if (editingCell && onEdit) {
+    if (!editingCell) return;
+    if (editingCell.field === 'content' && onEdit) {
       onEdit(editingCell.noteId, editValue);
+    } else if (editingCell.field === 'date' && onDateChange) {
+      onDateChange(editingCell.noteId, editValue || null);
     }
     setEditingCell(null);
     setEditValue('');
+  };
+
+  const handleRemoveTag = (noteId, tagToRemove) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note || !onTagsChange) return;
+    const newTags = (note.tags || []).filter(t => t !== tagToRemove);
+    onTagsChange(noteId, newTags);
+  };
+
+  const handleAddTagCommit = (noteId) => {
+    const tag = newTagValue.trim().toLowerCase();
+    if (!tag || !onTagsChange) {
+      setAddingTagForNote(null);
+      setNewTagValue('');
+      return;
+    }
+    const note = notes.find(n => n.id === noteId);
+    const newTags = [...new Set([...(note?.tags || []), tag])];
+    onTagsChange(noteId, newTags);
+    setAddingTagForNote(null);
+    setNewTagValue('');
   };
 
   const SortIcon = ({ col }) => {
@@ -207,7 +240,7 @@ export function TableView({
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
                     onBlur={handleEditCommit}
-                    onKeyDown={e => { if (e.key === 'Enter') handleEditCommit(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleEditCommit(); if (e.key === 'Escape') { setEditingCell(null); setEditValue(''); } }}
                     autoFocus
                     style={{
                       width: '100%',
@@ -236,12 +269,80 @@ export function TableView({
                 )}
               </td>
 
-              {/* Tags */}
-              <td style={{ padding: '8px 12px' }}>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {/* Tags - editable */}
+              <td style={{ padding: '8px 8px' }}>
+                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                   {note.tags?.map(tag => (
-                    <TagPill key={tag} tag={tag} small onClick={() => onTagClick?.(tag)} />
+                    <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                      <TagPill tag={tag} small onClick={() => onTagClick?.(tag)} />
+                      {onTagsChange && (
+                        <button
+                          onClick={() => handleRemoveTag(note.id, tag)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: colors.textMuted,
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            opacity: 0.4,
+                            transition: 'opacity 0.15s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
+                          title={`Remove "${tag}"`}
+                        >
+                          <X size={8} />
+                        </button>
+                      )}
+                    </span>
                   ))}
+                  {addingTagForNote === note.id ? (
+                    <input
+                      ref={tagInputRef}
+                      autoFocus
+                      value={newTagValue}
+                      onChange={e => setNewTagValue(e.target.value)}
+                      onBlur={() => handleAddTagCommit(note.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleAddTagCommit(note.id);
+                        if (e.key === 'Escape') { setAddingTagForNote(null); setNewTagValue(''); }
+                      }}
+                      placeholder="tag"
+                      style={{
+                        width: 50,
+                        background: 'transparent',
+                        border: `1px solid ${colors.primary}`,
+                        color: colors.textPrimary,
+                        fontSize: 11,
+                        padding: '1px 4px',
+                        outline: 'none',
+                        borderRadius: 2,
+                        fontFamily: "'Manrope', sans-serif",
+                      }}
+                    />
+                  ) : onTagsChange && (
+                    <button
+                      onClick={() => { setAddingTagForNote(note.id); setNewTagValue(''); }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.textMuted,
+                        cursor: 'pointer',
+                        padding: '1px 2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        opacity: 0.3,
+                        transition: 'opacity 0.15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}
+                      title="Add tag"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  )}
                 </div>
               </td>
 
@@ -263,13 +364,40 @@ export function TableView({
                 )}
               </td>
 
-              {/* Date */}
-              <td style={{
-                padding: '8px 12px',
-                color: colors.textMuted,
-                fontSize: 12,
-              }}>
-                {note.date || '—'}
+              {/* Date - editable */}
+              <td style={{ padding: '8px 12px' }}>
+                {editingCell?.noteId === note.id && editingCell?.field === 'date' ? (
+                  <input
+                    type="date"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={handleEditCommit}
+                    onKeyDown={e => { if (e.key === 'Enter') handleEditCommit(); if (e.key === 'Escape') { setEditingCell(null); setEditValue(''); } }}
+                    autoFocus
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${colors.primary}`,
+                      color: colors.textPrimary,
+                      fontSize: 12,
+                      fontFamily: "'Manrope', sans-serif",
+                      padding: '1px 4px',
+                      outline: 'none',
+                      borderRadius: 2,
+                      width: '100%',
+                    }}
+                  />
+                ) : (
+                  <span
+                    onClick={() => onDateChange && handleEditStart(note.id, 'date', note.date || '')}
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 12,
+                      cursor: onDateChange ? 'text' : 'default',
+                    }}
+                  >
+                    {note.date || '—'}
+                  </span>
+                )}
               </td>
 
               {/* Created */}

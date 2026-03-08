@@ -32,6 +32,8 @@ import {
   Network,
   FileText,
   ListTree,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 
 import { useTypewriter } from '../hooks/useTypewriter.js';
@@ -916,8 +918,8 @@ export function MainApp({ user, onSignOut }) {
     } finally {
       setProcessing(false);
       setInputValue('');
-      // Refresh data to pick up any server-side mutations (page/section creates/deletes)
-      setTimeout(() => refreshData(), 500);
+      // Refresh pages/sections/connections but NOT notes (addNote already handles note state)
+      setTimeout(() => refreshDataWithoutNotes(), 500);
     }
   };
 
@@ -1216,6 +1218,23 @@ export function MainApp({ user, onSignOut }) {
     }
   };
 
+  // Refresh pages/sections/connections only (skip notes to avoid duplicating optimistic updates)
+  const refreshDataWithoutNotes = async () => {
+    try {
+      const [owned, shared, connectionsData] = await Promise.all([
+        dataStore.getOwnedPages(),
+        dataStore.getSharedPages(),
+        dataStore.getConnections()
+      ]);
+
+      if (owned) setOwnedPages(owned);
+      if (shared) setSharedPages(shared);
+      if (connectionsData) setConnections(connectionsData);
+    } catch (err) {
+      console.error('Failed to refresh data (without notes):', err);
+    }
+  };
+
   // Onboarding: create first page + section + note for new users
   const handleFirstNote = async (content) => {
     const pageId = generateId();
@@ -1305,7 +1324,7 @@ export function MainApp({ user, onSignOut }) {
     const incompleteNotes = visibleNotes.filter(n => !n.completed);
     if (!incompleteNotes.length) return;
 
-    if (!window.confirm(`Complete all ${incompleteNotes.length} note${incompleteNotes.length === 1 ? '' : 's'}?`)) return;
+    if (!window.confirm(`Are you sure?\n\nThis will mark ${incompleteNotes.length} note${incompleteNotes.length === 1 ? '' : 's'} as completed.`)) return;
 
     const now = new Date().toISOString();
     const ids = incompleteNotes.map(n => n.id);
@@ -1348,6 +1367,27 @@ export function MainApp({ user, onSignOut }) {
     setNotes(prev => prev.filter(n => n.id !== id));
     supabase.from('notes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('Delete persist failed:', error); });
+  };
+
+  // Update note date with direct Supabase persistence
+  const handleNoteDate = (id, date) => {
+    setNotes(prev => prev.map(n =>
+      n.id === id ? { ...n, date: date || null } : n
+    ));
+    supabase.from('notes').update({ date: date || null }).eq('id', id)
+      .then(({ error }) => { if (error) console.error('Date update persist failed:', error); });
+  };
+
+  // Update note tags with direct Supabase persistence
+  const handleNoteTags = (noteId, newTags) => {
+    setNotes(prev => prev.map(n =>
+      n.id === noteId ? { ...n, tags: newTags } : n
+    ));
+    supabase.from('notes').update({ tags: newTags }).eq('id', noteId)
+      .then(({ error }) => { if (error) console.error('Tags update persist failed:', error); });
+    // Add any new tags to global tag list
+    const newGlobalTags = newTags.filter(t => !tags.includes(t));
+    if (newGlobalTags.length) setTags(prev => [...prev, ...newGlobalTags]);
   };
 
   const handleAddTag = async (noteId) => {
@@ -2086,7 +2126,12 @@ export function MainApp({ user, onSignOut }) {
                       </div>
 
                       {expandedPages.includes(page.id) &&
-                        [...page.sections].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map(section => (
+                        [...page.sections].sort((a, b) => {
+                          // Closed sections go to the bottom
+                          if (a.closed_at && !b.closed_at) return 1;
+                          if (!a.closed_at && b.closed_at) return -1;
+                          return (a.position ?? 0) - (b.position ?? 0);
+                        }).map(section => (
                           <div
                             key={section.id}
                             data-section-item="true"
@@ -2256,6 +2301,8 @@ export function MainApp({ user, onSignOut }) {
                                   ? `1px solid ${colors.textPrimary}`
                                   : '1px solid transparent',
                               transition: 'border-color 0.15s ease, color 0.15s ease',
+                              opacity: section.closed_at ? 0.4 : 1,
+                              textDecoration: section.closed_at ? 'line-through' : 'none',
                             }}
                           >
                             {editingItem === section.id ? (
@@ -2509,28 +2556,42 @@ export function MainApp({ user, onSignOut }) {
                     >
                       TAGS
                     </p>
-                    {(currentPage || currentSection) && (
-                      <div style={{ display: 'flex', gap: 2 }}>
-                        {['all', 'page', 'section'].filter(s => s !== 'section' || (currentSection && !viewingPageLevel)).map(scope => (
+                    {(currentPage || currentSection) && (() => {
+                      const scopes = ['all', 'page', 'section'].filter(s => s !== 'section' || (currentSection && !viewingPageLevel));
+                      const activeIndex = scopes.indexOf(tagScope);
+                      return (
+                      <div style={{ display: 'flex', gap: 0, position: 'relative', borderBottom: `1px solid ${colors.border}` }}>
+                        {scopes.map((scope, i) => (
                           <button
                             key={scope}
                             onClick={() => setTagScope(scope)}
                             style={{
-                              padding: '1px 6px',
-                              background: tagScope === scope ? colors.primary : 'transparent',
-                              border: `1px solid ${tagScope === scope ? colors.primary : colors.border}`,
-                              color: tagScope === scope ? colors.surface : colors.textMuted,
+                              padding: '2px 8px 6px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: tagScope === scope ? colors.textPrimary : colors.textMuted,
                               fontSize: 9,
                               fontWeight: 600,
                               letterSpacing: 0.5,
                               cursor: 'pointer',
+                              transition: 'color 0.15s ease',
                             }}
                           >
                             {scope === 'all' ? 'ALL' : scope === 'page' ? 'PAGE' : 'SECTION'}
                           </button>
                         ))}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: -1,
+                          left: `${(activeIndex >= 0 ? activeIndex : 0) * (100 / scopes.length)}%`,
+                          width: `${100 / scopes.length}%`,
+                          height: 2,
+                          background: colors.primary,
+                          transition: 'left 0.2s ease',
+                        }} />
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                   {(() => {
                     const scopedNotes = tagScope === 'section' && currentSection && !viewingPageLevel
@@ -2540,7 +2601,29 @@ export function MainApp({ user, onSignOut }) {
                         : notes;
                     const scopedTags = tagScope === 'all' ? tags : [...new Set(scopedNotes.flatMap(n => n.tags || []).filter(Boolean))];
                     return (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {filterTag.length > 0 && !tagManageMode && (
+                      <button
+                        onClick={() => setFilterTag([])}
+                        style={{
+                          padding: '2px 6px',
+                          background: 'transparent',
+                          border: `1px solid ${colors.border}`,
+                          color: colors.textMuted,
+                          fontSize: 9,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          transition: 'color 0.15s ease',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.color = colors.primary}
+                        onMouseLeave={e => e.currentTarget.style.color = colors.textMuted}
+                      >
+                        <X size={8} /> CLEAR
+                      </button>
+                    )}
                     {(tagsExpanded ? scopedTags : scopedTags.slice(0, 4)).map(tag => (
                       <TagPill
                         key={tag}
@@ -3773,6 +3856,9 @@ export function MainApp({ user, onSignOut }) {
                     onEdit={handleNoteEdit}
                     onDelete={handleNoteDelete}
                     onTagClick={(tag) => setFilterTag([tag])}
+                    onDateChange={handleNoteDate}
+                    onTagsChange={handleNoteTags}
+                    allTags={tags}
                     onNavigate={(pageId, sectionId) => {
                       setCurrentPage(pageId);
                       setCurrentSection(sectionId);
@@ -3815,7 +3901,12 @@ export function MainApp({ user, onSignOut }) {
               <>
             {viewMode === 'list' &&
               (viewingPageLevel
-                ? [...(currentPageData?.sections || [])].sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0)).map(section => {
+                ? [...(currentPageData?.sections || [])].sort((a, b) => {
+                    // Closed sections go to bottom, then sort by starred
+                    if (a.closed_at && !b.closed_at) return 1;
+                    if (!a.closed_at && b.closed_at) return -1;
+                    return (b.starred ? 1 : 0) - (a.starred ? 1 : 0);
+                  }).map(section => {
                     const sn = filteredNotes.filter(
                       n => n.sectionId === section.id || n.sharedSectionIds?.includes(section.id)
                     );
@@ -4020,10 +4111,15 @@ export function MainApp({ user, onSignOut }) {
                               fontWeight: 600,
                               letterSpacing: 1.5,
                               margin: 0,
+                              opacity: section.closed_at ? 0.5 : 1,
+                              textDecoration: section.closed_at ? 'line-through' : 'none',
                             }}
                           >
                             {section.name.toUpperCase()}
                           </p>
+                          {section.closed_at && (
+                            <span style={{ color: colors.textMuted, fontSize: 9, opacity: 0.5, fontWeight: 600 }}>CLOSED</span>
+                          )}
                           <span style={{
                             color: colors.textMuted,
                             fontSize: 10,
@@ -4415,6 +4511,9 @@ export function MainApp({ user, onSignOut }) {
                 onEdit={handleNoteEdit}
                 onDelete={handleNoteDelete}
                 onTagClick={(tag) => setFilterTag([tag])}
+                onDateChange={handleNoteDate}
+                onTagsChange={handleNoteTags}
+                allTags={tags}
                 onNavigate={(pageId, sectionId) => {
                   setCurrentPage(pageId);
                   setCurrentSection(sectionId);
@@ -5091,6 +5190,23 @@ export function MainApp({ user, onSignOut }) {
                       await supabase.from('sections').update({ starred: newStarred }).eq('id', section.id);
                     },
                     visible: ['owner', 'team-admin', 'team'].includes(pageRoles[page.id]),
+                  },
+                  {
+                    label: section.closed_at ? 'Reopen section' : 'Close section',
+                    icon: section.closed_at ? ArchiveRestore : Archive,
+                    action: async () => {
+                      const newClosedAt = section.closed_at ? null : new Date().toISOString();
+                      const updateSections = pg => pg.map(p =>
+                        p.id === page.id
+                          ? { ...p, sections: p.sections.map(s => s.id === section.id ? { ...s, closed_at: newClosedAt } : s) }
+                          : p
+                      );
+                      setPages(updateSections);
+                      setOwnedPages(updateSections);
+                      setSharedPages(updateSections);
+                      await supabase.from('sections').update({ closed_at: newClosedAt }).eq('id', section.id);
+                    },
+                    visible: ['owner', 'team-admin'].includes(pageRoles[page.id]),
                   },
                   { divider: true },
                   {
