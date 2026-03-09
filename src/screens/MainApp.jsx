@@ -1279,6 +1279,27 @@ export function MainApp({ user, onSignOut }) {
     });
   };
 
+  // Auto-close a section when all its notes are completed
+  const autoCloseSection = (sectionId, updatedNotes) => {
+    const sectionNotes = updatedNotes.filter(n => n.sectionId === sectionId || n.sharedSectionIds?.includes(sectionId));
+    if (sectionNotes.length === 0) return;
+    const allCompleted = sectionNotes.every(n => n.completed);
+    const section = allSections.find(s => s.id === sectionId);
+    if (!section) return;
+
+    if (allCompleted && !section.closed_at) {
+      const now = new Date().toISOString();
+      const updateSections = pg => pg.map(p => ({
+        ...p,
+        sections: p.sections.map(s => s.id === sectionId ? { ...s, closed_at: now } : s),
+      }));
+      setPages(updateSections);
+      setOwnedPages(updateSections);
+      setSharedPages(updateSections);
+      supabase.from('sections').update({ closed_at: now }).eq('id', sectionId);
+    }
+  };
+
   // Toggle note completion with direct Supabase persistence
   const handleNoteToggle = (id) => {
     // Record previous state for undo before toggling
@@ -1300,9 +1321,10 @@ export function MainApp({ user, onSignOut }) {
       setCompletingNotes(prev => new Set(prev).add(id));
       setTimeout(() => {
         setCompletingNotes(prev => { const next = new Set(prev); next.delete(id); return next; });
-        setNotes(prev => prev.map(n =>
-          n.id === id ? { ...n, ...updateData } : n
-        ));
+        const updatedNotes = notes.map(n => n.id === id ? { ...n, ...updateData } : n);
+        setNotes(updatedNotes);
+        // Auto-close section if all notes now completed
+        autoCloseSection(note.sectionId, updatedNotes);
       }, 650);
     } else {
       // Uncompleting: instant
@@ -1330,11 +1352,17 @@ export function MainApp({ user, onSignOut }) {
     const ids = incompleteNotes.map(n => n.id);
 
     // Optimistic UI update
-    setNotes(prev => prev.map(n =>
+    const updatedNotes = notes.map(n =>
       ids.includes(n.id)
         ? { ...n, completed: true, completed_by_user_id: user.id, completed_at: now }
         : n
-    ));
+    );
+    setNotes(updatedNotes);
+
+    // Auto-close section if all notes now completed
+    if (currentSection) {
+      autoCloseSection(currentSection, updatedNotes);
+    }
 
     // Persist to Supabase
     const { error } = await supabase
@@ -3578,6 +3606,41 @@ export function MainApp({ user, onSignOut }) {
                       }}
                     >
                       <Check size={12} /> All
+                    </button>
+                  )}
+                  {currentSection && !viewingPageLevel && ['owner', 'team-admin'].includes(myRole) && (
+                    <button
+                      onClick={async () => {
+                        const isClosed = !!currentSectionData?.closed_at;
+                        const newClosedAt = isClosed ? null : new Date().toISOString();
+                        const updateSections = pg => pg.map(p => ({
+                          ...p,
+                          sections: p.sections.map(s => s.id === currentSection ? { ...s, closed_at: newClosedAt } : s),
+                        }));
+                        setPages(updateSections);
+                        setOwnedPages(updateSections);
+                        setSharedPages(updateSections);
+                        await supabase.from('sections').update({ closed_at: newClosedAt }).eq('id', currentSection);
+                      }}
+                      title={currentSectionData?.closed_at ? 'Reopen section' : 'Close section'}
+                      style={{
+                        background: 'transparent',
+                        border: `1px solid ${colors.border}`,
+                        color: currentSectionData?.closed_at ? colors.primary : colors.textMuted,
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        marginLeft: 4,
+                      }}
+                    >
+                      {currentSectionData?.closed_at
+                        ? <><ArchiveRestore size={12} /> Reopen</>
+                        : <><Archive size={12} /> Close</>
+                      }
                     </button>
                   )}
                 </div>
