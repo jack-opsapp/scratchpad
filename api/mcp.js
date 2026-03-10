@@ -306,7 +306,7 @@ async function toolListNotes({ userId, supabase }, args) {
     };
   });
 
-  return { notes, total: notes.length };
+  return { notes, count: notes.length };
 }
 
 async function toolCreateNote({ userId, supabase }, args) {
