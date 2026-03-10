@@ -75,7 +75,7 @@ function handleInitialize(res, body) {
 
 async function fetchUserPages(userId, supabase) {
   const { data: pages, error } = await supabase
-    .from('pages').select('id, name').eq('user_id', userId);
+    .from('pages').select('id, name').eq('user_id', userId).is('deleted_at', null);
   if (error) throw new Error('Failed to fetch pages');
   const userPageIds = (pages || []).map(p => p.id);
   const pageNameMap = Object.fromEntries((pages || []).map(p => [p.id, p.name]));
@@ -427,6 +427,13 @@ async function toolListConnections({ userId, supabase }, args) {
   const { note_id } = args;
 
   if (note_id) {
+    // Verify note ownership before fetching connections
+    const { userPageIds } = await fetchUserPages(userId, supabase);
+    const { userSectionIds } = await fetchUserSections(userPageIds, supabase);
+    const { data: note, error: noteErr } = await supabase
+      .from('notes').select('id, section_id').eq('id', note_id).is('deleted_at', null).single();
+    if (noteErr || !note || !userSectionIds.includes(note.section_id)) throw new Error('Note not found');
+
     const { data, error } = await supabase.rpc('get_note_connections', { p_note_id: note_id });
     if (error) throw new Error('Failed to fetch connections');
     return { connections: data || [] };
@@ -446,6 +453,18 @@ async function toolCreateConnection({ userId, supabase }, args) {
   if (!VALID_CONNECTION_TYPES.includes(connType)) {
     throw new Error(`connection_type must be one of: ${VALID_CONNECTION_TYPES.join(', ')}`);
   }
+
+  // Verify both notes belong to the authenticated user
+  const { userPageIds } = await fetchUserPages(userId, supabase);
+  const { userSectionIds } = await fetchUserSections(userPageIds, supabase);
+
+  const { data: sourceNote, error: srcErr } = await supabase
+    .from('notes').select('id, section_id').eq('id', source_note_id).is('deleted_at', null).single();
+  if (srcErr || !sourceNote || !userSectionIds.includes(sourceNote.section_id)) throw new Error('source_note_id not found');
+
+  const { data: targetNote, error: tgtErr } = await supabase
+    .from('notes').select('id, section_id').eq('id', target_note_id).is('deleted_at', null).single();
+  if (tgtErr || !targetNote || !userSectionIds.includes(targetNote.section_id)) throw new Error('target_note_id not found');
 
   const row = { source_note_id, target_note_id, connection_type: connType, created_by_user_id: userId };
   if (label) row.label = label;
