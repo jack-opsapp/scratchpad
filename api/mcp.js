@@ -17,16 +17,16 @@ function createSupabaseServiceClient() {
 }
 
 // Returns { userId, supabase } or null (and writes error response)
-async function authenticateApiKey(apiKey, res) {
+async function authenticateApiKey(apiKey, res, id = null) {
   if (!apiKey) {
-    jsonRpcError(res, null, -32001, 'Unauthorized: missing X-API-Key header');
+    jsonRpcError(res, id, -32001, 'Unauthorized: missing X-API-Key header');
     return null;
   }
 
   const keyHash = createHash('sha256').update(apiKey).digest('hex');
   let supabase;
   try { supabase = createSupabaseServiceClient(); }
-  catch { jsonRpcError(res, null, -32603, 'Internal error: database not configured'); return null; }
+  catch { jsonRpcError(res, id, -32603, 'Internal error: database not configured'); return null; }
 
   const { data: keyRecord, error } = await supabase
     .from('api_keys')
@@ -35,11 +35,11 @@ async function authenticateApiKey(apiKey, res) {
     .single();
 
   if (error || !keyRecord) {
-    jsonRpcError(res, null, -32001, 'Unauthorized: invalid API key');
+    jsonRpcError(res, id, -32001, 'Unauthorized: invalid API key');
     return null;
   }
   if (keyRecord.revoked_at) {
-    jsonRpcError(res, null, -32001, 'Unauthorized: API key has been revoked');
+    jsonRpcError(res, id, -32001, 'Unauthorized: API key has been revoked');
     return null;
   }
 
@@ -102,14 +102,14 @@ export default async function handler(req, res) {
   // initialize — auth required
   if (method === 'initialize') {
     const apiKey = req.headers['x-api-key'];
-    const auth = await authenticateApiKey(apiKey, res);
+    const auth = await authenticateApiKey(apiKey, res, body.id);
     if (!auth) return;
     return handleInitialize(res, body);
   }
 
   // All other methods require auth
   const apiKey = req.headers['x-api-key'];
-  const auth = await authenticateApiKey(apiKey, res);
+  const auth = await authenticateApiKey(apiKey, res, body.id);
   if (!auth) return;
 
   if (method === 'tools/list') return handleToolsList(res, body);
