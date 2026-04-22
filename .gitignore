@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 
+# Chrome extension build artifacts (never commit the signing key)
+extension.crx
+extension.pem
+
 # Environment variables
 .env
 .env.local
