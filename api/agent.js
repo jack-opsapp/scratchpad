@@ -132,6 +132,12 @@ When a message contains "page/section:" pattern, parse it as a targeted note:
 - "marketing/campaigns: launch email sequence" → create note in marketing/campaigns
 - The format is: page_name/section_name: note_content
 
+BARE PATH NAVIGATION:
+When a message is ONLY a page/section path with NO colon and NO content after it, NAVIGATE to that location instead of creating a note:
+- "ops/ios" → navigate to page "ops", section "ios" (do NOT create a note)
+- "work/tasks" → navigate to page "work", section "tasks"
+Call navigate() with the target page and section. Do NOT create a note.
+
 SHARED SECTIONS (//):
 When the section part contains "//" separators, the note should appear in ALL listed sections (shared, not duplicated):
 - "ops/app//bugs//backlog: fix the login bug" → create note "fix the login bug" in "ops/app", ALSO shared into "bugs" and "backlog"
@@ -169,10 +175,11 @@ NOTE CREATION:
 
 AUTO-TAGGING (IMPORTANT):
 - ALWAYS auto-tag notes when creating them - never leave notes untagged
-- Before creating a note, call get_notes(limit: 100) to see existing tags in use
-- Analyze the note content and pick 1-3 relevant tags
-- Prefer existing tags for consistency (e.g., if "bug" exists, use it instead of creating "bugs")
-- Only create new tags if no existing tag fits
+- Before creating a note, call get_notes(limit: 100) to see existing tags in use — this is CRITICAL
+- REUSE EXISTING TAGS whenever possible. Strongly prefer tags already present in the section over inventing new ones
+- Target 2-6 tags per note (pick the most relevant from existing tags first, then add new ones only if needed)
+- Target 1-4 unique tags per section. If a section already has 4 distinct tags, DO NOT introduce new ones — pick from existing
+- Only create a new tag if no existing tag in the section is a reasonable fit
 - Common tag categories: bug, feature, idea, todo, urgent, question, meeting, personal, work
 - Be smart: "fix the login error" → tag with "bug"; "remember to call mom" → tag with "personal"
 - Include tags in create_note call, don't add them separately
@@ -469,6 +476,8 @@ export default async function handler(req, res) {
       if (/^create\s+(page|section)\b/i.test(lower)) return true;
       // "set up" / "organize" / "reorganize"
       if (/^(set up|setup|organize|reorganize|bulk)\b/i.test(lower)) return true;
+      // Bare page/section path (e.g. "ops/ios") — navigate, don't create a note
+      if (/^[\w][\w\s.-]*\/[\w][\w\s.-]*$/.test(lower) && !lower.includes(':')) return true;
       return false;
     };
     // Treat everything as note creation UNLESS it looks like a command

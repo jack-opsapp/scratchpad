@@ -34,3 +34,13 @@ npm-debug.log*
 
 # Worktrees
 .worktrees/
+
+# Local Claude Code config
+.claude/
+
+# Supabase CLI scratch
+supabase/.temp/
+
+# Xcode per-user state
+**/xcuserdata/
+*.xcuserstate

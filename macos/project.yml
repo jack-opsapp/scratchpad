@@ -1,0 +1,63 @@
+name: SlateMac
+options:
+  bundleIdPrefix: co.opsapp.slate
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: X47H96M34K
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+
+targets:
+  SlateMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: SlateMac/App
+      - path: SlateMac/Views
+      - path: SlateMac/Services
+      - path: SlateMac/Bridge
+    resources:
+      - path: SlateMac/Resources/Assets.xcassets
+      - path: SlateMac/Resources/SlateMac.entitlements
+      - path: SlateMac/Resources/PrivacyInfo.xcprivacy
+      - path: SlateMac/Resources/Fonts
+        optional: true
+      - path: SlateMac/Resources/BundledWeb
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: co.opsapp.slate.mac
+        INFOPLIST_FILE: ""
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Slate
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright 2025 OPS App Co. All rights reserved."
+        CODE_SIGN_ENTITLEMENTS: SlateMac/Resources/SlateMac.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    info:
+      path: SlateMac/Info.plist
+      properties:
+        CFBundleDisplayName: Slate
+        CFBundleName: Slate
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        CFBundleURLTypes:
+          - CFBundleURLName: "Slate Auth"
+            CFBundleURLSchemes:
+              - slate-mac
+        NSAccessibilityUsageDescription: "Slate uses accessibility to enable global keyboard shortcuts."
+        ATSApplicationFontsPath: Fonts/
+    entitlements:
+      path: SlateMac/Resources/SlateMac.entitlements

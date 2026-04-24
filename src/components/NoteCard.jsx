@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Check, Trash2, Link2 } from 'lucide-react';
+import { Check, Trash2, Link2, Share2 } from 'lucide-react';
 import { useTypewriter } from '../hooks/useTypewriter.js';
 import { colors } from '../styles/theme.js';
 import { TagPill } from './TagPill.jsx';
@@ -156,11 +156,14 @@ export function NoteCard({
   onTagClick,
   onAddTag,
   draggable = false,
+  reorderDraggable = false,
+  onReorderDragStart,
   onLinkClick,
   connectionCount = 0,
   onConnectionBadgeClick,
   allNotes = [],
   onCreateConnection,
+  sharedSectionNames = [],
 }) {
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(note.content);
@@ -184,17 +187,60 @@ export function NoteCard({
     e.dataTransfer.effectAllowed = 'copy';
   };
 
+  const handleReorderDragStart = (e) => {
+    e.dataTransfer.setData('text/plain', `reorder-note:${note.id}`);
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.closest('[data-note-item]').style.opacity = '0.4';
+    onReorderDragStart?.(note.id);
+  };
+
   const isOwnNote = note.created_by_user_id === currentUserId;
   const showCreatorAvatar = note.created_by_user_id && !isOwnNote;
 
   return (
     <div
+      data-note-item="true"
       style={{ padding: '16px 0', borderBottom: `1px solid ${colors.border}` }}
       onMouseEnter={() => setDragHover(true)}
       onMouseLeave={() => setDragHover(false)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-        {/* Drag handle */}
+        {/* Reorder drag handle (left side, only in custom sort mode) */}
+        {reorderDraggable && (
+          <div
+            draggable
+            onDragStart={handleReorderDragStart}
+            onDragEnd={(e) => {
+              const noteEl = e.currentTarget.closest('[data-note-item]');
+              if (noteEl) noteEl.style.opacity = '1';
+            }}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '3px 3px',
+              gap: 2,
+              cursor: 'grab',
+              padding: '4px 2px',
+              marginTop: 2,
+              flexShrink: 0,
+              opacity: dragHover ? 0.6 : 0,
+              transition: 'opacity 0.15s ease',
+            }}
+            title="Drag to reorder"
+          >
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: '50%',
+                  background: colors.primary,
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {/* Drag handle (drag to chat) */}
         {draggable && (
           <div
             draggable
@@ -362,7 +408,7 @@ export function NoteCard({
           )}
 
           {/* Tags and date - hidden in compact mode */}
-          {!compact && (note.tags?.length > 0 || note.date || canEdit) && (!isNew || typewriter.done) && (
+          {!compact && (note.tags?.length > 0 || note.date || canEdit || sharedSectionNames.length > 0) && (!isNew || typewriter.done) && (
             <div
               style={{
                 display: 'flex',
@@ -435,6 +481,27 @@ export function NoteCard({
                   {connectionCount > 0 ? connectionCount : null}
                 </button>
               )}
+              {sharedSectionNames.length > 0 && sharedSectionNames.map(name => (
+                <span
+                  key={name}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 2,
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    fontFamily: "'Manrope', sans-serif",
+                  }}
+                  title={`Also in: ${name}`}
+                >
+                  <Share2 size={10} />
+                  {name}
+                </span>
+              ))}
               {note.date && (
                 <span
                   style={{

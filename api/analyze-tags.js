@@ -137,11 +137,12 @@ NOTES TO ANALYZE:
 ${notesForAnalysis.map((n, i) => `${i + 1}. [${n.page}/${n.section}] "${n.content}"${n.currentTags.length > 0 ? ` (current tags: ${n.currentTags.join(', ')})` : ''}`).join('\n')}
 
 INSTRUCTIONS:
-1. For each note, suggest 1-3 relevant tags based on its content
-2. PREFER existing tags when they fit - consistency is important
-3. Only create new tags if the content clearly doesn't fit existing categories
-4. Tags should be lowercase, single words or hyphenated (e.g., "bug-fix", "meeting-notes")
-5. Skip notes that already have appropriate tags
+1. For each note, suggest 2-6 relevant tags based on its content
+2. STRONGLY PREFER existing tags — reuse them whenever they're a reasonable fit. Consistency matters more than precision.
+3. Aim for only 1-4 unique tags per section. If a section already uses certain tags, keep using those same tags for new notes in that section.
+4. Only create a new tag if no existing tag in the section is a reasonable fit
+5. Tags should be lowercase, single words or hyphenated (e.g., "bug-fix", "meeting-notes")
+6. Skip notes that already have appropriate tags
 
 Respond with JSON only:
 {
